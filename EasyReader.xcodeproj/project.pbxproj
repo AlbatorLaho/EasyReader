@@ -23,6 +23,8 @@
 		E3A9AC592D0E5C4E00FE2E57 /* TextAreaReadableElement.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A9AC582D0E5C4E00FE2E57 /* TextAreaReadableElement.swift */; };
 		E3A9AC5B2D0E60EE00FE2E57 /* TestingReadable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A9AC5A2D0E60EE00FE2E57 /* TestingReadable.swift */; };
 		E3BC5DC92D0BEB1900D34D4F /* Readable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3BC5DC82D0BEB1900D34D4F /* Readable.swift */; };
+		E3CE6D542D1906F000A1106A /* Defaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CE6D532D1906F000A1106A /* Defaults.swift */; };
+		E3CE6D562D19071D00A1106A /* Pronunciation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CE6D552D19071D00A1106A /* Pronunciation.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +45,8 @@
 		E3A9AC582D0E5C4E00FE2E57 /* TextAreaReadableElement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextAreaReadableElement.swift; sourceTree = "<group>"; };
 		E3A9AC5A2D0E60EE00FE2E57 /* TestingReadable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestingReadable.swift; sourceTree = "<group>"; };
 		E3BC5DC82D0BEB1900D34D4F /* Readable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Readable.swift; sourceTree = "<group>"; };
+		E3CE6D532D1906F000A1106A /* Defaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Defaults.swift; sourceTree = "<group>"; };
+		E3CE6D552D19071D00A1106A /* Pronunciation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pronunciation.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -81,12 +85,14 @@
 				E39BE5A52CD9E38600B62873 /* Text Selectors */,
 				E3BC5DC72D0BEAD600D34D4F /* Readable */,
 				E393FD142CD6E2D100DA7CA3 /* EasyReaderApp.swift */,
+				E3CE6D552D19071D00A1106A /* Pronunciation.swift */,
 				E393FD162CD6E2D100DA7CA3 /* ContentView.swift */,
 				E39BE5A02CD8919400B62873 /* EasyReader.swift */,
 				E39C4FFE2D11770B0011D8C4 /* Selection.swift */,
 				E393FD182CD6E2D300DA7CA3 /* Assets.xcassets */,
 				E393FD1D2CD6E2D300DA7CA3 /* EasyReader.entitlements */,
 				E393FD1A2CD6E2D300DA7CA3 /* Preview Content */,
+				E3CE6D532D1906F000A1106A /* Defaults.swift */,
 			);
 			path = EasyReader;
 			sourceTree = "<group>";
@@ -200,11 +206,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				E3A9AC572D0E5C4500FE2E57 /* WebAreaReadableElement.swift in Sources */,
+				E3CE6D542D1906F000A1106A /* Defaults.swift in Sources */,
 				E3BC5DC92D0BEB1900D34D4F /* Readable.swift in Sources */,
 				E393FD172CD6E2D100DA7CA3 /* ContentView.swift in Sources */,
 				E3A9AC5B2D0E60EE00FE2E57 /* TestingReadable.swift in Sources */,
 				E393FD152CD6E2D100DA7CA3 /* EasyReaderApp.swift in Sources */,
 				E39C50012D14AADF0011D8C4 /* NLTextSelector.swift in Sources */,
+				E3CE6D562D19071D00A1106A /* Pronunciation.swift in Sources */,
 				E3A9AC552D0E5A1100FE2E57 /* ReadableElement.swift in Sources */,
 				E39C4FFF2D11770B0011D8C4 /* Selection.swift in Sources */,
 				E39C50032D15F1E20011D8C4 /* ReadableTextView.swift in Sources */,

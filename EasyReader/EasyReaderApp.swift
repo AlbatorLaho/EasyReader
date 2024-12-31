@@ -59,16 +59,6 @@ struct EasyReaderApp: App {
 //    }
 //}
 
-//struct Pronunciation: Identifiable {
-//    let id = UUID()
-//struct Pronunciation {
-//    var domain: String?
-//    var search: String
-//    var replace: String
-//    var options: String.CompareOptions
-//    var enabled: Bool
-//}
-
 //struct SettingsView: View {
 //    @Default(.useSystemVoice) var useSystemVoice
 //    @Default(.voiceIdentifier) var voiceIdentifier
@@ -88,6 +78,7 @@ struct EasyReaderApp: App {
 //    var body: some View {
 //        Form {
 //            Toggle("Use System Voice", isOn: $useSystemVoice)
+//            Defaults.Toggle("Use System Voice", key: .useSystemVoice)
 //
 //            Picker("Select Voice:", selection: $selectedVoice) {
 //                Text("System Voice (TEST)")
@@ -128,23 +119,6 @@ struct EasyReaderApp: App {
 //    static var previews: some View {
 //        SettingsView()
 //    }
-//}
-
-//extension Defaults.Keys {
-//    static let nowPlayingStaysOpen = Key<Bool>("nowPlayingStaysOpen", default: false)
-//    static let useNowPlaying = Key<Bool>("useNowPlaying", default: true)
-//    static let useSystemVoice = Key<Bool>("useSystemVoice", default: false)
-//    static let useVoiceOverPronunciations = Key<Bool>("useVoiceOverPronunciations", default: false)
-//    static let voiceIdentifier = Key<String?>("voiceIdentifier")
-//    static let pronunciations = Key<[String]>("pronunciations", default: [])
-////    static let selectUnit = Key<SelectUnit>("selectUnit", default: .sentence)
-////    static let readerStateImageNames = Key<[EasyReader.State: String]>("readerStateImageNames", default: [
-//////        .stopped: "waveform",
-////        .stopped: "waveform.slash",
-//////        .paused: "waveform",
-//////        .reading: "waveform",
-////        .error: "waveform.badge.exclamationmark",
-////    ])
 //}
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -210,6 +184,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.servicesProvider = self
         NSUpdateDynamicServices()
         
+//        Defaults.removeAll()
+//        print("write")
+//        Defaults[.pronunciations] = [
+//            .init(search: "text", replace: "string"),
+//            .init(search: "test", replace: "whaaaat"),
+//            .init(search: "from", replace: "to"),
+//        ]
+//        print("read")
+//        print(Defaults[.pronunciations])
+//        print(Pronunciation.getVoiceOverPronunciations())
+//        easyReader.pronunciations = Defaults[.pronunciations]
+//        if let pronunciations = Pronunciation.getVoiceOverPronunciations() {
+//            easyReader.pronunciations.append(contentsOf: pronunciations)
+//        }
+//        if let pronunciations = Pronunciation.getVoiceOverPronunciations() {
+//            Defaults[.pronunciations].append(contentsOf: pronunciations)
+//        }
+//        print(Defaults[.pronunciations])
+
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
             styleMask: [.titled, .closable, .resizable],
@@ -329,7 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 //        commandCenter.changePlaybackRateCommand.addTarget { [weak self] event in
 //            print("change rate \(event.command)")
 //            guard let self = self else { return .commandFailed }
-//            self.easyReader.speechRate = Float(event.timestamp)
+//            self.easyReader.rate = Float(event.timestamp)
 //            return .success
 //        }
 //        commandCenter.changePlaybackPositionCommand
@@ -385,7 +378,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
 //        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = 3
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 0.5
-        info[MPNowPlayingInfoPropertyPlaybackRate] = easyReader.speechRate
+//        info[MPNowPlayingInfoPropertyPlaybackRate] = easyReader.rate
+        info[MPNowPlayingInfoPropertyPlaybackRate] = easyReader.utterance?.rate
         infoCenter.nowPlayingInfo = info
     }
     

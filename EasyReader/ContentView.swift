@@ -11,6 +11,7 @@ import SwiftUI
 //support more element roles (check Finder (QuickLook/Info), browsers, text editors, Preview (PDF), Terminal, Mail, Contacts, Notes, Dictionary, NetNewsWire, Numbers, Pages)
 //with using the services menu, we could send things like text files to this to read or something... is that worth doing?
 //add a reader view that can be a speech playground sorta thing... (could be used the same as cmd-shift-x for TextEdit)
+//localization
 struct ContentView: View {
     private let appDelegate: AppDelegate
     

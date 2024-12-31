@@ -8,6 +8,7 @@
 import Foundation
 import AVKit
 import AXSwift
+import Defaults
 
 protocol EasyReaderDelegate: AnyObject {
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State)
@@ -27,65 +28,74 @@ final class EasyReader: NSObject {
         }
     }
     
-    private let speechSynthesizer: AVSpeechSynthesizer = AVSpeechSynthesizer()
-    var speechVoice: AVSpeechSynthesisVoice?
-    var speechRate: Float?
-    var pronunciations: [Pronunciation] = []
+    private let synthesizer: AVSpeechSynthesizer = AVSpeechSynthesizer()
+//    private var utterance: AVSpeechUtterance?
+    private(set) var utterance: AVSpeechUtterance?
+//    var voice: AVSpeechSynthesisVoice?
+//    var rate: Float?
+////    private let defaultPronunciations: [Pronunciation] = []
+//    var pronunciations: [Pronunciation] = []
     var textSelector: TextSelector?
     var readable: Readable?
     weak var delegate: EasyReaderDelegate?
     
     override init() {
         super.init()
-        speechSynthesizer.delegate = self
-        setupVoiceSettings()
-        setupPronunciationsAndMaybeVoice()
+        synthesizer.delegate = self
+//        setupVoiceSettings()
+//        setupPronunciationsAndMaybeVoice()
+//        print(AVSpeechUtteranceDefaultSpeechRate)
+//        print(AVSpeechUtteranceMinimumSpeechRate)
+//        print(AVSpeechUtteranceMaximumSpeechRate)
+//        print(NSSpeechSynthesizer.defaultVoice.rawValue)
+//        print(AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())?.identifier)
     }
     
-    private func setupVoiceSettings() {
-        guard let voicePreferences = UserDefaults.standard.persistentDomain(forName: "com.apple.speech.voice.prefs"),
-              let voiceName = voicePreferences["SelectedVoiceName"] as? String,
-              let voice = AVSpeechSynthesisVoice.speechVoices().first(where: { $0.name == voiceName })
-        else { return }
-//        speechVoice = nil
-//        speechVoice = AVSpeechSynthesisVoice(identifier: NSSpeechSynthesizer.defaultVoice.rawValue)
-//        speechVoice = AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())
-//        speechVoice = AVSpeechSynthesisVoice(language: "en-GB")
-        
-//        TODO: why are we creating a new voice from the identifier instead of just setting speechVoice to voice?
-//        speechVoice = AVSpeechSynthesisVoice(identifier: voice.identifier)
-        speechVoice = voice
-        guard let voiceCreator = voicePreferences["SelectedVoiceCreator"] as? Int,
-              let voiceID = voicePreferences["SelectedVoiceID"] as? Int,
-              let voiceRates = voicePreferences["VoiceRateDataArray"] as? [[Int]],
-              let voiceRate = voiceRates.first(where: { $0[0] == voiceCreator && $0[1] == voiceID })?[2]
-        else { return }
-//        NOTE: voice rate appears to be mapped from 90 to 360 with 180 being the default
-        speechRate = Float(voiceRate) / 360
-    }
-    
-    private func setupPronunciationsAndMaybeVoice() {
-        guard let voiceOverPreferences = UserDefaults.standard.persistentDomain(forName: "com.apple.VoiceOver4/default") else { return }
-        if speechVoice == nil, let voiceIdentifier = voiceOverPreferences["SCRCategories_SCRCategorySystemWide_SCRSpeechLanguages_default_SCRSpeechComponentSettings_SCRVoiceIdentifier"] as? String {
-            speechVoice = AVSpeechSynthesisVoice(identifier: voiceIdentifier)
-        }
-        for key in voiceOverPreferences.keys {
-//            NOTE: can't get default pronunciations because they use SCRSubTextKey instead of SCRSubText
-            guard key.starts(with: "custom.pronunciation"),
-                  let pronunciation = voiceOverPreferences[key] as? [String: String],
-                  let domainIdentifier = pronunciation["SCRDomainIdentifier"],
-                  let searchText = pronunciation["SCRSearchText"],
-                  let replaceText = pronunciation["SCRSubText"],
-                  pronunciation["SCREnabled"] == "1"
-            else { continue }
-            pronunciations.append(Pronunciation(
-                domain: domainIdentifier,
-                search: searchText,
-                replace: replaceText,
-                options: pronunciation["SCRIgnoreCase"] == "1" ? [.caseInsensitive] : []
-            ))
-        }
-    }
+//    private func setupVoiceSettings() {
+//        guard let voicePreferences = UserDefaults.standard.persistentDomain(forName: "com.apple.speech.voice.prefs"),
+//              let voiceName = voicePreferences["SelectedVoiceName"] as? String,
+//              let voice = AVSpeechSynthesisVoice.speechVoices().first(where: { $0.name == voiceName })
+//        else { return }
+////        voice = nil
+////        voice = AVSpeechSynthesisVoice(identifier: NSSpeechSynthesizer.defaultVoice.rawValue)
+////        voice = AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())
+////        voice = AVSpeechSynthesisVoice(language: "en-GB")
+//
+////        TODO: why are we creating a new voice from the identifier instead of just setting voice to voice?
+////        voice = AVSpeechSynthesisVoice(identifier: voice.identifier)
+//        voice = voice
+//        guard let voiceCreator = voicePreferences["SelectedVoiceCreator"] as? Int,
+//              let voiceID = voicePreferences["SelectedVoiceID"] as? Int,
+//              let voiceRates = voicePreferences["VoiceRateDataArray"] as? [[Int]],
+//              let voiceRate = voiceRates.first(where: { $0[0] == voiceCreator && $0[1] == voiceID })?[2]
+//        else { return }
+////        NOTE: voice rate appears to be mapped from 90 to 360 with 180 being the default
+//        rate = Float(voiceRate) / 360
+//    }
+//
+//    private func setupPronunciationsAndMaybeVoice() {
+//        guard let voiceOverPreferences = UserDefaults.standard.persistentDomain(forName: "com.apple.VoiceOver4/default") else { return }
+//        if voice == nil, let voiceIdentifier = voiceOverPreferences["SCRCategories_SCRCategorySystemWide_SCRSpeechLanguages_default_SCRSpeechComponentSettings_SCRVoiceIdentifier"] as? String {
+//            voice = AVSpeechSynthesisVoice(identifier: voiceIdentifier)
+//        }
+////        for key in voiceOverPreferences.keys {
+//////            NOTE: can't get default pronunciations because they use SCRSubTextKey instead of SCRSubText
+////            guard key.starts(with: "custom.pronunciation"),
+////                  let pronunciation = voiceOverPreferences[key] as? [String: String],
+////                  let domainIdentifier = pronunciation["SCRDomainIdentifier"],
+////                  let searchText = pronunciation["SCRSearchText"],
+////                  let replaceText = pronunciation["SCRSubText"],
+////                  pronunciation["SCREnabled"] == "1"
+////            else { continue }
+////            pronunciations.append(Pronunciation(
+////                search: searchText,
+////                replace: replaceText,
+////                domain: domainIdentifier,
+////                ignoreCase: pronunciation["SCRIgnoreCase"] == "1"
+//////                enabled: pronunciation["SCREnabled"] == "1"
+////            ))
+////        }
+//    }
     
     
     
@@ -138,29 +148,33 @@ final class EasyReader: NSObject {
     }
     
     private func readSelection() -> Bool {
-        guard let selectedText = readable?.selectedText else { return false }
-        var textToRead = selectedText
+        guard var selectedText = readable?.selectedText else { return false }
 //        for pronunciation in pronunciations.filter({ $0.domain == "SCRAnyApplication" || $0.domain == readable?.appDomain }) {
-        for pronunciation in pronunciations.filter({ $0.domain == "SCRAnyApplication" }) {
-            textToRead = textToRead.replacingOccurrences(
+//        for pronunciation in pronunciations.filter({ $0.domain == "SCRAnyApplication" }) {
+//        for pronunciation in pronunciations.filter({ $0.domain == nil }) {
+        for pronunciation in Defaults[.pronunciations].filter({ $0.domain == nil }) {
+            selectedText = selectedText.replacingOccurrences(
                 of: pronunciation.search,
                 with: pronunciation.replace,
                 options: pronunciation.options
             )
         }
-//        print("reading: \(textToRead)")
-        let utterance = AVSpeechUtterance(string: textToRead)
+//        print("reading: \(selectedText)")
+        let utterance = AVSpeechUtterance(string: selectedText)
+        self.utterance = utterance
 //        NOTE: appears to have no affect
         utterance.prefersAssistiveTechnologySettings = true
-        utterance.voice = speechVoice
-        if let rate = speechRate {
-            utterance.rate = rate
-        }
-        if speechSynthesizer.isSpeaking {
+        utterance.voice = Defaults[.speechVoice]
+        utterance.volume = Defaults[.speechVolume]
+        utterance.rate = Defaults[.speechRate]
+        utterance.pitchMultiplier = Defaults[.speechPitch]
+//        utterance.preUtteranceDelay = Defaults[.speechDelayBefore]
+//        utterance.postUtteranceDelay = Defaults[.speechDelayAfter]
+        if synthesizer.isSpeaking {
             shouldStop = false
-            speechSynthesizer.stopSpeaking(at: .immediate)
+            synthesizer.stopSpeaking(at: .immediate)
         }
-        speechSynthesizer.speak(utterance)
+        synthesizer.speak(utterance)
         return true
     }
     
@@ -179,19 +193,19 @@ final class EasyReader: NSObject {
     
     func stop() -> Bool {
         guard state != .stopped else { return false }
-        return speechSynthesizer.stopSpeaking(at: .immediate)
+        return synthesizer.stopSpeaking(at: .immediate)
     }
     
     func pause() -> Bool {
         guard state == .reading else { return false }
-        return speechSynthesizer.pauseSpeaking(at: .immediate)
+        return synthesizer.pauseSpeaking(at: .immediate)
     }
     
 //    TODO: should have option to either resume from last word, or restart from begining of selection
 //    TODO: check if selection has changed, if so, don't resume, start over?
    func resume() -> Bool {
         guard state == .paused else { return false }
-        return speechSynthesizer.continueSpeaking()
+        return synthesizer.continueSpeaking()
     }
     
     func togglePauseResume() -> Bool {
@@ -263,12 +277,5 @@ extension EasyReader {
         case reading
         case paused
         case error
-    }
-
-    struct Pronunciation {
-        let domain: String
-        let search: String
-        let replace: String
-        let options: String.CompareOptions
     }
 }
