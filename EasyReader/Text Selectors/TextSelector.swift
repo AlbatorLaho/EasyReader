@@ -7,18 +7,8 @@
 
 import Foundation
 
-enum SelectUnit {
-    case sentence
-    case paragraph
-}
-
-enum SelectDirection {
-    case backward
-    case forward
-}
-
 protocol TextSelector {
-    init(unit: SelectUnit);
+    init(unit: Selection.Unit);
 
-    func select(_ direction: SelectDirection, from selection: Selection, in string: String) -> Selection;
+    func select(_ direction: Selection.Direction, from selection: Selection, in string: String) -> Selection;
 }

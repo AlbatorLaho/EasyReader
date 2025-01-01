@@ -18,8 +18,8 @@ import Defaults
 struct Pronunciation: Codable, Defaults.Serializable {
     var search: String
     var replace: String
+//    TODO: rename to appDomain?
     var domain: String?
-//    var options: String.CompareOptions = [.caseInsensitive]
     var ignoreCase: Bool = true
 //    var regex: Bool = false
     var enabled: Bool = true
@@ -27,19 +27,6 @@ struct Pronunciation: Codable, Defaults.Serializable {
         ignoreCase ? [.caseInsensitive] : []
     }
 }
-
-//extension String.CompareOptions: Codable {
-//    public init(from decoder: Decoder) throws {
-//        let container = try decoder.singleValueContainer()
-//        let rawValue = try container.decode(RawValue.self)
-//        self.init(rawValue: rawValue)
-//    }
-//
-//    public func encode(to encoder: Encoder) throws {
-//        var container = encoder.singleValueContainer()
-//        try container.encode(rawValue)
-//    }
-//}
 
 //TODO: add easier filters for domain &c.?
 //struct PronunciationManager {}

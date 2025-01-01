@@ -16,7 +16,7 @@ protocol EasyReaderDelegate: AnyObject {
 
 //FIXME: won't properly stop/resume if paused at the end of reading
 final class EasyReader: NSObject {
-    private var shouldStop: Bool = true
+    private var shouldStop = true
     private(set) var state: State = .stopped {
         didSet {
             guard state != oldValue else { return }
@@ -28,11 +28,10 @@ final class EasyReader: NSObject {
         }
     }
     
-    private let synthesizer: AVSpeechSynthesizer = AVSpeechSynthesizer()
-//    private var utterance: AVSpeechUtterance?
-    private(set) var utterance: AVSpeechUtterance?
+    private let synthesizer = AVSpeechSynthesizer()
+    private var utterance: AVSpeechUtterance?
 //    var voice: AVSpeechSynthesisVoice?
-//    var rate: Float?
+    var rate: Float? { utterance?.rate }
 ////    private let defaultPronunciations: [Pronunciation] = []
 //    var pronunciations: [Pronunciation] = []
     var textSelector: TextSelector?
@@ -125,7 +124,7 @@ final class EasyReader: NSObject {
     
     
     
-    private func select(_ direction: SelectDirection) -> Bool {
+    private func select(_ direction: Selection.Direction) -> Bool {
         guard let fullText = readable?.fullText,
               let selection = readable?.selection,
               let nextSelection = textSelector?.select(direction, from: selection, in: fullText)
@@ -149,10 +148,7 @@ final class EasyReader: NSObject {
     
     private func readSelection() -> Bool {
         guard var selectedText = readable?.selectedText else { return false }
-//        for pronunciation in pronunciations.filter({ $0.domain == "SCRAnyApplication" || $0.domain == readable?.appDomain }) {
-//        for pronunciation in pronunciations.filter({ $0.domain == "SCRAnyApplication" }) {
-//        for pronunciation in pronunciations.filter({ $0.domain == nil }) {
-        for pronunciation in Defaults[.pronunciations].filter({ $0.domain == nil }) {
+        for pronunciation in Defaults[.pronunciations].filter({ $0.domain == nil || $0.domain == readable?.appDomain }) {
             selectedText = selectedText.replacingOccurrences(
                 of: pronunciation.search,
                 with: pronunciation.replace,
@@ -168,11 +164,11 @@ final class EasyReader: NSObject {
         utterance.volume = Defaults[.speechVolume]
         utterance.rate = Defaults[.speechRate]
         utterance.pitchMultiplier = Defaults[.speechPitch]
-//        utterance.preUtteranceDelay = Defaults[.speechDelayBefore]
-//        utterance.postUtteranceDelay = Defaults[.speechDelayAfter]
+        utterance.preUtteranceDelay = Defaults[.speechDelayBefore]
+        utterance.postUtteranceDelay = Defaults[.speechDelayAfter]
         if synthesizer.isSpeaking {
             shouldStop = false
-            synthesizer.stopSpeaking(at: .immediate)
+            synthesizer.stopSpeaking(at: Defaults[.speechStopBoundary])
         }
         synthesizer.speak(utterance)
         return true
@@ -193,12 +189,12 @@ final class EasyReader: NSObject {
     
     func stop() -> Bool {
         guard state != .stopped else { return false }
-        return synthesizer.stopSpeaking(at: .immediate)
+        return synthesizer.stopSpeaking(at: Defaults[.speechStopBoundary])
     }
     
     func pause() -> Bool {
         guard state == .reading else { return false }
-        return synthesizer.pauseSpeaking(at: .immediate)
+        return synthesizer.pauseSpeaking(at: Defaults[.speechStopBoundary])
     }
     
 //    TODO: should have option to either resume from last word, or restart from begining of selection
@@ -214,22 +210,10 @@ final class EasyReader: NSObject {
             case .paused: return resume()
             default: return false
         }
-//        switch state {
-//            case .reading: return pause()
-//            case .paused: return resume()
-//            case .stopped:
-//                guard let selection = readable?.selection, selection.isEmpty else {
-//                    return startReadingFrontmostApplication()
-//                }
-//                return readSelection()
-//            default: return false
-//        }
     }
     
 //    TODO: should restart reading if selection location is 0 for backward?
-//    TODO: stop reading if selection.isEmpty?
-    func skip(_ direction: SelectDirection) -> Bool {
-//        guard select(direction) else { return false }
+    func skip(_ direction: Selection.Direction) -> Bool {
         guard select(direction) else { return stop() }
         return readSelection()
     }
@@ -246,7 +230,6 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
               skip(.forward)
         else {
             state = .stopped
-//            element = nil
             return
         }
     }
@@ -265,10 +248,7 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
             return
         }
         state = .stopped
-//        element = nil
     }
-    
-//    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {}
 }
 
 extension EasyReader {

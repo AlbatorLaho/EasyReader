@@ -8,17 +8,17 @@
 import NaturalLanguage
 
 final class NLTextSelector: TextSelector {
-    private let tagger: NLTagger = NLTagger(tagSchemes: [.lexicalClass])
+    private let tagger = NLTagger(tagSchemes: [.lexicalClass])
     private let taggerUnit: NLTokenUnit
 
-    init(unit: SelectUnit) {
+    init(unit: Selection.Unit) {
         switch unit {
             case .sentence: taggerUnit = .sentence
             case .paragraph: taggerUnit = .paragraph
         }
     }
 
-    func select(_ direction: SelectDirection, from selection: Selection, in string: String) -> Selection {
+    func select(_ direction: Selection.Direction, from selection: Selection, in string: String) -> Selection {
         tagger.string = string
         let startIndex: String.Index
         let endIndex: String.Index

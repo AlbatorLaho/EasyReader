@@ -28,7 +28,7 @@ class ReadableElement: Readable {
 //        let window = try? handle.parent(with: .window)
         return try? window?.attribute(.title)
     }
-//    var appDomain: String? { app?.bundleIdentifier }
+    var appDomain: String? { app?.bundleIdentifier }
     var icon: NSImage? { app?.icon }
     var fullText: String? { nil }
     var selectedText: String? { nil }

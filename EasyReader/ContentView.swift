@@ -12,6 +12,8 @@ import SwiftUI
 //with using the services menu, we could send things like text files to this to read or something... is that worth doing?
 //add a reader view that can be a speech playground sorta thing... (could be used the same as cmd-shift-x for TextEdit)
 //localization
+//don't have any nested types? (since protocols can't be nested, like EasyReaderDelegate) e.g. EasyReader.State > EasyReaderState
+//rename to play/pause instead of resume/pause?
 struct ContentView: View {
     private let appDelegate: AppDelegate
     

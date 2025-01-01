@@ -122,10 +122,10 @@ struct EasyReaderApp: App {
 //}
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let easyReader = EasyReader()
+    var easyReader: EasyReader!
     var statusItem: NSStatusItem!
 //    TODO: handle these better
-    var readerStateImageDefault: NSImage = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)!
+    var readerStateImageDefault = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)!
     var readerStateImages: [EasyReader.State: String] = [
 //        .stopped: "waveform",
         .stopped: "waveform.slash",
@@ -142,48 +142,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        easyReader = EasyReader()
         easyReader.textSelector = NLTextSelector(unit: .sentence)
-        let startMenu = NSMenuItem(title: "Start", action: #selector(startAction), keyEquivalent: "")
-        let stopMenu = NSMenuItem(title: "Stop", action: #selector(stopAction), keyEquivalent: "")
-        let toggleMenu = NSMenuItem(title: "Play/Pause", action: #selector(toggleAction), keyEquivalent: "")
-        let backwardMenu = NSMenuItem(title: "Skip Backward", action: #selector(backwardAction), keyEquivalent: "")
-        let forwardMenu = NSMenuItem(title: "Skip Forward", action: #selector(forwardAction), keyEquivalent: "")
-        startMenu.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: nil)
-        stopMenu.image = NSImage(systemSymbolName: "stop.fill", accessibilityDescription: nil)
-        toggleMenu.image = NSImage(systemSymbolName: "playpause.fill", accessibilityDescription: nil)
-//        toggleMenu.image = NSImage(systemSymbolName: "pause.fill", accessibilityDescription: nil)
-        backwardMenu.image = NSImage(systemSymbolName: "gobackward", accessibilityDescription: nil)
-        forwardMenu.image = NSImage(systemSymbolName: "goforward", accessibilityDescription: nil)
-
+        easyReader.delegate = self
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem.button?.image = readerStateImageDefault
         statusItem.menu = NSMenu()
         statusItem.menu?.items = [
-            startMenu,
-            stopMenu,
-            toggleMenu,
-            backwardMenu,
-            forwardMenu,
+            NSMenuItem(title: "Start", systemSymbolName: "play.fill", action: #selector(startAction)),
+            NSMenuItem(title: "Stop", systemSymbolName: "stop.fill", action: #selector(stopAction)),
+            NSMenuItem(title: "Pause", systemSymbolName: "playpause.fill", action: #selector(toggleAction)),
+//            NSMenuItem(title: "Pause", systemSymbolName: "pause.fill", action: #selector(toggleAction)),
+            NSMenuItem(title: "Skip Backward", systemSymbolName: "gobackward", action: #selector(backwardAction)),
+            NSMenuItem(title: "Skip Forward", systemSymbolName: "goforward", action: #selector(forwardAction)),
             .separator(),
             NSMenuItem(title: "Preferences...", action: Selector(("showPreferencesWindow:")), keyEquivalent: ","),
             NSMenuItem(title: "Quit", action: #selector(NSApplication.shared.terminate), keyEquivalent: "q"),
         ]
 
-        setupRemoteCommands()
-//        updateNowPlayingItemMetadata()
-//        updateNowPlayingPlaybackInfo()
-
-        easyReader.delegate = self
-        easyReader.delegate?.easyReader(easyReader, didChangeState: .reading)
-        easyReader.delegate?.easyReader(easyReader, didChangeState: .stopped)
-//        updateNowPlayingItemMetadata()
-//        updateNowPlayingPlaybackInfo()
-//        let infoCenter = MPNowPlayingInfoCenter.default()
-//        infoCenter.playbackState = .playing
-//        infoCenter.playbackState = .stopped
+        setupNowPlayingRemoteCommands()
 
         NSApplication.shared.servicesProvider = self
         NSUpdateDynamicServices()
         
+#if DEBUG
 //        Defaults.removeAll()
 //        print("write")
 //        Defaults[.pronunciations] = [
@@ -203,6 +185,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 //        }
 //        print(Defaults[.pronunciations])
 
+//        easyReader.delegate?.easyReader(easyReader, didChangeState: .reading)
+//        easyReader.delegate?.easyReader(easyReader, didChangeState: .stopped)
+        
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
             styleMask: [.titled, .closable, .resizable],
@@ -219,6 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeFirstResponder(textView)
 //        easyReader.readable = ReadableTextView(textView)
 //        _ = easyReader.start()
+#endif
     }
     
 //    @objc func openSettings() {
@@ -289,39 +275,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     
 //    TODO: cleanup these functions
-    func setupRemoteCommands() {
+    func setupNowPlayingRemoteCommands() {
         print("setting up remote commands")
 
 //        TODO: add NSSound.beep()?
         let commandCenter = MPRemoteCommandCenter.shared()
         commandCenter.playCommand.addTarget { [weak self] event in
             print("play \(event.command)")
-            guard let self = self else { return .commandFailed }
-            guard self.easyReader.resume() || self.easyReader.startReadingFrontmostApplication() else { return .noSuchContent }
+            guard let self else { return .commandFailed }
+//            guard self.easyReader.resume() || self.easyReader.startReadingFrontmostApplication() else { return .noSuchContent }
+            guard self.easyReader.resume() else { return .noSuchContent }
             return .success
         }
         commandCenter.pauseCommand.addTarget { [weak self] event in
             print("pause \(event.command)")
-            guard let self = self else { return .commandFailed }
+            guard let self else { return .commandFailed }
             guard self.easyReader.pause() else { return .commandFailed }
             return .success
         }
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] event in
             print("toggle \(event.command)")
-            guard let self = self else { return .commandFailed }
-            guard self.easyReader.togglePauseResume() || self.easyReader.startReadingFrontmostApplication() else { return .noSuchContent }
+            guard let self else { return .commandFailed }
+//            guard self.easyReader.togglePauseResume() || self.easyReader.startReadingFrontmostApplication() else { return .noSuchContent }
+            guard self.easyReader.togglePauseResume() else { return .noSuchContent }
             return .success
         }
         commandCenter.stopCommand.addTarget { [weak self] event in
             print("stop \(event.command)")
-            guard let self = self else { return .commandFailed }
+            guard let self else { return .commandFailed }
             guard self.easyReader.stop() else { return .commandFailed }
             return .success
         }
 
 //        commandCenter.changePlaybackRateCommand.addTarget { [weak self] event in
 //            print("change rate \(event.command)")
-//            guard let self = self else { return .commandFailed }
+//            guard let self else { return .commandFailed }
 //            self.easyReader.rate = Float(event.timestamp)
 //            return .success
 //        }
@@ -332,13 +320,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 //        commandCenter.skipForwardCommand.addTarget
 
         commandCenter.previousTrackCommand.addTarget { [weak self] event in
-            guard let self = self else { return .commandFailed }
+            guard let self else { return .commandFailed }
             guard self.easyReader.skip(.backward) else { return .noSuchContent }
 //            guard self.easyReader.skip(.backward) else { return .commandFailed }
             return .success
         }
         commandCenter.nextTrackCommand.addTarget { [weak self] event in
-            guard let self = self else { return .commandFailed }
+            guard let self else { return .commandFailed }
             guard self.easyReader.skip(.forward) else { return .noSuchContent }
 //            guard self.easyReader.skip(.forward) else { return .commandFailed }
             return .success
@@ -378,8 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
 //        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = 3
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 0.5
-//        info[MPNowPlayingInfoPropertyPlaybackRate] = easyReader.rate
-        info[MPNowPlayingInfoPropertyPlaybackRate] = easyReader.utterance?.rate
+        info[MPNowPlayingInfoPropertyPlaybackRate] = easyReader.rate
         infoCenter.nowPlayingInfo = info
     }
     
@@ -394,7 +381,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 updateNowPlayingPlaybackInfo()
             case .stopped:
                 infoCenter.playbackState = .stopped
-//                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+//                infoCenter.nowPlayingInfo = [:]
+                infoCenter.nowPlayingInfo = nil
             case .paused:
                 infoCenter.playbackState = .paused
 //            case .error:
@@ -440,5 +428,12 @@ extension AppDelegate: EasyReaderDelegate {
 //        if state == .error {
 //            NSSound.beep()
 //        }
+    }
+}
+
+extension NSMenuItem {
+    convenience init(title: String, systemSymbolName: String, action: Selector?, keyEquivalent: String = "") {
+        self.init(title: title, action: action, keyEquivalent: keyEquivalent)
+        image = NSImage(systemSymbolName: systemSymbolName, accessibilityDescription: nil)
     }
 }

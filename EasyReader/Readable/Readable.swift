@@ -10,7 +10,7 @@ import Cocoa
 protocol Readable {
     var title: String? { get }
     var groupTitle: String? { get }
-//    var appDomain: String? { get }
+    var appDomain: String? { get }
     var icon: NSImage? { get }
     var fullText: String? { get }
     var selectedText: String? { get }

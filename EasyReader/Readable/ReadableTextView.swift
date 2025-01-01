@@ -14,19 +14,20 @@ final class ReadableTextView: Readable {
 //    var title: String? { NSApplication.shared.mainMenu?.title }
     var groupTitle: String? { textView.window?.title }
 //    var groupTitle: String? { textView.window?.accessibilityTitle() }
+    var appDomain: String? { Bundle.main.bundleIdentifier }
     var icon: NSImage? { NSApplication.shared.applicationIconImage }
     var fullText: String? { textView.string }
     var selectedText: String? {
-        guard let text = fullText, let selection = selection, let textSelection = Range(selection, in: text) else { return nil }
-        return String(text[textSelection])
+        guard let fullText, let selection, let textSelection = Range(selection, in: fullText) else { return nil }
+        return String(fullText[textSelection])
     }
     var selection: Selection? {
         get {
             Selection(textView.selectedRange())
         }
         set {
-            guard let newSelection = newValue else { return }
-            textView.setSelectedRange(NSRange(newSelection))
+            guard let newValue else { return }
+            textView.setSelectedRange(NSRange(newValue))
         }
     }
     

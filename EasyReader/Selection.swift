@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Defaults
 
 struct Selection: Equatable, Hashable {
     let lowerBound: Bound
@@ -56,6 +57,23 @@ extension Selection: RangeExpression {
         return element >= lowerBound && element < upperBound
     }
 }
+
+extension Selection {
+    enum Unit: String, Defaults.Serializable {
+        case sentence
+        case paragraph
+    }
+}
+
+//TODO: makes more sense to be called SelectDirection
+extension Selection {
+    enum Direction {
+        case backward
+        case forward
+    }
+}
+
+
 
 extension CFRange {
     init(_ selection: Selection) {

@@ -22,12 +22,13 @@ extension Defaults.Keys {
     static let speechPitch = Key<Float>("SpeechPitch", default: 1.0)
     static let speechDelayBefore = Key<Double>("SpeechDelayBefore", default: 0)
     static let speechDelayAfter = Key<Double>("SpeechDelayAfter", default: 0)
+    static let speechStopBoundary = Key<AVSpeechBoundary>("SpeechStopBoundary", default: .immediate)
 
 //    static let useVoiceOverPronunciations = Key<Bool>("useVoiceOverPronunciations", default: false)
     static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [])
-//    static let stopBoundary = Key<AVSpeechBoundary>("stopBoundary", default: .immediate)
-//    static let selectUnit = Key<SelectUnit>("selectUnit", default: .sentence)
-//    static let readerStateImageNames = Key<[EasyReader.State: String]>("readerStateImageNames", default: [
+    static let selectionUnit = Key<Selection.Unit>("SelectionUnit", default: .sentence)
+//    NOTE: can't use EasyReader.State as the Dictionary key for some reason
+//    static let stateImageNames = Key<[EasyReader.State: String]>("StateImages", default: [
 ////        .stopped: "waveform",
 //        .stopped: "waveform.slash",
 ////        .paused: "waveform",
@@ -53,6 +54,26 @@ public struct AVSpeechSynthesisVoiceBridge: Defaults.Bridge {
         return AVSpeechSynthesisVoice(identifier: object)
     }
 }
+
+extension AVSpeechBoundary: Defaults.Serializable {
+    public static let bridge = AVSpeechBoundaryBridge()
+}
+
+public struct AVSpeechBoundaryBridge: Defaults.Bridge {
+    public typealias Value = AVSpeechBoundary
+    public typealias Serializable = Int
+    
+    public func serialize(_ value: Value?) -> Serializable? {
+        return value?.rawValue
+    }
+
+    public func deserialize(_ object: Serializable?) -> Value? {
+        guard let object else { return nil }
+        return AVSpeechBoundary(rawValue: object)
+    }
+}
+
+
 
 //TODO: Id or ID?
 //struct VoicePrefs {
