@@ -12,7 +12,7 @@ final class TestingReadable: Readable {
     let groupTitle: String? = "Test Group Title"
     let appDomain: String? = nil
     let icon: NSImage? = NSWorkspace.shared.frontmostApplication?.icon
-    let fullText: String? = "This is a much longer sentance to test with. Because we need better text to test with, \n\n\n and it needs to be pretty long.\nSo I hope it works good!"
+    let fullText: String? = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
     var selectedText: String? {
         guard let fullText, let selection, let textSelection = Range(selection, in: fullText) else { return nil }
         return String(fullText[textSelection])

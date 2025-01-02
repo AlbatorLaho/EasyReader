@@ -110,6 +110,12 @@ final class EasyReader: NSObject {
 //            NSLog("No accessibility API permission")
 //            return false
 //        }
+        if NSRunningApplication.current.processIdentifier != (try? element.pid()) {
+            guard UIElement.isProcessTrusted(withPrompt: true) else {
+                NSLog("No accessibility API permission")
+                return false
+            }
+        }
         guard let role: String = try? element.attribute(.role) else {
             NSLog("Unable to get element role.")
             return false
@@ -168,6 +174,7 @@ final class EasyReader: NSObject {
         utterance.postUtteranceDelay = Defaults[.speechDelayAfter]
         if synthesizer.isSpeaking {
             shouldStop = false
+//            synthesizer.pauseSpeaking(at: Defaults[.speechStopBoundary])
             synthesizer.stopSpeaking(at: Defaults[.speechStopBoundary])
         }
         synthesizer.speak(utterance)
@@ -182,6 +189,8 @@ final class EasyReader: NSObject {
         return start()
     }
     
+//    func start(reading readable: Readable) -> Bool {}
+    
     func start() -> Bool {
         guard state == .stopped, ensureSelection() else { return false }
         return readSelection()
@@ -189,6 +198,7 @@ final class EasyReader: NSObject {
     
     func stop() -> Bool {
         guard state != .stopped else { return false }
+//        synthesizer.pauseSpeaking(at: Defaults[.speechStopBoundary])
         return synthesizer.stopSpeaking(at: Defaults[.speechStopBoundary])
     }
     

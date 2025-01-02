@@ -10,11 +10,13 @@ import Cocoa
 final class ReadableTextView: Readable {
     private let textView: NSTextView
     
-    var title: String? { NSApplication.shared.accessibilityTitle() }
+    var title: String? { NSRunningApplication.current.localizedName }
+//    var title: String? { NSApplication.shared.accessibilityTitle() }
 //    var title: String? { NSApplication.shared.mainMenu?.title }
     var groupTitle: String? { textView.window?.title }
 //    var groupTitle: String? { textView.window?.accessibilityTitle() }
-    var appDomain: String? { Bundle.main.bundleIdentifier }
+    var appDomain: String? { NSRunningApplication.current.bundleIdentifier }
+//    var appDomain: String? { Bundle.main.bundleIdentifier }
     var icon: NSImage? { NSApplication.shared.applicationIconImage }
     var fullText: String? { textView.string }
     var selectedText: String? {

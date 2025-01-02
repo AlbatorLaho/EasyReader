@@ -7,6 +7,7 @@
 
 import SwiftUI
 import MediaPlayer
+import AXSwift
 import Defaults
 
 @main
@@ -15,35 +16,24 @@ struct EasyReaderApp: App {
 //    @Environment(\.openSettings) private var openSettings
 //    @Environment(\.openWindow) private var openWindow
 
-    init() {
+//    init() {
 //        NSApplication.shared.setActivationPolicy(.accessory)
 //        NSApplication.shared.setActivationPolicy(.prohibited)
-    }
+//    }
 
     var body: some Scene {
+#if DEBUG
         WindowGroup {
             ContentView(appDelegate: appDelegate)
         }
+#endif
         Settings {
-            EmptyView()
-//            SettingsView()
+//            EmptyView()
+            SettingsView()
         }
     }
 }
 
-//struct SettingsView: View {
-//    @AppStorage("showPreview") private var showPreview = true
-//    @AppStorage("fontSize") private var fontSize = 12.0
-//
-//    var body: some View {
-//        Form {
-//            Toggle("Show Previews", isOn: $showPreview)
-//            Slider(value: $fontSize, in: 9...96) {
-//                Text("Font Size (\(fontSize, specifier: "%.0f") pts)")
-//            }
-//        }
-//    }
-//}
 //struct SettingsView: View {
 //    var body: some View {
 //        TabView {
@@ -59,7 +49,7 @@ struct EasyReaderApp: App {
 //    }
 //}
 
-//struct SettingsView: View {
+struct SettingsView: View {
 //    @Default(.useSystemVoice) var useSystemVoice
 //    @Default(.voiceIdentifier) var voiceIdentifier
 ////    @Default(.pronunciations) var pronunciations
@@ -74,28 +64,85 @@ struct EasyReaderApp: App {
 //    ]
 //    @State private var selectedVoice: AVSpeechSynthesisVoice?
 //    @State private var voices: [AVSpeechSynthesisVoice] = []
-//
-//    var body: some View {
-//        Form {
+    
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    @Default(.speechVoice) var speechVoice
+    @Default(.speechVolume) var speechVolume
+    @Default(.speechRate) var speechRate
+    @Default(.speechPitch) var speechPitch
+    @Default(.speechDelayBefore) var speechDelayBefore
+    @Default(.speechDelayAfter) var speechDelayAfter
+    @Default(.speechStopBoundary) var speechStopBoundary
+//    @State var speechVoices = AVSpeechSynthesisVoice.speechVoices()
+    @State var speechVoices: [AVSpeechSynthesisVoice] = []
+    
+    var body: some View {
+        Form {
 //            Toggle("Use System Voice", isOn: $useSystemVoice)
 //            Defaults.Toggle("Use System Voice", key: .useSystemVoice)
-//
-//            Picker("Select Voice:", selection: $selectedVoice) {
-//                Text("System Voice (TEST)")
-//                    .tag(nil as AVSpeechSynthesisVoice?)
-//                Divider()
-//                ForEach(voices, id: \.identifier) { voice in
-//                    Text("\(voice.name) (\(voice.language))")
-//                        .tag(voice as AVSpeechSynthesisVoice?)
+
+            Picker("Select Voice", selection: $speechVoice) {
+                Text("System Voice (TEST)")
+                    .tag(nil as AVSpeechSynthesisVoice?)
+                Divider()
+                ForEach(speechVoices, id: \.identifier) { voice in
+                    Text("\(voice.name) (\(voice.language))")
+                        .tag(voice as AVSpeechSynthesisVoice?)
+                }
+            }
+            .onAppear() {
+                speechVoices = AVSpeechSynthesisVoice.speechVoices()
+            }
+            
+            Button("Play Sample") {
+                appDelegate.easyReader.readable = TestingReadable()
+                _ = appDelegate.easyReader.start()
+            }
+            
+            GroupBox(content: {
+//                TODO: add text fields for manual input
+                Slider(value: $speechVolume, in: 0...1, step: 0.05) { Text("Voice Volume") }
+                Slider(value: $speechRate, in: 0.25...1, step: 0.05) { Text("Voice Rate") }
+//                Slider(value: $speechRate, in: AVSpeechUtteranceMinimumSpeechRate...AVSpeechUtteranceMaximumSpeechRate, step: 0.05) { Text("Voice Rate") }
+                Slider(value: $speechPitch, in: 0...2, step: 0.05) { Text("Voice Pitch") }
+                
+//                TextField("Delay Before", value: $speechDelayBefore, formatter: NumberFormatter())
+//                TextField("Delay After", value: $speechDelayAfter, formatter: NumberFormatter())
+////                LabeledContent("Delay Before", value: $speechDelayBefore, format: .interval)
+////                LabeledContent("Delay After", value: $speechDelayAfter, format: .interval)
+//                Stepper("Delay Before", value: $speechDelayBefore, in: 0...10, step: 0.05)
+//                    .labelsHidden()
+//                Stepper("Delay After", value: $speechDelayAfter, in: 0...10, step: 0.05)
+//                    .labelsHidden()
+
+//                HStack {
+//                    TextField("Delay After", value: $speechDelayAfter, formatter: NumberFormatter())
+//                        .textFieldStyle(.roundedBorder)
+////                        .multilineTextAlignment(.center)
+////                        .focused()
+//                    Stepper("Delay After", value: $speechDelayAfter, in: 0...10, step: 0.05)
+//                        .labelsHidden()
 //                }
+
+                Picker("Stop Boundary", selection: $speechStopBoundary) {
+                    Text("Immediate")
+                        .tag(AVSpeechBoundary.immediate)
+                    Text("Word")
+                        .tag(AVSpeechBoundary.word)
+                }
+            }, label: {
+                Text("Voice")
+            })
+            
+            Button("Request Accessibility Permission") {
+                _ = UIElement.isProcessTrusted(withPrompt: true)
+            }
+            
+//            if let selectedVoice = selectedVoice {
+//                Text("Selected: \(selectedVoice.name) (\(selectedVoice.language))")
 //            }
-//            .onAppear() {
-//                voices = AVSpeechSynthesisVoice.speechVoices()
-//            }
-////            if let selectedVoice = selectedVoice {
-////                Text("Selected: \(selectedVoice.name) (\(selectedVoice.language))")
-////            }
-//
+
 //            List {
 //                ForEach($pronunciations, id: \.search) { pronunciation in
 //                    HStack {
@@ -106,20 +153,20 @@ struct EasyReaderApp: App {
 //                    }
 //                }
 //            }
-//
-////            Button("Reset to defaults") {
-////                _useSystemVoice.reset()
-////            }
-//        }
-//        .padding()
-//    }
-//}
-//
-//struct SettingsView_Previews: PreviewProvider {
-//    static var previews: some View {
-//        SettingsView()
-//    }
-//}
+
+//            Button("Reset to defaults") {
+//                _useSystemVoice.reset()
+//            }
+        }
+        .padding()
+    }
+}
+
+struct SettingsView_Previews: PreviewProvider {
+    static var previews: some View {
+        SettingsView()
+    }
+}
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var easyReader: EasyReader!
@@ -137,7 +184,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 //    TODO: use .prohibited unless a window needs to be opened, then use .accessory or .regular (make sure the permisions dialog can be opened)
     func applicationWillFinishLaunching(_ notification: Notification) {
 //        NSApplication.shared.setActivationPolicy(.prohibited)
-//        NSApplication.shared.setActivationPolicy(.accessory)
+#if !DEBUG
+        NSApplication.shared.setActivationPolicy(.accessory)
+#endif
+//        NSApplication.shared.setActivationPolicy(.regular)
 //        NSApplication.shared.activate(ignoringOtherApps: true)
     }
     

@@ -14,8 +14,6 @@
 			<string>servicesHandler</string>
 			<key>NSPortName</key>
 			<string>$(PRODUCT_NAME)</string>
-			<key>NSUserData</key>
-			<string>start</string>
 			<key>NSRequiredContext</key>
 			<dict>
 				<key>NSServiceCategory</key>
@@ -25,6 +23,8 @@
 			<array/>
 			<key>NSSendTypes</key>
 			<array/>
+			<key>NSUserData</key>
+			<string>start</string>
 		</dict>
 		<dict>
 			<key>NSMenuItem</key>
@@ -36,8 +36,6 @@
 			<string>servicesHandler</string>
 			<key>NSPortName</key>
 			<string>$(PRODUCT_NAME)</string>
-			<key>NSUserData</key>
-			<string>stop</string>
 			<key>NSRequiredContext</key>
 			<dict>
 				<key>NSServiceCategory</key>
@@ -47,6 +45,8 @@
 			<array/>
 			<key>NSSendTypes</key>
 			<array/>
+			<key>NSUserData</key>
+			<string>stop</string>
 		</dict>
 	</array>
 </dict>
