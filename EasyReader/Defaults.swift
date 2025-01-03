@@ -15,14 +15,17 @@ extension Defaults.Keys {
 //    static let mowPlayingPauseType = Key<Bool>("mowPlayingPauseType", default: true)
 //    static let useNowPlaying = Key<Bool>("useNowPlaying", default: true)
 
+//    static let scrollSelectionIntoView = Key<Bool>("", default: true)
+//    static let scrollPadding = Key<Int>("", default: 16)
+
 //    static let useSystemVoice = Key<Bool>("useSystemVoice", default: false)
     static let speechVoice = Key<AVSpeechSynthesisVoice?>("SpeechVoice")
     static let speechVolume = Key<Float>("SpeechVolume", default: 1.0)
     static let speechRate = Key<Float>("SpeechRate", default: AVSpeechUtteranceDefaultSpeechRate)
     static let speechPitch = Key<Float>("SpeechPitch", default: 1.0)
+    static let speechStopBoundary = Key<AVSpeechBoundary>("SpeechStopBoundary", default: .immediate)
     static let speechDelayBefore = Key<Double>("SpeechDelayBefore", default: 0)
     static let speechDelayAfter = Key<Double>("SpeechDelayAfter", default: 0)
-    static let speechStopBoundary = Key<AVSpeechBoundary>("SpeechStopBoundary", default: .immediate)
 
 //    static let useVoiceOverPronunciations = Key<Bool>("useVoiceOverPronunciations", default: false)
     static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [])

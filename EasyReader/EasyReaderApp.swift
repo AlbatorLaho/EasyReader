@@ -30,141 +30,19 @@ struct EasyReaderApp: App {
         Settings {
 //            EmptyView()
             SettingsView()
-        }
-    }
-}
-
-//struct SettingsView: View {
-//    var body: some View {
-//        TabView {
-//            Tab("General", systemImage: "gear") {
-//                GeneralSettingsView()
-//            }
-//            Tab("Advanced", systemImage: "star") {
-//                AdvancedSettingsView()
-//            }
-//        }
-//        .scenePadding()
-//        .frame(maxWidth: 350, minHeight: 100)
-//    }
-//}
-
-struct SettingsView: View {
-//    @Default(.useSystemVoice) var useSystemVoice
-//    @Default(.voiceIdentifier) var voiceIdentifier
-////    @Default(.pronunciations) var pronunciations
-////    let speechVoices = AVSpeechSynthesisVoice.speechVoices().map({ $0.identifier })
-//    @State private var pronunciations: [Pronunciation] = [
-//        .init(domain: nil, search: "from", replace: "to", options: .caseInsensitive, enabled: true),
-//        .init(domain: "com.apple.finder", search: "1from", replace: "1to", options: .caseInsensitive, enabled: true),
-//        .init(domain: "com.apple.finder", search: "2from", replace: "2to", options: [], enabled: true),
-//        .init(domain: "com.apple.finder", search: "3from", replace: "3to", options: .caseInsensitive, enabled: true),
-//        .init(domain: "com.apple.finder", search: "4from", replace: "4to", options: .caseInsensitive, enabled: false),
-//        .init(domain: "com.apple.finder", search: "5from", replace: "5to", options: .caseInsensitive, enabled: true),
-//    ]
-//    @State private var selectedVoice: AVSpeechSynthesisVoice?
-//    @State private var voices: [AVSpeechSynthesisVoice] = []
-    
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-
-    @Default(.speechVoice) var speechVoice
-    @Default(.speechVolume) var speechVolume
-    @Default(.speechRate) var speechRate
-    @Default(.speechPitch) var speechPitch
-    @Default(.speechDelayBefore) var speechDelayBefore
-    @Default(.speechDelayAfter) var speechDelayAfter
-    @Default(.speechStopBoundary) var speechStopBoundary
-//    @State var speechVoices = AVSpeechSynthesisVoice.speechVoices()
-    @State var speechVoices: [AVSpeechSynthesisVoice] = []
-    
-    var body: some View {
-        Form {
-//            Toggle("Use System Voice", isOn: $useSystemVoice)
-//            Defaults.Toggle("Use System Voice", key: .useSystemVoice)
-
-            Picker("Select Voice", selection: $speechVoice) {
-                Text("System Voice (TEST)")
-                    .tag(nil as AVSpeechSynthesisVoice?)
-                Divider()
-                ForEach(speechVoices, id: \.identifier) { voice in
-                    Text("\(voice.name) (\(voice.language))")
-                        .tag(voice as AVSpeechSynthesisVoice?)
+                .onAppear() {
+                    NSApplication.shared.setActivationPolicy(.regular)
+                    NSApplication.shared.activate(ignoringOtherApps: true)
                 }
-            }
-            .onAppear() {
-                speechVoices = AVSpeechSynthesisVoice.speechVoices()
-            }
-            
-            Button("Play Sample") {
-                appDelegate.easyReader.readable = TestingReadable()
-                _ = appDelegate.easyReader.start()
-            }
-            
-            GroupBox(content: {
-//                TODO: add text fields for manual input
-                Slider(value: $speechVolume, in: 0...1, step: 0.05) { Text("Voice Volume") }
-                Slider(value: $speechRate, in: 0.25...1, step: 0.05) { Text("Voice Rate") }
-//                Slider(value: $speechRate, in: AVSpeechUtteranceMinimumSpeechRate...AVSpeechUtteranceMaximumSpeechRate, step: 0.05) { Text("Voice Rate") }
-                Slider(value: $speechPitch, in: 0...2, step: 0.05) { Text("Voice Pitch") }
-                
-//                TextField("Delay Before", value: $speechDelayBefore, formatter: NumberFormatter())
-//                TextField("Delay After", value: $speechDelayAfter, formatter: NumberFormatter())
-////                LabeledContent("Delay Before", value: $speechDelayBefore, format: .interval)
-////                LabeledContent("Delay After", value: $speechDelayAfter, format: .interval)
-//                Stepper("Delay Before", value: $speechDelayBefore, in: 0...10, step: 0.05)
-//                    .labelsHidden()
-//                Stepper("Delay After", value: $speechDelayAfter, in: 0...10, step: 0.05)
-//                    .labelsHidden()
-
-//                HStack {
-//                    TextField("Delay After", value: $speechDelayAfter, formatter: NumberFormatter())
-//                        .textFieldStyle(.roundedBorder)
-////                        .multilineTextAlignment(.center)
-////                        .focused()
-//                    Stepper("Delay After", value: $speechDelayAfter, in: 0...10, step: 0.05)
-//                        .labelsHidden()
-//                }
-
-                Picker("Stop Boundary", selection: $speechStopBoundary) {
-                    Text("Immediate")
-                        .tag(AVSpeechBoundary.immediate)
-                    Text("Word")
-                        .tag(AVSpeechBoundary.word)
+                .onExitCommand() {
+                    print("exit")
                 }
-            }, label: {
-                Text("Voice")
-            })
-            
-            Button("Request Accessibility Permission") {
-                _ = UIElement.isProcessTrusted(withPrompt: true)
-            }
-            
-//            if let selectedVoice = selectedVoice {
-//                Text("Selected: \(selectedVoice.name) (\(selectedVoice.language))")
-//            }
-
-//            List {
-//                ForEach($pronunciations, id: \.search) { pronunciation in
-//                    HStack {
-//                        TextField("Search", text: pronunciation.search)
-//                        TextField("Replace", text: pronunciation.replace)
-//                        Picker("App", selection: pronunciation.domain) {}
-//                        Toggle("Enable", isOn: pronunciation.enabled)
-//                    }
-//                }
-//            }
-
-//            Button("Reset to defaults") {
-//                _useSystemVoice.reset()
-//            }
+                .onDisappear() {
+                    print("disappear")
+                    NSApplication.shared.setActivationPolicy(.prohibited)
+                }
+//                .textFieldStyle(.roundedBorder)
         }
-        .padding()
-    }
-}
-
-struct SettingsView_Previews: PreviewProvider {
-    static var previews: some View {
-        SettingsView()
     }
 }
 
@@ -183,9 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
 //    TODO: use .prohibited unless a window needs to be opened, then use .accessory or .regular (make sure the permisions dialog can be opened)
     func applicationWillFinishLaunching(_ notification: Notification) {
-//        NSApplication.shared.setActivationPolicy(.prohibited)
 #if !DEBUG
-        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.shared.setActivationPolicy(.prohibited)
+//        NSApplication.shared.setActivationPolicy(.accessory)
 #endif
 //        NSApplication.shared.setActivationPolicy(.regular)
 //        NSApplication.shared.activate(ignoringOtherApps: true)
@@ -259,6 +137,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
 //    @objc func openSettings() {
 //        NSApplication.shared.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+//    }
+    
+//    @objc func toggleActivation() {
+//        switch NSApplication.shared.activationPolicy() {
+//        case .regular:
+//            NSApplication.shared.setActivationPolicy(.prohibited)
+//            NSApplication.shared.activate(ignoringOtherApps: true)
+//        case .prohibited:
+//            NSApplication.shared.setActivationPolicy(.regular)
+//            NSApplication.shared.activate(ignoringOtherApps: true)
+////        case .prohibited: break
+//        default: break
+//        }
 //    }
     
     @objc func startAction() {
