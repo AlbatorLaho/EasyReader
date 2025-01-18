@@ -15,9 +15,6 @@ extension Defaults.Keys {
 //    static let mowPlayingPauseType = Key<Bool>("mowPlayingPauseType", default: true)
 //    static let useNowPlaying = Key<Bool>("useNowPlaying", default: true)
 
-//    static let scrollSelectionIntoView = Key<Bool>("", default: true)
-//    static let scrollPadding = Key<Int>("", default: 16)
-
 //    static let useSystemVoice = Key<Bool>("useSystemVoice", default: false)
     static let speechVoice = Key<AVSpeechSynthesisVoice?>("SpeechVoice")
     static let speechVolume = Key<Float>("SpeechVolume", default: 1.0)
@@ -27,9 +24,13 @@ extension Defaults.Keys {
     static let speechDelayBefore = Key<Double>("SpeechDelayBefore", default: 0)
     static let speechDelayAfter = Key<Double>("SpeechDelayAfter", default: 0)
 
+    static let selectionUnit = Key<Selection.Unit>("SelectionUnit", default: .sentence)
+    static let scrollSelectionIntoView = Key<Bool>("ScrollSelectionIntoView", default: true)
+    static let scrollPadding = Key<Int>("ScrollPadding", default: 16)
+    static let useNowPayingCenter = Key<Bool>("UseNowPayingCenter", default: true)
+
 //    static let useVoiceOverPronunciations = Key<Bool>("useVoiceOverPronunciations", default: false)
     static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [])
-    static let selectionUnit = Key<Selection.Unit>("SelectionUnit", default: .sentence)
 //    NOTE: can't use EasyReader.State as the Dictionary key for some reason
 //    static let stateImageNames = Key<[EasyReader.State: String]>("StateImages", default: [
 ////        .stopped: "waveform",

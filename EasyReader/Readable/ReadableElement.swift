@@ -15,6 +15,11 @@ class ReadableElement: Readable {
     let app: NSRunningApplication?
     
     var title: String? {
+        let window: UIElement? = try? handle.attribute(.window)
+//        let window = try? handle.parent(with: .window)
+        return try? window?.attribute(.title)
+    }
+    var groupTitle: String? {
 //        return app?.localizedName ?? (try? (try? handle.parent(with: .application))?.attribute(.title))
         if let name = app?.localizedName { return name }
 //        let window: UIElement? = try? handle.attribute(.window)
@@ -22,11 +27,6 @@ class ReadableElement: Readable {
 //        return try? windowApp?.attribute(.title)
         let application = try? handle.parent(with: .application)
         return try? application?.attribute(.title)
-    }
-    var groupTitle: String? {
-        let window: UIElement? = try? handle.attribute(.window)
-//        let window = try? handle.parent(with: .window)
-        return try? window?.attribute(.title)
     }
     var appDomain: String? { app?.bundleIdentifier }
     var icon: NSImage? { app?.icon }

@@ -15,7 +15,12 @@ import Defaults
 
 //struct Pronunciation: Identifiable, Codable, Defaults.Serializable {
 //    let id = UUID()
-struct Pronunciation: Codable, Defaults.Serializable {
+//struct Pronunciation: Codable, Defaults.Serializable {
+struct Pronunciation: Identifiable, Hashable, Codable, Defaults.Serializable {
+//    let id = UUID()
+    let id: UUID
+//    private(set) var id = UUID()
+//    var id: String { search }
     var search: String
     var replace: String
 //    TODO: rename to appDomain?
@@ -25,6 +30,15 @@ struct Pronunciation: Codable, Defaults.Serializable {
     var enabled: Bool = true
     var options: String.CompareOptions {
         ignoreCase ? [.caseInsensitive] : []
+    }
+    
+    init(search: String, replace: String, domain: String? = nil, ignoreCase: Bool, enabled: Bool) {
+        self.id = UUID()
+        self.search = search
+        self.replace = replace
+        self.domain = domain
+        self.ignoreCase = ignoreCase
+        self.enabled = enabled
     }
 }
 

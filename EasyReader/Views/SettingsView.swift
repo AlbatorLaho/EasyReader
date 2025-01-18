@@ -10,6 +10,7 @@ import AVKit
 import AXSwift
 import Defaults
 
+//TODO: look at system settings for how they do pronunciations and voice settings
 struct SettingsView: View {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
@@ -25,21 +26,36 @@ struct SettingsView: View {
     @State var showResetDefaultsAlert = false
     @State var sampleText: String = ""
 
+    @Default(.selectionUnit) var selectionUnit
+    @Default(.scrollSelectionIntoView) var scrollSelectionIntoView
+    @Default(.scrollPadding) var scrollPadding
+    @Default(.useNowPayingCenter) var useNowPayingCenter
+    
+    @Default(.pronunciations) var pronunciations
+    @State var selectedPronunciation: Pronunciation?
+    @State var pronunciationSampleText: String = ""
+
+//    @State var showAppPickerDialog = false
+
     func resetSampleText() {
         sampleText = String(repeating: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\n", count: 3)
     }
-    
+
+    func resetPronunciationSampleText() {
+        pronunciationSampleText = "pronunciations"
+    }
+
     var body: some View {
         TabView {
             SettingsTab("General", systemImage: "gear") {
 //                Image(systemName: "gear")
             }
             SettingsTab("Speech", systemImage: "waveform") {
-                //                Image(systemName: "waveform")
-                //                Image(systemName: "mic.fill")
-                //                Image(systemName: "ear.fill")
+//                Image(systemName: "waveform")
+//                Image(systemName: "mic.fill")
+//                Image(systemName: "ear.fill")
                 
-                VStack {
+                VStack(alignment: .leading) {
 //                    Form {
 //                        Picker("Select Voice:", selection: $speechVoice) {
 //                            Text("System Voice (TEST)")
@@ -100,7 +116,7 @@ struct SettingsView: View {
                                 } minimumValueLabel: { Text("0s") } maximumValueLabel: { Text("1s") }
                                 Slider(value: $speechDelayAfter, in: 0...1, step: 0.1) {
                                     Text("Delay After:")
-//                                    Text("Post-Delay:")
+//                                    Text("Post-Delay:")+
                                 } minimumValueLabel: { Text("0s") } maximumValueLabel: { Text("1s") }
                             }
                         } label: {
@@ -158,6 +174,7 @@ struct SettingsView: View {
 ////                        }
 //                    }
 //                    TODO: don't take control of the focus... once focused, I can't get it to focus on other elements
+//                    TODO: only call resetSampleText onAppear if it's empty?
                     TextEditor(text: $sampleText)
                         .font(.system(size: 24))
                         .cornerRadius(4)
@@ -180,15 +197,188 @@ struct SettingsView: View {
 //                Image(systemName: "doc.richtext.fill")
 //                Image(systemName: "chart.bar.doc.horizontal.fill")
 //                Image(systemName: "doc.text.magnifyingglass")
+                
+                VStack(alignment: .leading) {
+                    GroupBox {
+                        Form {
+                            Picker("Unit:", selection: $selectionUnit) {
+                                Text("Sentence").tag(Selection.Unit.sentence)
+                                Text("Paragraph").tag(Selection.Unit.paragraph)
+                            }
+                            .pickerStyle(.inline)
+                        }
+                    } label: {
+                        Label("Selecting", systemImage: "doc.text.magnifyingglass")
+                    }
+
+                    GroupBox {
+                        Form {
+//                            Toggle("Scroll Selection Into View", isOn: $scrollSelectionIntoView)
+                            Slider(value: Binding(
+                                get: { Float(scrollPadding) },
+                                set: { newValue in scrollPadding = Int(newValue) }
+                            ), in: 0...128, step: 8) {
+                                Text("Padding")
+                            } minimumValueLabel: { Text("0px") } maximumValueLabel: { Text("128px") }
+                        }
+                        .disabled(!scrollSelectionIntoView)
+                    } label: {
+//                        Label("Scrolling", systemImage: "note.text")
+                        HStack {
+                            Label("Scroll Selection Into View", systemImage: "note.text")
+                            Toggle("Enabled", isOn: $scrollSelectionIntoView)
+                        }
+                    }
+
+                    GroupBox {
+                        Form {
+//                            Toggle("Use Now Paying Center", isOn: $useNowPayingCenter)
+                            Slider(value: Binding(
+                                get: { Float(scrollPadding) },
+                                set: { newValue in scrollPadding = Int(newValue) }
+                            ), in: 0...128, step: 8) {
+                                Text("Padding")
+                            } minimumValueLabel: { Text("0px") } maximumValueLabel: { Text("128px") }
+                        }
+                        .disabled(!useNowPayingCenter)
+                    } label: {
+//                        Label("Now Paying", systemImage: "play.circle")
+                        HStack {
+                            Label("Now Paying Center", systemImage: "play.circle")
+                            Toggle("Enabled", isOn: $useNowPayingCenter)
+                        }
+//                        Toggle(isOn: $useNowPayingCenter) {
+//                            Label("Now Paying Center", systemImage: "play.circle")
+//                        }
+                    }
+                }
+                
+                GroupBox {
+//                    TODO: don't take control of the focus... once focused, I can't get it to focus on other elements
+                    TextEditor(text: $sampleText)
+                        .font(.system(size: 24))
+                        .cornerRadius(4)
+                        .onAppear(perform: resetSampleText)
+                } label: {
+                    HStack {
+                        Text("Reading Playground")
+                        Spacer()
+                        Button("Reset Text", action: resetSampleText)
+                    }
+                }
             }
-            SettingsTab("Pronuciations", systemImage: "character.bubble.fill") {
-//                Image(systemName: "quote.bubble.fill")
-//                Image(systemName: "character.bubble.fill")
-//                Image(systemName: "text.bubble.fill")
-//                Image(systemName: "captions.bubble.fill")
-//                Image(systemName: "ellipsis.bubble.fill")
-//                Image(systemName: "bubble.left.and.bubble.right.fill")
-            }
+//            SettingsTab("Pronuciations", systemImage: "character.bubble.fill") {
+////                Image(systemName: "quote.bubble.fill")
+////                Image(systemName: "character.bubble.fill")
+////                Image(systemName: "text.bubble.fill")
+////                Image(systemName: "captions.bubble.fill")
+////                Image(systemName: "ellipsis.bubble.fill")
+////                Image(systemName: "bubble.left.and.bubble.right.fill")
+//
+//                VStack(alignment: .leading) {
+//                    GroupBox {
+//                        Form {
+//                            PronunciationTable($pronunciations, selection: $selectedPronunciation)
+////                            if #available(macOS 12.0, *) {
+////                                Table($pronunciations) {
+////                                    TableColumn("Search") { $pronunciation in
+////                                        TextField("", text: $pronunciation.search)
+////                                    }
+////                                    TableColumn("Replace") { $pronunciation in
+//////                                        TextEditor(text: $pronunciation.replace)
+////                                        TextField("", text: $pronunciation.replace)
+////                                    }
+////                                    TableColumn("Domain") { $pronunciation in
+////                                        Picker("", selection: $pronunciation.domain) {
+////                                            Text("All Apps").tag(nil as String?)
+////                                            Text("Finder").tag("com.apple.finder" as String?)
+////                                        }
+////                                    }
+////                                    TableColumn("Ignore Case") { $pronunciation in
+////                                        Toggle("Ignore Case", isOn: $pronunciation.ignoreCase)
+////                                    }
+////                                    TableColumn("Enabled") { $pronunciation in
+////                                        Toggle("Enabled", isOn: $pronunciation.enabled)
+////                                    }
+////                                }
+//////                                .contextMenu()
+//////                                .tableStyle(.bordered)
+////                                .textFieldStyle(.squareBorder)
+////                            } else {
+////                                // Fallback on earlier versions
+////                            }
+//
+////                            Button("Pick App") {
+////                                showAppPickerDialog = true
+////                            }
+//
+//                            HStack {
+//                                Button {
+//                                    print("add")
+//                                } label: {
+//                                    Image(systemName: "plus")
+//                                }
+//                                Button {
+//                                    print("remove")
+//                                    if let selectedPronunciation, let index = pronunciations.firstIndex(of: selectedPronunciation) {
+//                                        pronunciations.remove(at: index)
+//                                    }
+//                                } label: {
+//                                    Image(systemName: "minus")
+//                                }
+//                            }
+//
+////                            Divider()
+////                            HStack(spacing: 0) {
+////                                Button {
+////                                    print("add")
+////                                } label: {
+////                                    Image(systemName: "plus")
+////                                        .frame(width: 24, height: 24)
+////                                }
+////                                Divider()
+////                                Button {
+////                                    print("remove")
+////                                } label: {
+////                                    Image(systemName: "minus")
+////                                        .frame(width: 24, height: 24)
+////                                }
+////                                Divider()
+////                                Spacer()
+////                            }
+////                            .buttonStyle(.borderless)
+////                            .frame(height: 20)
+//                        }
+////                        .border(.black, width: 1)
+////                        .fileImporter(isPresented: $showAppPickerDialog, allowedContentTypes: [.application, .applicationBundle]) { result in
+////                            switch result {
+////                                case .success(let url):
+////                                    print(url)
+////                                    let bundle = Bundle(url: url)
+////                                    print(bundle?.bundleIdentifier)
+////                                case .failure(let error):
+////                                    print(error)
+////                            }
+////                        }
+//                    } label: {
+//                        Label("Pronunciations", systemImage: "bubble.left.and.bubble.right.fill")
+//                    }
+//                }
+//                
+//                GroupBox {
+////                    TODO: don't take control of the focus... once focused, I can't get it to focus on other elements
+//                    TextEditor(text: $pronunciationSampleText)
+//                        .font(.system(size: 24))
+//                        .cornerRadius(4)
+//                        .onAppear(perform: resetPronunciationSampleText)
+//                } label: {
+//                    HStack {
+//                        Text("Pronunciations Playground")
+//                        Spacer()
+//                        Button("Reset Text", action: resetPronunciationSampleText)
+//                    }
+//                }
+//            }
         }
         .frame(width: 800, height: 500)
         .padding()
