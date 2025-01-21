@@ -48,6 +48,7 @@ struct EasyReaderApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var easyReader: EasyReader!
+    var nowPlayingManager: NowPlayingManager!
     var statusItem: NSStatusItem!
 //    TODO: handle these better
     var readerStateImageDefault = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)!
@@ -73,6 +74,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         easyReader = EasyReader()
         easyReader.textSelector = NLTextSelector(unit: .sentence)
         easyReader.delegate = self
+        nowPlayingManager = NowPlayingManager()
+        nowPlayingManager.delegate = self
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = readerStateImageDefault
         statusItem.menu = NSMenu()
@@ -88,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSMenuItem(title: "Quit", action: #selector(NSApplication.shared.terminate), keyEquivalent: "q"),
         ]
 
-        setupNowPlayingRemoteCommands()
+        nowPlayingManager.setupRemoteCommands()
 
         NSApplication.shared.servicesProvider = self
         NSUpdateDynamicServices()
@@ -212,125 +216,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             default: break
         }
     }
-    
-    
-    
-//    TODO: cleanup these functions
-    func setupNowPlayingRemoteCommands() {
-        print("setting up remote commands")
+}
 
-//        TODO: add NSSound.beep()?
-        let commandCenter = MPRemoteCommandCenter.shared()
-        commandCenter.playCommand.addTarget { [weak self] event in
-            print("play \(event.command)")
-            guard let self else { return .commandFailed }
-//            guard self.easyReader.resume() || self.easyReader.startReadingFrontmostApplication() else { return .noSuchContent }
-            guard self.easyReader.resume() else { return .noSuchContent }
-            return .success
-        }
-        commandCenter.pauseCommand.addTarget { [weak self] event in
-            print("pause \(event.command)")
-            guard let self else { return .commandFailed }
-            guard self.easyReader.pause() else { return .commandFailed }
-            return .success
-        }
-        commandCenter.togglePlayPauseCommand.addTarget { [weak self] event in
-            print("toggle \(event.command)")
-            guard let self else { return .commandFailed }
-//            guard self.easyReader.togglePauseResume() || self.easyReader.startReadingFrontmostApplication() else { return .noSuchContent }
-            guard self.easyReader.togglePauseResume() else { return .noSuchContent }
-            return .success
-        }
-        commandCenter.stopCommand.addTarget { [weak self] event in
-            print("stop \(event.command)")
-            guard let self else { return .commandFailed }
-            guard self.easyReader.stop() else { return .commandFailed }
-            return .success
-        }
-
-//        commandCenter.changePlaybackRateCommand.addTarget { [weak self] event in
-//            print("change rate \(event.command)")
-//            guard let self else { return .commandFailed }
-//            self.easyReader.rate = Float(event.timestamp)
-//            return .success
-//        }
-//        commandCenter.changePlaybackPositionCommand
-//        commandCenter.skipBackwardCommand.preferredIntervals = [1]
-//        commandCenter.skipBackwardCommand.addTarget
-//        commandCenter.skipForwardCommand.preferredIntervals = [1]
-//        commandCenter.skipForwardCommand.addTarget
-
-        commandCenter.previousTrackCommand.addTarget { [weak self] event in
-            guard let self else { return .commandFailed }
-            guard self.easyReader.skip(.backward) else { return .noSuchContent }
-//            guard self.easyReader.skip(.backward) else { return .commandFailed }
-            return .success
-        }
-        commandCenter.nextTrackCommand.addTarget { [weak self] event in
-            guard let self else { return .commandFailed }
-            guard self.easyReader.skip(.forward) else { return .noSuchContent }
-//            guard self.easyReader.skip(.forward) else { return .commandFailed }
-            return .success
-        }
+//TODO: use commandFailed, noSuchContent, and noActionableNowPlayingItem?
+extension AppDelegate: NowPlayingManagerDelegate {
+    func play(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        return easyReader.start() ? .success : .commandFailed
+    }
+    func stop(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        return easyReader.stop() ? .success : .commandFailed
+    }
+    func pause(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        return easyReader.pause() ? .success : .commandFailed
+    }
+    func togglePlayPause(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        return easyReader.togglePauseResume() ? .success : .commandFailed
     }
 
-    func updateNowPlayingItemMetadata() {
-//        MPMediaItem
-        var info = [String: Any]()
-//        info[MPMediaItemPropertyMediaType] = MPNowPlayingInfoMediaType.audio
-//        info[MPMediaItemPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-//        info[MPMediaItemPropertyMediaType] = MPMediaType.audioBook
-//        info[MPMediaItemPropertyMediaType] = MPMediaType.audioBook.rawValue
-//        info[MPMediaItemPropertyMediaType] = NSNumber(value: MPMediaType.audioBook.rawValue)
-//        info[MPMediaItemPropertyMediaType] = MPMediaType.anyAudio.rawValue
-//        info[MPMediaItemPropertyMediaType] = MPMediaType.podcast.rawValue
-        info[MPMediaItemPropertyMediaType] = MPMediaType.audioBook.rawValue
-        if let title = easyReader.readable?.title {
-            info[MPMediaItemPropertyTitle] = title
-        }
-        if let groupTitle = easyReader.readable?.groupTitle {
-            info[MPMediaItemPropertyAlbumTitle] = groupTitle
-        }
-        if let appName = NSRunningApplication.current.localizedName {
-            info[MPMediaItemPropertyArtist] = appName
-        }
-        if let icon = easyReader.readable?.icon {
-            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: icon.size) { _ in return icon }
-        }
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    func nextTrack(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        return easyReader.skip(.forward) ? .success : .commandFailed
     }
-    
-    func updateNowPlayingPlaybackInfo() {
-//        MPNowPlayingInfo
-        let infoCenter = MPNowPlayingInfoCenter.default()
-        var info = infoCenter.nowPlayingInfo ?? [String: Any]()
-        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-//        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = 3
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 0.5
-        info[MPNowPlayingInfoPropertyPlaybackRate] = easyReader.rate
-        infoCenter.nowPlayingInfo = info
+    func previousTrack(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+        return easyReader.skip(.backward) ? .success : .commandFailed
     }
-    
-    func updateNowPlayingInfo(state: EasyReader.State) {
-//        TODO: do we need to enable/disable any commands?
-//        let commandCenter = MPRemoteCommandCenter.shared()
-        let infoCenter = MPNowPlayingInfoCenter.default()
-        switch state {
-            case .reading:
-                infoCenter.playbackState = .playing
-                updateNowPlayingItemMetadata()
-                updateNowPlayingPlaybackInfo()
-            case .stopped:
-                infoCenter.playbackState = .stopped
-//                infoCenter.nowPlayingInfo = [:]
-                infoCenter.nowPlayingInfo = nil
-            case .paused:
-                infoCenter.playbackState = .paused
+//    func skipForward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+//        return .success
+//    }
+//    func skipBackward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+//        return .success
+//    }
+//    func seekForward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+//        return .success
+//    }
+//    func seekBackward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+//        return .success
+//    }
+
+//    func changePlaybackRate(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+//        return .success
+//    }
+//    func changePlaybackPosition(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+//        return .success
+//    }
+}
+
+extension AppDelegate: EasyReaderDelegate {
+    func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
+        nowPlayingManager.updateInfo(easyReader.readable, state: state)
+        if let imageName = readerStateImages[state], let image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil) {
+            statusItem.button?.image = image
+        } else {
+            statusItem.button?.image = readerStateImageDefault
+        }
+//        switch state {
 //            case .error:
-//                infoCenter.playbackState = .interrupted
-            default:
-                infoCenter.playbackState = .unknown
-        }
+//                statusItem.button?.image = NSImage(systemSymbolName: "waveform.badge.exclamationmark", accessibilityDescription: nil)
+//            default:
+//                statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)
+//        }
+        statusItem.menu?.update()
+//        if state == .error {
+//            NSSound.beep()
+//        }
     }
 }
 
@@ -348,27 +295,6 @@ extension AppDelegate: NSMenuItemValidation {
             case nil: return false
             default: return true
         }
-    }
-}
-
-extension AppDelegate: EasyReaderDelegate {
-    func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
-        updateNowPlayingInfo(state: state)
-        if let imageName = readerStateImages[state], let image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil) {
-            statusItem.button?.image = image
-        } else {
-            statusItem.button?.image = readerStateImageDefault
-        }
-//        switch state {
-//            case .error:
-//                statusItem.button?.image = NSImage(systemSymbolName: "waveform.badge.exclamationmark", accessibilityDescription: nil)
-//            default:
-//                statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)
-//        }
-        statusItem.menu?.update()
-//        if state == .error {
-//            NSSound.beep()
-//        }
     }
 }
 
