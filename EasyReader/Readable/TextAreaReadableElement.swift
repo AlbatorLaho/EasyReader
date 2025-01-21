@@ -35,8 +35,7 @@ final class TextAreaReadableElement: ReadableElement {
     }
     
     override func scroll(to selection: Selection) {
-//        TODO: change something so we can just pass in CFRange instead of using AXValue.range
-        guard let selectionBounds: CGRect = try? handle.parameterizedAttribute(kAXBoundsForRangeParameterizedAttribute, param: AXValue.range(CFRange(selection))),
+        guard let selectionBounds: CGRect = try? handle.parameterizedAttribute(.boundsForRangeParameterized, param: CFRange(selection)),
               let contentFrame: CGRect = try? handle.attribute(.frame),
               let viewableFrame: CGRect = try? scrollArea?.attribute(.frame),
               !viewableFrame.contains(selectionBounds),

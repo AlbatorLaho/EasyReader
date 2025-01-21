@@ -95,41 +95,9 @@ final class EasyReader: NSObject {
 ////            ))
 ////        }
 //    }
-    
-    
-    
-    func setReadableElement(from app: NSRunningApplication) -> Bool {
-        guard let focusedElement: UIElement = try? Application(app)?.attribute(.focusedUIElement) else { return false }
-        return setReadableElement(focusedElement)
-    }
-    
-    func setReadableElement(_ element: UIElement) -> Bool {
-//        TODO: do I have to make sure this is run on the main thread?
-//        FIXME: for some reason, this isn't showing the prompt anymore...
-//        guard UIElement.isProcessTrusted(withPrompt: true) else {
-//            NSLog("No accessibility API permission")
-//            return false
-//        }
-        if NSRunningApplication.current.processIdentifier != (try? element.pid()) {
-            guard UIElement.isProcessTrusted(withPrompt: true) else {
-                NSLog("No accessibility API permission")
-                return false
-            }
-        }
-        guard let role: String = try? element.attribute(.role) else {
-            NSLog("Unable to get element role.")
-            return false
-        }
-        guard let readableType = ReadableElement[.init(role)] else {
-            NSLog("Unsupported readable element role: \(role)")
-            return false
-        }
-        readable = readableType.init(element)
-        return true
-    }
-    
-    
-    
+
+
+
     private func select(_ direction: Selection.Direction) -> Bool {
         guard let fullText = readable?.fullText,
               let selection = readable?.selection,
@@ -180,17 +148,46 @@ final class EasyReader: NSObject {
         synthesizer.speak(utterance)
         return true
     }
-    
-    
-    
+
+
+
 //    TODO: rename to something better
-    func startReadingFrontmostApplication() -> Bool {
-        guard let app = NSWorkspace.shared.frontmostApplication, setReadableElement(from: app) else { return false }
+//    func startReadingFrontmostApplication() -> Bool {
+//        guard let app = NSWorkspace.shared.frontmostApplication else { return false }
+//        return start(reading: app)
+////        return start(reading: systemWideElement, fromFocusedElement: true)
+//    }
+
+    func start(reading app: NSRunningApplication) -> Bool {
+        guard let element = Application(app) else { return false }
+        return start(reading: element, fromFocusedElement: true)
+    }
+
+    func start(reading element: UIElement, fromFocusedElement: Bool = false) -> Bool {
+        if NSRunningApplication.current.processIdentifier != (try? element.pid()) {
+            guard UIElement.isProcessTrusted(withPrompt: true) else {
+                NSLog("No accessibility API permission.")
+                return false
+            }
+        }
+        guard let focusedElement: UIElement = (fromFocusedElement ? try? element.attribute(.focusedUIElement) : element) else {
+            NSLog("Unable to get focused element.")
+            return false
+        }
+        guard let readableElement = try? focusedElement.readableElement() else {
+            NSLog("Unable to get readable element.")
+            return false
+        }
+        return start(reading: readableElement)
+    }
+
+    func start(reading readable: Readable) -> Bool {
+        self.readable = readable
         return start()
     }
-    
-//    func start(reading readable: Readable) -> Bool {}
-    
+
+
+
     func start() -> Bool {
         guard state == .stopped, ensureSelection() else { return false }
         return readSelection()

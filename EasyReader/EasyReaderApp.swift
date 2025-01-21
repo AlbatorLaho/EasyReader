@@ -157,7 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 //    }
     
     @objc func startAction() {
-        guard easyReader.startReadingFrontmostApplication() else {
+        guard let app = NSWorkspace.shared.frontmostApplication, easyReader.start(reading: app) else {
             NSSound.beep()
             return
         }
