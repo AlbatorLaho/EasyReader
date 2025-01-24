@@ -27,6 +27,57 @@ struct EasyReaderApp: App {
             ContentView(appDelegate: appDelegate)
         }
 #endif
+//        if #available(macOS 13.0, *) {
+//            MenuBarExtra("EasyReader", systemImage: "waveform") {
+//                Group {
+//                    Button("Start", systemImage: "play.fill") {
+//                        guard let app = NSWorkspace.shared.frontmostApplication, appDelegate.easyReader.start(reading: app) else {
+//                            NSSound.beep()
+//                            return
+//                        }
+//                    }
+//                    Button("Stop", systemImage: "stop.fill") {
+//                        guard appDelegate.easyReader.stop() else {
+//                            NSSound.beep()
+//                            return
+//                        }
+//                    }
+//                    Button("Pause/Resume", systemImage: "playpause.fill") {
+//                        guard appDelegate.easyReader.togglePauseResume() else {
+//                            NSSound.beep()
+//                            return
+//                        }
+//                    }
+//                    Button("Skip Backward", systemImage: "gobackward") {
+//                        guard appDelegate.easyReader.skip(.backward) else {
+//                            NSSound.beep()
+//                            return
+//                        }
+//                    }
+//                    Button("Skip Forward", systemImage: "goforward") {
+//                        guard appDelegate.easyReader.skip(.forward) else {
+//                            NSSound.beep()
+//                            return
+//                        }
+//                    }
+//
+//                    Divider()
+//
+//                    if #available(macOS 14.0, *) {
+////                        FIXME: doesn't work when activation is prohibited
+//                        SettingsLink()
+//                            .keyboardShortcut(",")
+//                            .labelStyle(.titleOnly)
+////                            .labelStyle(.automatic)
+//                    }
+//                    Button("Quit") {
+//                        NSApplication.shared.terminate(nil)
+//                    }
+//                    .keyboardShortcut("q")
+//                }
+//                .labelStyle(.titleAndIcon)
+//            }
+//        }
         Settings {
 //            EmptyView()
             SettingsView()
@@ -40,6 +91,7 @@ struct EasyReaderApp: App {
                 .onDisappear() {
                     print("disappear")
                     NSApplication.shared.setActivationPolicy(.prohibited)
+//                    NSApplication.shared.deactivate()
                 }
 //                .textFieldStyle(.roundedBorder)
         }
@@ -59,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 //        .reading: "waveform",
         .error: "waveform.badge.exclamationmark",
     ]
-    
+
 //    TODO: use .prohibited unless a window needs to be opened, then use .accessory or .regular (make sure the permisions dialog can be opened)
     func applicationWillFinishLaunching(_ notification: Notification) {
 #if !DEBUG
@@ -69,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 //        NSApplication.shared.setActivationPolicy(.regular)
 //        NSApplication.shared.activate(ignoringOtherApps: true)
     }
-    
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         easyReader = EasyReader()
         easyReader.textSelector = NLTextSelector(unit: .sentence)
@@ -88,7 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSMenuItem(title: "Skip Backward", systemSymbolName: "gobackward", action: #selector(backwardAction)),
             NSMenuItem(title: "Skip Forward", systemSymbolName: "goforward", action: #selector(forwardAction)),
             .separator(),
-            NSMenuItem(title: "Preferences...", action: Selector(("showPreferencesWindow:")), keyEquivalent: ","),
+            NSMenuItem(title: "Preferences...", action: #selector(openSettings), keyEquivalent: ","),
             NSMenuItem(title: "Quit", action: #selector(NSApplication.shared.terminate), keyEquivalent: "q"),
         ]
 
@@ -138,11 +190,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 //        _ = easyReader.start()
 #endif
     }
-    
-//    @objc func openSettings() {
-//        NSApplication.shared.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-//    }
-    
+
+    @available(macOS 14.0, *)
+    private final class SettingsOpener: ObservableObject {
+        @Environment(\.openSettings) static var open
+    }
+
+    @objc func openSettings() {
+        if #available(macOS 14.0, *) {
+            SettingsOpener.open()
+        } else if #available(macOS 13.0, *) {
+            NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            NSApplication.shared.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
+    }
+
 //    @objc func toggleActivation() {
 //        switch NSApplication.shared.activationPolicy() {
 //        case .regular:

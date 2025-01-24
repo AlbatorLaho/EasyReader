@@ -1,4 +1,5 @@
 {
+  "originHash" : "78dd6fd3bccbf2b96f00d2ac94788ace5dc706dc2bb3b1cb28cff2426b1b3190",
   "pins" : [
     {
       "identity" : "axswift",
@@ -19,5 +20,5 @@
       }
     }
   ],
-  "version" : 2
+  "version" : 3
 }
