@@ -108,7 +108,7 @@ final class EasyReader: NSObject {
             padding: Defaults[.scrollPadding],
             smooth: Defaults[.scrollSmooth],
             duration: Defaults[.scrollDuration],
-            frameRate: Defaults[.scrollFrameRate]
+            updateRate: Defaults[.scrollUpdateRate]
         ))
         return !nextSelection.isEmpty
     }

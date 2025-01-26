@@ -71,7 +71,7 @@ final class TextAreaReadableElement: ReadableElement {
             return
         }
 
-        let frameInterval = 1.0 / options.frameRate
+        let frameInterval = 1.0 / options.updateRate
         let totalFrames = Int(options.duration / frameInterval)
         let step = (target - current) / CGFloat(totalFrames)
         var currentFrame = 0

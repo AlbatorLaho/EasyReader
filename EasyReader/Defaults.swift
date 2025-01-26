@@ -29,8 +29,8 @@ extension Defaults.Keys {
     static let scrollPadding = Key<Int>("ScrollPadding", default: 16)
     static let scrollSmooth = Key<Bool>("ScrollSmooth", default: true)
     static let scrollDuration = Key<Double>("ScrollDuration", default: 0.25)
-    static let scrollFrameRate = Key<Double>("ScrollFrameRate", default: 60)
-    static let useNowPayingCenter = Key<Bool>("UseNowPayingCenter", default: true)
+    static let scrollUpdateRate = Key<Double>("ScrollUpdateRate", default: 60)
+    static let useNowPlayingCenter = Key<Bool>("UseNowPlayingCenter", default: true)
 
 //    static let useVoiceOverPronunciations = Key<Bool>("useVoiceOverPronunciations", default: false)
     static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [])

@@ -31,9 +31,9 @@ struct SettingsView: View {
     @Default(.scrollPadding) var scrollPadding
     @Default(.scrollSmooth) var scrollSmooth
     @Default(.scrollDuration) var scrollDuration
-    @Default(.scrollFrameRate) var scrollFrameRate
-    @Default(.useNowPayingCenter) var useNowPayingCenter
-    
+    @Default(.scrollUpdateRate) var scrollUpdateRate
+    @Default(.useNowPlayingCenter) var useNowPlayingCenter
+
     @Default(.pronunciations) var pronunciations
     @State var selectedPronunciation: Pronunciation?
     @State var pronunciationSampleText: String = ""
@@ -59,81 +59,64 @@ struct SettingsView: View {
 //                Image(systemName: "ear.fill")
                 
                 VStack(alignment: .leading) {
-//                    Form {
-//                        Picker("Select Voice:", selection: $speechVoice) {
-//                            Text("System Voice (TEST)")
-//                                .tag(nil as AVSpeechSynthesisVoice?)
-//                            Divider()
-//                            ForEach(speechVoices, id: \.identifier) { voice in
-//                                Text("\(voice.name) (\(voice.language))")
-//                                    .tag(voice as AVSpeechSynthesisVoice?)
-//                            }
-//                        }
-//                        .onAppear() {
-//                            speechVoices = AVSpeechSynthesisVoice.speechVoices()
-//                        }
-                        
-                        GroupBox {
-                            Form {
-                                Slider(value: $speechVolume, in: 0...1, step: 0.1) {
-                                    Text("Volume:")
-                                } minimumValueLabel: { Text("0%") } maximumValueLabel: { Text("100%") }
-                                Slider(value: $speechRate, in: 0.25...0.75, step: 0.05) {
-                                    Text("Rate:")
-                                } minimumValueLabel: { Text("½") } maximumValueLabel: { Text("2×") }
-                                Slider(value: $speechPitch, in: 0.5...1.5, step: 0.1) {
-                                    Text("Pitch:")
-                                } minimumValueLabel: { Text("½") } maximumValueLabel: { Text("2×") }
-                            }
-                        } label: {
-//                            Label("Voice", systemImage: "mic.fill")
-                            Picker(selection: $speechVoice) {
-                                Text("System Voice (TEST)").tag(nil as AVSpeechSynthesisVoice?)
-                                Divider()
-//                                TODO: sort voices
-                                ForEach(speechVoices, id: \.identifier) { voice in
-                                    Text("\(voice.name) (\(voice.language))").tag(voice as AVSpeechSynthesisVoice?)
-                                }
-                            } label: {
-                                Label("Voice:", systemImage: "mic.fill")
-                            }
-                            .onAppear() {
-                                speechVoices = AVSpeechSynthesisVoice.speechVoices()
+                    GroupBox {
+                        Form {
+                            Slider(value: $speechVolume, in: 0...1, step: 0.1) {
+//                                Text("Volume:")
+                                Label("Volume:", systemImage: speechVolume == 0 ? "speaker.fill" : "speaker.wave.\(1 + Int(speechVolume * 2)).fill")
+                            } minimumValueLabel: { Text("0%") } maximumValueLabel: { Text("100%") }
+                            Slider(value: $speechRate, in: 0.25...0.75, step: 0.05) {
+                                Text("Rate:")
+                            } minimumValueLabel: { Text("½") } maximumValueLabel: { Text("2×") }
+                            Slider(value: $speechPitch, in: 0.5...1.5, step: 0.1) {
+                                Text("Pitch:")
+                            } minimumValueLabel: { Text("½") } maximumValueLabel: { Text("2×") }
+                        }
+                    } label: {
+                        Picker("Voice:", systemImage: "mic.fill", selection: $speechVoice) {
+                            Text("System Voice (TEST)").tag(nil as AVSpeechSynthesisVoice?)
+                            Divider()
+//                            TODO: sort voices
+                            ForEach(speechVoices, id: \.identifier) { voice in
+                                Text("\(voice.name) (\(voice.language))").tag(voice as AVSpeechSynthesisVoice?)
                             }
                         }
-                        
-                        GroupBox {
-                            Form {
-                                Picker("Stop Boundary:", selection: $speechStopBoundary) {
-                                    Text("Immediate").tag(AVSpeechBoundary.immediate)
-                                    Text("Word").tag(AVSpeechBoundary.word)
-                                }
-                                Picker("Pause/Stop:", selection: $speechStopBoundary) {
-                                    Text("Immediately").tag(AVSpeechBoundary.immediate)
-                                    Text("After Word").tag(AVSpeechBoundary.word)
-                                }
-                                .pickerStyle(.inline)
-                                Slider(value: $speechDelayBefore, in: 0...1, step: 0.1) {
-                                    Text("Delay Before:")
-//                                    Text("Pre-Delay:")
-                                } minimumValueLabel: { Text("0s") } maximumValueLabel: { Text("1s") }
-                                Slider(value: $speechDelayAfter, in: 0...1, step: 0.1) {
-                                    Text("Delay After:")
-//                                    Text("Post-Delay:")+
-                                } minimumValueLabel: { Text("0s") } maximumValueLabel: { Text("1s") }
-                            }
-                        } label: {
-//                            Label("Behavior", systemImage: "doc.text")
-//                            Label("Behavior", systemImage: "doc.plaintext")
-                            Label("Behavior", systemImage: "text.alignleft")
+                        .onAppear() {
+                            speechVoices = AVSpeechSynthesisVoice.speechVoices()
                         }
-//                    }
+                    }
+                    
+                    GroupBox {
+                        Form {
+                            Picker("Stop Boundary:", selection: $speechStopBoundary) {
+                                Text("Immediate").tag(AVSpeechBoundary.immediate)
+                                Text("Word").tag(AVSpeechBoundary.word)
+                            }
+
+//                            FIXME: does not work...
+                            Slider(value: $speechDelayBefore, in: 0...1, step: 0.1) {
+                                Text("Delay Before:")
+                            } minimumValueLabel: { Text("0s") } maximumValueLabel: { Text("1s") }
+                            Slider(value: $speechDelayAfter, in: 0...1, step: 0.1) {
+                                Text("Delay After:")
+                            } minimumValueLabel: { Text("0s") } maximumValueLabel: { Text("1s") }
+                        }
+                    } label: {
+//                        Label("Behavior", systemImage: "doc.text")
+//                        Label("Behavior", systemImage: "doc.plaintext")
+                        Label("Behavior", systemImage: "text.alignleft")
+                    }
 
                     Spacer()
                     
                     HStack {
-                        Button("Request Accessibility Permission") {
+                        Button {
                             _ = UIElement.isProcessTrusted(withPrompt: true)
+                        } label: {
+                            Image(systemName: "circle.fill")
+                                .imageScale(.small)
+                                .foregroundColor(UIElement.isProcessTrusted() ? .green : .red)
+                            Text("Request Accessibility Permission")
                         }
                         Spacer()
                         Button("Reset To Defaults") {
@@ -177,11 +160,14 @@ struct SettingsView: View {
 ////                        }
 //                    }
 //                    TODO: don't take control of the focus... once focused, I can't get it to focus on other elements
-//                    TODO: only call resetSampleText onAppear if it's empty?
                     TextEditor(text: $sampleText)
                         .font(.system(size: 24))
                         .cornerRadius(4)
-                        .onAppear(perform: resetSampleText)
+                        .onAppear() {
+                            if sampleText.isEmpty {
+                                resetSampleText()
+                            }
+                        }
                 } label: {
                     HStack {
                         Text("Speech Playground")
@@ -208,7 +194,6 @@ struct SettingsView: View {
                                 Text("Sentence").tag(Selection.Unit.sentence)
                                 Text("Paragraph").tag(Selection.Unit.paragraph)
                             }
-                            .pickerStyle(.inline)
                         }
                     } label: {
                         Label("Selecting", systemImage: "doc.text.magnifyingglass")
@@ -216,84 +201,46 @@ struct SettingsView: View {
 
                     GroupBox {
                         Form {
-//                            Toggle("Scroll Selection Into View", isOn: $scrollSelectionIntoView)
-                            Toggle("Enabled", isOn: $scrollSelectionIntoView)
                             Slider(value: Binding(
                                 get: { Float(scrollPadding) },
                                 set: { newValue in scrollPadding = Int(newValue) }
                             ), in: 0...128, step: 8) {
-                                Text("Padding")
+                                Text("Padding:")
                             } minimumValueLabel: { Text("0px") } maximumValueLabel: { Text("128px") }
 
                             GroupBox {
                                 Form {
                                     Slider(value: $scrollDuration, in: 0...3, step: 0.25) {
-                                        Text("Duration")
+                                        Text("Duration:")
                                     } minimumValueLabel: { Text("0s") } maximumValueLabel: { Text("3s") }
-                                    Slider(value: $scrollFrameRate, in: 0...120, step: 10) {
-                                        Text("Frame Rate")
-                                    } minimumValueLabel: { Text("0/s") } maximumValueLabel: { Text("120/s") }
+//                                    Slider(value: $scrollUpdateRate, in: 0...120, step: 10) {
+//                                        Text("Update Rate:")
+//                                    } minimumValueLabel: { Text("0/s") } maximumValueLabel: { Text("120/s") }
                                     HStack {
-                                        TextField("Frame Rate", value: $scrollFrameRate, formatter: NumberFormatter())
-                                        Stepper("Frame Rate", value: $scrollFrameRate, in: 0...120, step: 1)
+                                        TextField("Update Rate:", value: $scrollUpdateRate, formatter: NumberFormatter())
+                                        Stepper("", value: $scrollUpdateRate, in: 0...120, step: 5)
                                             .labelsHidden()
                                     }
                                 }
+                                .disabled(!scrollSmooth)
                             } label: {
-                                HStack {
-                                    Label("Smooth", systemImage: "arrow.up.and.down")
-                                    Toggle("Enabled", isOn: $scrollSmooth)
-                                }
+                                Toggle("Smooth", systemImage: "arrow.up.and.down", isOn: $scrollSmooth)
                             }
-                            .disabled(!scrollSmooth)
                         }
                         .disabled(!scrollSelectionIntoView)
                     } label: {
-//                        Label("Scrolling", systemImage: "note.text")
-                        HStack {
-                            Label("Scroll Selection Into View", systemImage: "note.text")
-                            Toggle("Enabled", isOn: $scrollSelectionIntoView)
-                        }
+//                        Toggle("Scrolling", systemImage: "note.text", isOn: $scrollSelectionIntoView)
+                        Toggle("Scroll Selection Into View", systemImage: "note.text", isOn: $scrollSelectionIntoView)
                     }
 
-                    GroupBox {
-                        Form {
-                            Toggle("Enabled", isOn: $useNowPayingCenter)
-                            Toggle("Use Now Paying Center", isOn: $useNowPayingCenter)
-//                            Slider(value: Binding(
-//                                get: { Float(scrollPadding) },
-//                                set: { newValue in scrollPadding = Int(newValue) }
-//                            ), in: 0...128, step: 8) {
-//                                Text("Padding")
-//                            } minimumValueLabel: { Text("0px") } maximumValueLabel: { Text("128px") }
-                        }
-                        .disabled(!useNowPayingCenter)
-                    } label: {
-//                        Label("Now Paying Center", systemImage: "play.circle")
-//                        HStack {
-//                            Label("Now Paying Center", systemImage: "play.circle")
-//                            Toggle("Enabled", isOn: $useNowPayingCenter)
+                    Toggle("Use \"Now Playing Center\" controls", systemImage: "play.circle", isOn: $useNowPlayingCenter)
+//                    GroupBox {
+//                        Form {
 //                        }
-//                        Toggle(isOn: $useNowPayingCenter) {
-//                            Label("Now Paying Center", systemImage: "play.circle")
-//                        }
-
-                        Toggle(isOn: $useNowPayingCenter) {
-                            Label("Now Paying Center", systemImage: "play.circle")
-                        }
-                        HStack {
-                            Label("", systemImage: "play.circle")
-                            Toggle("Now Paying Center", isOn: $useNowPayingCenter)
-                        }
-                        HStack {
-                            Label("Now Paying Center", systemImage: "play.circle")
-                            Toggle("", isOn: $useNowPayingCenter)
-                        }
-                        HStack {
-                            Label("Now Paying Center", systemImage: "play.circle")
-                            Toggle("Enabled", isOn: $useNowPayingCenter)
-                        }
-                    }
+//                        .disabled(!useNowPlayingCenter)
+//                    } label: {
+//                        Toggle("\"Now Playing\" Center", systemImage: "play.circle", isOn: $useNowPlayingCenter)
+//                    }
                 }
 
                 GroupBox {
@@ -301,7 +248,11 @@ struct SettingsView: View {
                     TextEditor(text: $sampleText)
                         .font(.system(size: 24))
                         .cornerRadius(4)
-                        .onAppear(perform: resetSampleText)
+                        .onAppear() {
+                            if sampleText.isEmpty {
+                                resetSampleText()
+                            }
+                        }
                 } label: {
                     HStack {
                         Text("Reading Playground")

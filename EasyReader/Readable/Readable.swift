@@ -26,6 +26,6 @@ protocol Readable {
 struct ScrollOptions {
     let padding: Int
     let smooth: Bool
-    let duration: TimeInterval
-    let frameRate: TimeInterval
+    let duration: Double
+    let updateRate: Double
 }

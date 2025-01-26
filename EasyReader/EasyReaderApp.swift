@@ -323,7 +323,7 @@ extension AppDelegate: NowPlayingManagerDelegate {
 
 extension AppDelegate: EasyReaderDelegate {
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
-        if Defaults[.useNowPayingCenter] {
+        if Defaults[.useNowPlayingCenter] {
             nowPlayingManager.updateInfo(easyReader.readable, state: state)
         } else {
             nowPlayingManager.updateInfo(easyReader.readable, state: .stopped)
