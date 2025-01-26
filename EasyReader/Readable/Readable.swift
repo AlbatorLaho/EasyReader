@@ -16,9 +16,16 @@ protocol Readable {
     var selectedText: String? { get }
     var selection: Selection? { get set }
 
-    func scroll(to selection: Selection);
+    func scroll(to selection: Selection, options: ScrollOptions);
 }
 
 //protocol ReadableURL: Readable {
 //    init(_ url: URL);
 //}
+
+struct ScrollOptions {
+    let padding: Int
+    let smooth: Bool
+    let duration: TimeInterval
+    let frameRate: TimeInterval
+}

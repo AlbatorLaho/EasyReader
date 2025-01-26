@@ -37,7 +37,7 @@ final class ReadableTextView: Readable {
         self.textView = textView
     }
     
-    func scroll(to selection: Selection) {
+    func scroll(to selection: Selection, options: ScrollOptions) {
         textView.scrollRangeToVisible(NSRange(selection))
     }
 }

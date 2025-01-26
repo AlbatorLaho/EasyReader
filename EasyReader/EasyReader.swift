@@ -104,7 +104,12 @@ final class EasyReader: NSObject {
               let nextSelection = textSelector?.select(direction, from: selection, in: fullText)
         else { return false }
         readable?.selection = nextSelection
-        readable?.scroll(to: nextSelection)
+        readable?.scroll(to: nextSelection, options: ScrollOptions(
+            padding: Defaults[.scrollPadding],
+            smooth: Defaults[.scrollSmooth],
+            duration: Defaults[.scrollDuration],
+            frameRate: Defaults[.scrollFrameRate]
+        ))
         return !nextSelection.isEmpty
     }
     

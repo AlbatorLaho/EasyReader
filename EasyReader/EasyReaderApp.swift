@@ -144,8 +144,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSMenuItem(title: "Quit", action: #selector(NSApplication.shared.terminate), keyEquivalent: "q"),
         ]
 
-        nowPlayingManager.setupRemoteCommands()
-
         NSApplication.shared.servicesProvider = self
         NSUpdateDynamicServices()
         
@@ -325,7 +323,11 @@ extension AppDelegate: NowPlayingManagerDelegate {
 
 extension AppDelegate: EasyReaderDelegate {
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
-        nowPlayingManager.updateInfo(easyReader.readable, state: state)
+        if Defaults[.useNowPayingCenter] {
+            nowPlayingManager.updateInfo(easyReader.readable, state: state)
+        } else {
+            nowPlayingManager.updateInfo(easyReader.readable, state: .stopped)
+        }
         if let imageName = readerStateImages[state], let image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil) {
             statusItem.button?.image = image
         } else {

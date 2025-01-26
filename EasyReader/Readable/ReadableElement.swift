@@ -51,7 +51,7 @@ class ReadableElement: Readable {
         })
     }
     
-    func scroll(to selection: Selection) {}
+    func scroll(to selection: Selection, options: ScrollOptions) {}
 }
 
 extension ReadableElement {

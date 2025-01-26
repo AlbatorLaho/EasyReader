@@ -29,6 +29,9 @@ struct SettingsView: View {
     @Default(.selectionUnit) var selectionUnit
     @Default(.scrollSelectionIntoView) var scrollSelectionIntoView
     @Default(.scrollPadding) var scrollPadding
+    @Default(.scrollSmooth) var scrollSmooth
+    @Default(.scrollDuration) var scrollDuration
+    @Default(.scrollFrameRate) var scrollFrameRate
     @Default(.useNowPayingCenter) var useNowPayingCenter
     
     @Default(.pronunciations) var pronunciations
@@ -214,12 +217,35 @@ struct SettingsView: View {
                     GroupBox {
                         Form {
 //                            Toggle("Scroll Selection Into View", isOn: $scrollSelectionIntoView)
+                            Toggle("Enabled", isOn: $scrollSelectionIntoView)
                             Slider(value: Binding(
                                 get: { Float(scrollPadding) },
                                 set: { newValue in scrollPadding = Int(newValue) }
                             ), in: 0...128, step: 8) {
                                 Text("Padding")
                             } minimumValueLabel: { Text("0px") } maximumValueLabel: { Text("128px") }
+
+                            GroupBox {
+                                Form {
+                                    Slider(value: $scrollDuration, in: 0...3, step: 0.25) {
+                                        Text("Duration")
+                                    } minimumValueLabel: { Text("0s") } maximumValueLabel: { Text("3s") }
+                                    Slider(value: $scrollFrameRate, in: 0...120, step: 10) {
+                                        Text("Frame Rate")
+                                    } minimumValueLabel: { Text("0/s") } maximumValueLabel: { Text("120/s") }
+                                    HStack {
+                                        TextField("Frame Rate", value: $scrollFrameRate, formatter: NumberFormatter())
+                                        Stepper("Frame Rate", value: $scrollFrameRate, in: 0...120, step: 1)
+                                            .labelsHidden()
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Label("Smooth", systemImage: "arrow.up.and.down")
+                                    Toggle("Enabled", isOn: $scrollSmooth)
+                                }
+                            }
+                            .disabled(!scrollSmooth)
                         }
                         .disabled(!scrollSelectionIntoView)
                     } label: {
@@ -232,27 +258,44 @@ struct SettingsView: View {
 
                     GroupBox {
                         Form {
-//                            Toggle("Use Now Paying Center", isOn: $useNowPayingCenter)
-                            Slider(value: Binding(
-                                get: { Float(scrollPadding) },
-                                set: { newValue in scrollPadding = Int(newValue) }
-                            ), in: 0...128, step: 8) {
-                                Text("Padding")
-                            } minimumValueLabel: { Text("0px") } maximumValueLabel: { Text("128px") }
+                            Toggle("Enabled", isOn: $useNowPayingCenter)
+                            Toggle("Use Now Paying Center", isOn: $useNowPayingCenter)
+//                            Slider(value: Binding(
+//                                get: { Float(scrollPadding) },
+//                                set: { newValue in scrollPadding = Int(newValue) }
+//                            ), in: 0...128, step: 8) {
+//                                Text("Padding")
+//                            } minimumValueLabel: { Text("0px") } maximumValueLabel: { Text("128px") }
                         }
                         .disabled(!useNowPayingCenter)
                     } label: {
-//                        Label("Now Paying", systemImage: "play.circle")
+//                        Label("Now Paying Center", systemImage: "play.circle")
+//                        HStack {
+//                            Label("Now Paying Center", systemImage: "play.circle")
+//                            Toggle("Enabled", isOn: $useNowPayingCenter)
+//                        }
+//                        Toggle(isOn: $useNowPayingCenter) {
+//                            Label("Now Paying Center", systemImage: "play.circle")
+//                        }
+
+                        Toggle(isOn: $useNowPayingCenter) {
+                            Label("Now Paying Center", systemImage: "play.circle")
+                        }
+                        HStack {
+                            Label("", systemImage: "play.circle")
+                            Toggle("Now Paying Center", isOn: $useNowPayingCenter)
+                        }
+                        HStack {
+                            Label("Now Paying Center", systemImage: "play.circle")
+                            Toggle("", isOn: $useNowPayingCenter)
+                        }
                         HStack {
                             Label("Now Paying Center", systemImage: "play.circle")
                             Toggle("Enabled", isOn: $useNowPayingCenter)
                         }
-//                        Toggle(isOn: $useNowPayingCenter) {
-//                            Label("Now Paying Center", systemImage: "play.circle")
-//                        }
                     }
                 }
-                
+
                 GroupBox {
 //                    TODO: don't take control of the focus... once focused, I can't get it to focus on other elements
                     TextEditor(text: $sampleText)

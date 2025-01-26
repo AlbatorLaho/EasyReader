@@ -69,9 +69,18 @@ final class NowPlayingManager: NSObject {
 //        Self.commandCenter.skipForwardCommand.preferredIntervals
     }
 
+    func removeRemoteCommands() {
+        if let delegate {
+            self.delegate = nil
+            setupRemoteCommands()
+            self.delegate = delegate
+        }
+    }
+
     func updateInfo(_ readable: Readable?, state: EasyReader.State) {
         switch state {
             case .reading:
+                setupRemoteCommands()
                 Self.infoCenter.playbackState = .playing
 //                var info = Self.infoCenter.nowPlayingInfo ?? [String: Any]()
                 if let readable {
@@ -81,6 +90,7 @@ final class NowPlayingManager: NSObject {
                     Self.infoCenter.nowPlayingInfo = info
                 }
             case .stopped:
+                removeRemoteCommands()
                 Self.infoCenter.playbackState = .stopped
                 Self.infoCenter.nowPlayingInfo = nil
             case .paused:

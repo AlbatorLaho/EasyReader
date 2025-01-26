@@ -19,7 +19,7 @@ final class TestingReadable: Readable {
     }
     var selection: Selection? = Selection(1..<3)
     
-    func scroll(to selection: Selection) {
-        print("scroll to: \(selection)")
+    func scroll(to selection: Selection, options: ScrollOptions) {
+        print("scroll to: \(selection) with options: \(options)")
     }
 }
