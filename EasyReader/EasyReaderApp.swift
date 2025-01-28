@@ -9,6 +9,7 @@ import SwiftUI
 import MediaPlayer
 import AXSwift
 import Defaults
+import KeyboardShortcuts
 
 @main
 struct EasyReaderApp: App {
@@ -24,7 +25,7 @@ struct EasyReaderApp: App {
     var body: some Scene {
 #if DEBUG
         WindowGroup {
-            ContentView(appDelegate: appDelegate)
+            ContentView()
         }
 #endif
 //        if #available(macOS 13.0, *) {
@@ -109,8 +110,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         .stopped: "waveform.slash",
 //        .paused: "waveform",
 //        .reading: "waveform",
-        .error: "waveform.badge.exclamationmark",
     ]
+
+    @available(macOS 14.0, *)
+    private final class SettingsOpener: ObservableObject {
+        @Environment(\.openSettings) static private var openSettings
+
+        @objc static func open() {
+            openSettings()
+        }
+    }
 
 //    TODO: use .prohibited unless a window needs to be opened, then use .accessory or .regular (make sure the permisions dialog can be opened)
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -133,75 +142,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.image = readerStateImageDefault
         statusItem.menu = NSMenu()
         statusItem.menu?.items = [
-            NSMenuItem(title: "Start", systemSymbolName: "play.fill", action: #selector(startAction)),
-            NSMenuItem(title: "Stop", systemSymbolName: "stop.fill", action: #selector(stopAction)),
-            NSMenuItem(title: "Pause", systemSymbolName: "playpause.fill", action: #selector(toggleAction)),
-//            NSMenuItem(title: "Pause", systemSymbolName: "pause.fill", action: #selector(toggleAction)),
-            NSMenuItem(title: "Skip Backward", systemSymbolName: "gobackward", action: #selector(backwardAction)),
-            NSMenuItem(title: "Skip Forward", systemSymbolName: "goforward", action: #selector(forwardAction)),
+            {
+                let menuItem = NSMenuItem()
+                menuItem.action = #selector(toggleStartStopAction)
+                menuItem.setShortcut(for: .toggleStartStop)
+                KeyboardShortcuts.onKeyDown(for: .toggleStartStop, action: toggleStartStopAction)
+                return menuItem
+            }(),
+            {
+                let menuItem = NSMenuItem()
+                menuItem.action = #selector(togglePlayPauseAction)
+                menuItem.setShortcut(for: .togglePlayPause)
+                KeyboardShortcuts.onKeyDown(for: .togglePlayPause, action: togglePlayPauseAction)
+                return menuItem
+            }(),
+            {
+                let menuItem = NSMenuItem(title: "Skip Backward", action: #selector(skipBackwardAction), keyEquivalent: "")
+                menuItem.image = NSImage(systemSymbolName: "gobackward", accessibilityDescription: nil)
+                menuItem.setShortcut(for: .skipBackward)
+                KeyboardShortcuts.onKeyDown(for: .skipBackward, action: skipBackwardAction)
+                return menuItem
+            }(),
+            {
+                let menuItem = NSMenuItem(title: "Skip Forward", action: #selector(skipForwardAction), keyEquivalent: "")
+                menuItem.image = NSImage(systemSymbolName: "goforward", accessibilityDescription: nil)
+                menuItem.setShortcut(for: .skipForward)
+                KeyboardShortcuts.onKeyDown(for: .skipForward, action: skipForwardAction)
+                return menuItem
+            }(),
             .separator(),
-            NSMenuItem(title: "Preferences...", action: #selector(openSettings), keyEquivalent: ","),
+            {
+                let menuItem = NSMenuItem(title: "Settings...", action: nil, keyEquivalent: ",")
+                if #available(macOS 14.0, *) {
+                    menuItem.target = SettingsOpener.self
+                    menuItem.action = #selector(SettingsOpener.open)
+                } else if #available(macOS 13.0, *) {
+                    menuItem.action = Selector(("showSettingsWindow:"))
+                } else {
+                    menuItem.title = "Preferences..."
+                    menuItem.action = Selector(("showPreferencesWindow:"))
+                }
+                return menuItem
+            }(),
             NSMenuItem(title: "Quit", action: #selector(NSApplication.shared.terminate), keyEquivalent: "q"),
         ]
-
-        NSApplication.shared.servicesProvider = self
-        NSUpdateDynamicServices()
-        
-#if DEBUG
-//        Defaults.removeAll()
-//        print("write")
-//        Defaults[.pronunciations] = [
-//            .init(search: "text", replace: "string"),
-//            .init(search: "test", replace: "whaaaat"),
-//            .init(search: "from", replace: "to"),
-//        ]
-//        print("read")
-//        print(Defaults[.pronunciations])
-//        print(Pronunciation.getVoiceOverPronunciations())
-//        easyReader.pronunciations = Defaults[.pronunciations]
-//        if let pronunciations = Pronunciation.getVoiceOverPronunciations() {
-//            easyReader.pronunciations.append(contentsOf: pronunciations)
-//        }
-//        if let pronunciations = Pronunciation.getVoiceOverPronunciations() {
-//            Defaults[.pronunciations].append(contentsOf: pronunciations)
-//        }
-//        print(Defaults[.pronunciations])
-
-//        easyReader.delegate?.easyReader(easyReader, didChangeState: .reading)
-//        easyReader.delegate?.easyReader(easyReader, didChangeState: .stopped)
-        
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Test View"
-        window.makeKeyAndOrderFront(nil)
-        window.center()
-        let scrollView = NSTextView.scrollableTextView()
-        guard let textView: NSTextView = scrollView.documentView as? NSTextView else { return }
-        textView.string = "This is some testing text... and it's gotta be pretty long, in order to test things well. So I guess we'll see how well it works\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nWe need lots of stuff to make it scrollable\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nDoes it work?\n\n\n\n\n\nI hope so"
-        window.contentView = scrollView
-        window.makeFirstResponder(textView)
-//        easyReader.readable = ReadableTextView(textView)
-//        _ = easyReader.start()
-#endif
-    }
-
-    @available(macOS 14.0, *)
-    private final class SettingsOpener: ObservableObject {
-        @Environment(\.openSettings) static var open
-    }
-
-    @objc func openSettings() {
-        if #available(macOS 14.0, *) {
-            SettingsOpener.open()
-        } else if #available(macOS 13.0, *) {
-            NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        } else {
-            NSApplication.shared.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
     }
 
 //    @objc func toggleActivation() {
@@ -230,51 +214,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
     }
-    
-    @objc func toggleAction() {
+
+    @objc func toggleStartStopAction() {
+        switch easyReader.state {
+            case .stopped: startAction()
+            case .reading: stopAction()
+            case .paused:
+                stopAction()
+                startAction()
+        }
+    }
+
+    @objc func togglePlayPauseAction() {
         guard easyReader.togglePauseResume() else {
             NSSound.beep()
             return
         }
     }
     
-    @objc func backwardAction() {
+    @objc func skipBackwardAction() {
         guard easyReader.skip(.backward) else {
             NSSound.beep()
             return
         }
     }
     
-    @objc func forwardAction() {
+    @objc func skipForwardAction() {
         guard easyReader.skip(.forward) else {
             NSSound.beep()
             return
-        }
-    }
-    
-//    @objc func startServiceHandler(_ pboard: NSPasteboard, userData: String, error: NSErrorPointer) {
-//        print("SERVICE: start \(pboard.types)")
-//        startAction()
-//    }
-//
-//    @objc func stopServiceHandler(_ pboard: NSPasteboard, userData: String, error: NSErrorPointer) {
-//        print("SERVICE: stop \(pboard.types)")
-//        stopAction()
-//    }
-    
-//    TODO: make sure that you either can't call start if it's reading, or that it will toggle start/stop, or it will cancel a current session
-//    TODO: maybe rename to something like easyReaderServicesHandler
-    @objc func servicesHandler(_ pboard: NSPasteboard, userData: String, error: NSErrorPointer) {
-        print("SERVICE: \(userData) \(pboard.types as Any)")
-        switch userData {
-            case "start": startAction()
-            case "stop": stopAction()
-            case "toggle": toggleAction()
-//            case "play/pause": toggleAction()
-//            case "pause/resume": toggleAction()
-            case "backward": backwardAction()
-            case "forward": forwardAction()
-            default: break
         }
     }
 }
@@ -333,39 +301,32 @@ extension AppDelegate: EasyReaderDelegate {
         } else {
             statusItem.button?.image = readerStateImageDefault
         }
-//        switch state {
-//            case .error:
-//                statusItem.button?.image = NSImage(systemSymbolName: "waveform.badge.exclamationmark", accessibilityDescription: nil)
-//            default:
-//                statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)
-//        }
         statusItem.menu?.update()
-//        if state == .error {
-//            NSSound.beep()
-//        }
     }
 }
 
 extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-            case #selector(startAction): return easyReader.state == .stopped
-            case #selector(stopAction): return easyReader.state != .stopped
-            case #selector(toggleAction):
+            case #selector(toggleStartStopAction):
+                menuItem.title = easyReader.state == .stopped ? "Start" : "Stop"
+                menuItem.image = NSImage(systemSymbolName: easyReader.state == .stopped ? "play.fill" : "stop.fill", accessibilityDescription: nil)
+                return true
+            case #selector(togglePlayPauseAction):
                 menuItem.title = easyReader.state == .paused ? "Resume" : "Pause"
-//                toggleMenu.image = NSImage(systemSymbolName: easyReader.state == .paused ? "play.fill" : "pause.fill", accessibilityDescription: nil)
+                menuItem.image = NSImage(systemSymbolName: easyReader.state == .paused ? "play.fill" : "pause.fill", accessibilityDescription: nil)
                 return easyReader.state != .stopped
-            case #selector(backwardAction): return easyReader.state != .stopped
-            case #selector(forwardAction): return easyReader.state != .stopped
+            case #selector(skipBackwardAction): return easyReader.state != .stopped
+            case #selector(skipForwardAction): return easyReader.state != .stopped
             case nil: return false
             default: return true
         }
     }
 }
 
-extension NSMenuItem {
-    convenience init(title: String, systemSymbolName: String, action: Selector?, keyEquivalent: String = "") {
-        self.init(title: title, action: action, keyEquivalent: keyEquivalent)
-        image = NSImage(systemSymbolName: systemSymbolName, accessibilityDescription: nil)
-    }
-}
+//extension NSMenuItem {
+//    convenience init(title: String, systemSymbolName: String, action: Selector?, keyEquivalent: String = "") {
+//        self.init(title: title, action: action, keyEquivalent: keyEquivalent)
+//        image = NSImage(systemSymbolName: systemSymbolName, accessibilityDescription: nil)
+//    }
+//}

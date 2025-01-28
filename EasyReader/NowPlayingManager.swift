@@ -95,8 +95,6 @@ final class NowPlayingManager: NSObject {
                 Self.infoCenter.nowPlayingInfo = nil
             case .paused:
                 Self.infoCenter.playbackState = .paused
-//            case .error:
-//                Self.infoCenter.playbackState = .interrupted
             default:
                 Self.infoCenter.playbackState = .unknown
         }

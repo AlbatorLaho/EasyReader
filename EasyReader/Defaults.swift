@@ -8,6 +8,7 @@
 import Foundation
 import AVKit
 import Defaults
+import KeyboardShortcuts
 
 extension Defaults.Keys {
 //    static let nowPlayingStaysOpen = Key<Bool>("nowPlayingStaysOpen", default: false)
@@ -40,8 +41,14 @@ extension Defaults.Keys {
 //        .stopped: "waveform.slash",
 ////        .paused: "waveform",
 ////        .reading: "waveform",
-//        .error: "waveform.badge.exclamationmark",
 //    ])
+}
+
+extension KeyboardShortcuts.Name {
+    static let toggleStartStop = Self("ToggleStartStop")
+    static let togglePlayPause = Self("TogglePlayPause")
+    static let skipBackward = Self("SkipBackward")
+    static let skipForward = Self("SkipForward")
 }
 
 extension AVSpeechSynthesisVoice: Defaults.Serializable {

@@ -23,6 +23,7 @@
 		E3A9AC592D0E5C4E00FE2E57 /* TextAreaReadableElement.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A9AC582D0E5C4E00FE2E57 /* TextAreaReadableElement.swift */; };
 		E3A9AC5B2D0E60EE00FE2E57 /* TestingReadable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A9AC5A2D0E60EE00FE2E57 /* TestingReadable.swift */; };
 		E3BC5DC92D0BEB1900D34D4F /* Readable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3BC5DC82D0BEB1900D34D4F /* Readable.swift */; };
+		E3BE9A542D474DE80019EEC0 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = E3BE9A532D474DE80019EEC0 /* KeyboardShortcuts */; };
 		E3CAE2EC2D3C6C73004EE269 /* PronunciationTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CAE2EB2D3C6C73004EE269 /* PronunciationTable.swift */; };
 		E3CAE2F22D3C845F004EE269 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CAE2F12D3C845F004EE269 /* NowPlayingManager.swift */; };
 		E3CAE2F42D3F74A9004EE269 /* UIElement+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CAE2F32D3F74A9004EE269 /* UIElement+Extensions.swift */; };
@@ -66,6 +67,7 @@
 			files = (
 				E383FBD32CF539B500F32E57 /* Defaults in Frameworks */,
 				E393FD272CD6FE7E00DA7CA3 /* AXSwift in Frameworks */,
+				E3BE9A542D474DE80019EEC0 /* KeyboardShortcuts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -169,6 +171,7 @@
 			packageProductDependencies = (
 				E393FD262CD6FE7E00DA7CA3 /* AXSwift */,
 				E383FBD22CF539B500F32E57 /* Defaults */,
+				E3BE9A532D474DE80019EEC0 /* KeyboardShortcuts */,
 			);
 			productName = EasyReader;
 			productReference = E393FD112CD6E2D100DA7CA3 /* EasyReader.app */;
@@ -201,6 +204,7 @@
 			packageReferences = (
 				E393FD252CD6FE7E00DA7CA3 /* XCRemoteSwiftPackageReference "AXSwift" */,
 				E383FBD12CF539B500F32E57 /* XCRemoteSwiftPackageReference "Defaults" */,
+				E3BE9A522D474DE80019EEC0 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 			);
 			productRefGroup = E393FD122CD6E2D100DA7CA3 /* Products */;
 			projectDirPath = "";
@@ -462,6 +466,14 @@
 				minimumVersion = 0.3.2;
 			};
 		};
+		E3BE9A522D474DE80019EEC0 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.2.4;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -474,6 +486,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E393FD252CD6FE7E00DA7CA3 /* XCRemoteSwiftPackageReference "AXSwift" */;
 			productName = AXSwift;
+		};
+		E3BE9A532D474DE80019EEC0 /* KeyboardShortcuts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E3BE9A522D474DE80019EEC0 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
+			productName = KeyboardShortcuts;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

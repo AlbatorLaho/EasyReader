@@ -9,6 +9,7 @@ import SwiftUI
 import AVKit
 import AXSwift
 import Defaults
+import KeyboardShortcuts
 
 //TODO: look at system settings for how they do pronunciations and voice settings
 struct SettingsView: View {
@@ -52,6 +53,19 @@ struct SettingsView: View {
         TabView {
             SettingsTab("General", systemImage: "gear") {
 //                Image(systemName: "gear")
+
+                VStack(alignment: .leading) {
+                    GroupBox {
+                        Form {
+                            KeyboardShortcuts.Recorder("Start/Stop:", name: .toggleStartStop)
+                            KeyboardShortcuts.Recorder("Play/Pause:", name: .togglePlayPause)
+                            KeyboardShortcuts.Recorder("Skip Backward:", name: .skipBackward)
+                            KeyboardShortcuts.Recorder("Skip Forward:", name: .skipForward)
+                        }
+                    } label: {
+                        Label("Shortcuts", systemImage: "command")
+                    }
+                }
             }
             SettingsTab("Speech", systemImage: "waveform") {
 //                Image(systemName: "waveform")
@@ -234,6 +248,7 @@ struct SettingsView: View {
                     }
 
                     Toggle("Use \"Now Playing Center\" controls", systemImage: "play.circle", isOn: $useNowPlayingCenter)
+//                    Toggle("\"Now Playing Center\" integration", systemImage: "play.circle", isOn: $useNowPlayingCenter)
 //                    GroupBox {
 //                        Form {
 //                        }

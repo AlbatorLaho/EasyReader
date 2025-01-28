@@ -15,31 +15,12 @@ import SwiftUI
 //don't have any nested types? (since protocols can't be nested, like EasyReaderDelegate) e.g. EasyReader.State > EasyReaderState
 //rename to play/pause instead of resume/pause?
 struct ContentView: View {
-    private let appDelegate: AppDelegate
-    
-    init(appDelegate: AppDelegate) {
-        self.appDelegate = appDelegate
-    }
+    @State private var text = "This is some testing text... and it's gotta be pretty long, in order to test things well. So I guess we'll see how well it works\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nWe need lots of stuff to make it scrollable\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nDoes it work?\n\n\n\n\n\nI hope so"
 
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundColor(.accentColor)
-            Text("Hello, world!")
-            HStack {
-                Button("Play", action: appDelegate.startAction)
-                Button("Stop", action: appDelegate.stopAction)
-                Button("Pause/Resume", action: appDelegate.toggleAction)
-                Button("<<<", action: appDelegate.backwardAction)
-                Button(">>>", action: appDelegate.forwardAction)
-            }
-            Button("Test", action: {
-                appDelegate.easyReader.readable = TestingReadable()
-                _ = appDelegate.easyReader.start()
-            })
-        }
-        .padding()
+        TextEditor(text: $text)
+            .font(.largeTitle)
+            .padding()
     }
 }
 

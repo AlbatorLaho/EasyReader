@@ -268,6 +268,5 @@ extension EasyReader {
         case stopped
         case reading
         case paused
-        case error
     }
 }
