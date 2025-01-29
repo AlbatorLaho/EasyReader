@@ -16,18 +16,14 @@ protocol EasyReaderDelegate: AnyObject {
 
 //FIXME: won't properly stop/resume if paused at the end of reading
 final class EasyReader: NSObject {
-    private var shouldStop = true
+    private var stopType: StopType = .none
     private(set) var state: State = .stopped {
         didSet {
             guard state != oldValue else { return }
-//            print("state: \(state)")
             delegate?.easyReader(self, didChangeState: state)
-//            if state == .stopped {
-//                readable = nil
-//            }
         }
     }
-    
+
     private let synthesizer = AVSpeechSynthesizer()
     private var utterance: AVSpeechUtterance?
 //    var voice: AVSpeechSynthesisVoice?
@@ -146,7 +142,7 @@ final class EasyReader: NSObject {
         utterance.preUtteranceDelay = Defaults[.speechDelayBefore]
         utterance.postUtteranceDelay = Defaults[.speechDelayAfter]
         if synthesizer.isSpeaking {
-            shouldStop = false
+            stopType = .stop
 //            synthesizer.pauseSpeaking(at: Defaults[.speechStopBoundary])
             synthesizer.stopSpeaking(at: Defaults[.speechStopBoundary])
         }
@@ -200,6 +196,7 @@ final class EasyReader: NSObject {
     
     func stop() -> Bool {
         guard state != .stopped else { return false }
+        stopType = .cancel
 //        synthesizer.pauseSpeaking(at: Defaults[.speechStopBoundary])
         return synthesizer.stopSpeaking(at: Defaults[.speechStopBoundary])
     }
@@ -211,7 +208,7 @@ final class EasyReader: NSObject {
     
 //    TODO: should have option to either resume from last word, or restart from begining of selection
 //    TODO: check if selection has changed, if so, don't resume, start over?
-   func resume() -> Bool {
+    func resume() -> Bool {
         guard state == .paused else { return false }
         return synthesizer.continueSpeaking()
     }
@@ -239,9 +236,15 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         guard let selection = readable?.selection,
               !selection.isEmpty,
+              stopType == .none,
               skip(.forward)
         else {
-            state = .stopped
+            if stopType == .cancel {
+                speechSynthesizer(synthesizer, didCancel: utterance)
+            } else {
+                state = .stopped
+                stopType = .none
+            }
             return
         }
     }
@@ -255,15 +258,19 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
     }
     
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        guard shouldStop else {
-            shouldStop = true
-            return
-        }
+        guard stopType == .cancel else { return }
         state = .stopped
+        stopType = .none
     }
 }
 
 extension EasyReader {
+    enum StopType {
+        case none
+        case stop
+        case cancel
+    }
+
     enum State {
         case stopped
         case reading
