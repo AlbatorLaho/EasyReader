@@ -227,12 +227,9 @@ struct SettingsView: View {
                                     Slider(value: $scrollDuration, in: 0...3, step: 0.25) {
                                         Text("Duration:")
                                     } minimumValueLabel: { Text("0s") } maximumValueLabel: { Text("3s") }
-//                                    Slider(value: $scrollUpdateRate, in: 0...120, step: 10) {
-//                                        Text("Update Rate:")
-//                                    } minimumValueLabel: { Text("0/s") } maximumValueLabel: { Text("120/s") }
                                     HStack {
-                                        TextField("Update Rate:", value: $scrollUpdateRate, formatter: NumberFormatter())
-                                        Stepper("", value: $scrollUpdateRate, in: 0...120, step: 5)
+                                        TextField("Updates/s:", value: $scrollUpdateRate, formatter: NumberFormatter())
+                                        Stepper("", value: $scrollUpdateRate, in: 0...60, step: 5)
                                             .labelsHidden()
                                     }
                                 }

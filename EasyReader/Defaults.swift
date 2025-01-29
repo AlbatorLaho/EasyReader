@@ -35,13 +35,6 @@ extension Defaults.Keys {
 
 //    static let useVoiceOverPronunciations = Key<Bool>("useVoiceOverPronunciations", default: false)
     static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [])
-//    NOTE: can't use EasyReader.State as the Dictionary key for some reason
-//    static let stateImageNames = Key<[EasyReader.State: String]>("StateImages", default: [
-////        .stopped: "waveform",
-//        .stopped: "waveform.slash",
-////        .paused: "waveform",
-////        .reading: "waveform",
-//    ])
 }
 
 extension KeyboardShortcuts.Name {

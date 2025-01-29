@@ -80,7 +80,6 @@ struct EasyReaderApp: App {
 //            }
 //        }
         Settings {
-//            EmptyView()
             SettingsView()
                 .onAppear() {
                     NSApplication.shared.setActivationPolicy(.regular)
@@ -291,11 +290,7 @@ extension AppDelegate: NowPlayingManagerDelegate {
 
 extension AppDelegate: EasyReaderDelegate {
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
-        if Defaults[.useNowPlayingCenter] {
-            nowPlayingManager.updateInfo(easyReader.readable, state: state)
-        } else {
-            nowPlayingManager.updateInfo(easyReader.readable, state: .stopped)
-        }
+        nowPlayingManager.updateInfo(easyReader.readable, state: Defaults[.useNowPlayingCenter] ? state : .stopped)
         if let imageName = readerStateImages[state], let image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil) {
             statusItem.button?.image = image
         } else {

@@ -15,6 +15,8 @@ extension ReadableElement.Role {
 
 final class TextAreaReadableElement: ReadableElement {
     private let scrollArea: UIElement?
+    private var horizontalScrollTimer: Timer?
+    private var verticalScrollTimer: Timer?
 
     override var fullText: String? { try? handle.attribute(.value) }
     override var selectedText: String? { try? handle.attribute(.selectedText) }
@@ -48,7 +50,8 @@ final class TextAreaReadableElement: ReadableElement {
             let max = contentFrame.width - viewableFrame.width
             let scrollValue = max.isNormal ? value / max : 0
             if options.smooth {
-                lerpScroll(for: horizontalScrollBar, to: scrollValue, options: options)
+                horizontalScrollTimer?.invalidate()
+                horizontalScrollTimer = lerpScroll(for: horizontalScrollBar, to: scrollValue, options: options)
             } else {
                 try? horizontalScrollBar.setAttribute(.value, value: scrollValue)
             }
@@ -58,17 +61,18 @@ final class TextAreaReadableElement: ReadableElement {
             let max = contentFrame.height - viewableFrame.height
             let scrollValue = max.isNormal ? value / max : 0
             if options.smooth {
-                lerpScroll(for: verticalScrollBar, to: scrollValue, options: options)
+                verticalScrollTimer?.invalidate()
+                verticalScrollTimer = lerpScroll(for: verticalScrollBar, to: scrollValue, options: options)
             } else {
                 try? verticalScrollBar.setAttribute(.value, value: scrollValue)
             }
         }
     }
 
-    private func lerpScroll(for scrollBar: UIElement, to target: CGFloat, options: ScrollOptions) {
+    private func lerpScroll(for scrollBar: UIElement, to target: CGFloat, options: ScrollOptions) -> Timer? {
         guard let current: CGFloat = try? scrollBar.attribute(.value) else {
             try? scrollBar.setAttribute(.value, value: target)
-            return
+            return nil
         }
 
         let frameInterval = 1.0 / options.updateRate
@@ -76,7 +80,7 @@ final class TextAreaReadableElement: ReadableElement {
         let step = (target - current) / CGFloat(totalFrames)
         var currentFrame = 0
 
-        Timer.scheduledTimer(withTimeInterval: frameInterval, repeats: true) { timer in
+        return Timer.scheduledTimer(withTimeInterval: frameInterval, repeats: true) { timer in
             let value: CGFloat
             if currentFrame >= totalFrames {
                 timer.invalidate()
