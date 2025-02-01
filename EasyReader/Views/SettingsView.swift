@@ -12,8 +12,9 @@ import Defaults
 import KeyboardShortcuts
 
 //TODO: look at system settings for how they do pronunciations and voice settings
+//TODO: have Hide Dock Icon and Hide Status Bar Icon?
 struct SettingsView: View {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @NSApplicationDelegateAdaptor var appDelegate: AppDelegate
 
     @Default(.speechVoice) var speechVoice
     @Default(.speechVolume) var speechVolume

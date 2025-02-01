@@ -13,9 +13,10 @@ import KeyboardShortcuts
 
 @main
 struct EasyReaderApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @NSApplicationDelegateAdaptor var appDelegate: AppDelegate
 //    @Environment(\.openSettings) private var openSettings
 //    @Environment(\.openWindow) private var openWindow
+    @Environment(\.scenePhase) private var scenePhase
 
 //    init() {
 //        NSApplication.shared.setActivationPolicy(.accessory)
@@ -81,19 +82,25 @@ struct EasyReaderApp: App {
 //        }
         Settings {
             SettingsView()
-                .onAppear() {
-                    NSApplication.shared.setActivationPolicy(.regular)
-                    NSApplication.shared.activate(ignoringOtherApps: true)
-                }
-                .onExitCommand() {
-                    print("exit")
-                }
-                .onDisappear() {
-                    print("disappear")
-                    NSApplication.shared.setActivationPolicy(.prohibited)
-//                    NSApplication.shared.deactivate()
-                }
 //                .textFieldStyle(.roundedBorder)
+//                .onExitCommand() {
+////                    TODO: close settings?
+//                    print("onExitCommand")
+//                }
+//                .onAppear() {
+//                    print("onAppear")
+//                    NSApplication.shared.setActivationPolicy(.regular)
+//                    if #available(macOS 14.0, *) {
+//                        NSApplication.shared.activate()
+//                    } else {
+//                        NSApplication.shared.activate(ignoringOtherApps: true)
+//                    }
+//                }
+//                .onDisappear() {
+//                    print("onDisappear")
+//                    NSApplication.shared.setActivationPolicy(.accessory)
+//                    NSApplication.shared.deactivate()
+//                }
         }
     }
 }
@@ -122,15 +129,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 //    TODO: use .prohibited unless a window needs to be opened, then use .accessory or .regular (make sure the permisions dialog can be opened)
     func applicationWillFinishLaunching(_ notification: Notification) {
-#if !DEBUG
-        NSApplication.shared.setActivationPolicy(.prohibited)
-//        NSApplication.shared.setActivationPolicy(.accessory)
-#endif
+//#if !DEBUG
 //        NSApplication.shared.setActivationPolicy(.regular)
-//        NSApplication.shared.activate(ignoringOtherApps: true)
+//        NSApplication.shared.setActivationPolicy(.accessory)
+//        NSApplication.shared.setActivationPolicy(.prohibited)
+//#endif
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+//        NSApplication.shared.setActivationPolicy(.accessory)
+
         easyReader = EasyReader()
         easyReader.textSelector = NLTextSelector(unit: .sentence)
         easyReader.delegate = self
@@ -187,19 +195,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]
     }
 
-//    @objc func toggleActivation() {
-//        switch NSApplication.shared.activationPolicy() {
-//        case .regular:
-//            NSApplication.shared.setActivationPolicy(.prohibited)
-//            NSApplication.shared.activate(ignoringOtherApps: true)
-//        case .prohibited:
-//            NSApplication.shared.setActivationPolicy(.regular)
-//            NSApplication.shared.activate(ignoringOtherApps: true)
-////        case .prohibited: break
-//        default: break
-//        }
-//    }
-    
     @objc func startAction() {
         guard let app = NSWorkspace.shared.frontmostApplication, easyReader.start(reading: app) else {
             NSSound.beep()
