@@ -24,11 +24,17 @@
 		E3A9AC5B2D0E60EE00FE2E57 /* TestingReadable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A9AC5A2D0E60EE00FE2E57 /* TestingReadable.swift */; };
 		E3BC5DC92D0BEB1900D34D4F /* Readable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3BC5DC82D0BEB1900D34D4F /* Readable.swift */; };
 		E3BE9A542D474DE80019EEC0 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = E3BE9A532D474DE80019EEC0 /* KeyboardShortcuts */; };
+		E3C29E312D540B4600894DDC /* TextPlayground.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C29E302D540B4600894DDC /* TextPlayground.swift */; };
+		E3C29E332D540B8400894DDC /* ResetDefaultsButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C29E322D540B8400894DDC /* ResetDefaultsButton.swift */; };
+		E3C29E352D540BB100894DDC /* SliderControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C29E342D540BB100894DDC /* SliderControls.swift */; };
 		E3CAE2EC2D3C6C73004EE269 /* PronunciationTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CAE2EB2D3C6C73004EE269 /* PronunciationTable.swift */; };
 		E3CAE2F22D3C845F004EE269 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CAE2F12D3C845F004EE269 /* NowPlayingManager.swift */; };
 		E3CAE2F42D3F74A9004EE269 /* UIElement+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CAE2F32D3F74A9004EE269 /* UIElement+Extensions.swift */; };
 		E3CE6D542D1906F000A1106A /* Defaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CE6D532D1906F000A1106A /* Defaults.swift */; };
 		E3CE6D562D19071D00A1106A /* Pronunciation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CE6D552D19071D00A1106A /* Pronunciation.swift */; };
+		E3DA47AB2D4DA3CE00E87CB6 /* SettingsGeneralView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DA47AA2D4DA3CE00E87CB6 /* SettingsGeneralView.swift */; };
+		E3DA47AD2D4DA45500E87CB6 /* SettingsSpeechView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DA47AC2D4DA45500E87CB6 /* SettingsSpeechView.swift */; };
+		E3DA47AF2D4DA46600E87CB6 /* SettingsReadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DA47AE2D4DA46600E87CB6 /* SettingsReadingView.swift */; };
 		E3DBB12E2D2775FA00394A91 /* SettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DBB12D2D2775FA00394A91 /* SettingsTab.swift */; };
 		E3DBB1302D27761400394A91 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DBB12F2D27761400394A91 /* SettingsView.swift */; };
 /* End PBXBuildFile section */
@@ -51,11 +57,17 @@
 		E3A9AC582D0E5C4E00FE2E57 /* TextAreaReadableElement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextAreaReadableElement.swift; sourceTree = "<group>"; };
 		E3A9AC5A2D0E60EE00FE2E57 /* TestingReadable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestingReadable.swift; sourceTree = "<group>"; };
 		E3BC5DC82D0BEB1900D34D4F /* Readable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Readable.swift; sourceTree = "<group>"; };
+		E3C29E302D540B4600894DDC /* TextPlayground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPlayground.swift; sourceTree = "<group>"; };
+		E3C29E322D540B8400894DDC /* ResetDefaultsButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResetDefaultsButton.swift; sourceTree = "<group>"; };
+		E3C29E342D540BB100894DDC /* SliderControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SliderControls.swift; sourceTree = "<group>"; };
 		E3CAE2EB2D3C6C73004EE269 /* PronunciationTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PronunciationTable.swift; sourceTree = "<group>"; };
 		E3CAE2F12D3C845F004EE269 /* NowPlayingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingManager.swift; sourceTree = "<group>"; };
 		E3CAE2F32D3F74A9004EE269 /* UIElement+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIElement+Extensions.swift"; sourceTree = "<group>"; };
 		E3CE6D532D1906F000A1106A /* Defaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Defaults.swift; sourceTree = "<group>"; };
 		E3CE6D552D19071D00A1106A /* Pronunciation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pronunciation.swift; sourceTree = "<group>"; };
+		E3DA47AA2D4DA3CE00E87CB6 /* SettingsGeneralView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsGeneralView.swift; sourceTree = "<group>"; };
+		E3DA47AC2D4DA45500E87CB6 /* SettingsSpeechView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSpeechView.swift; sourceTree = "<group>"; };
+		E3DA47AE2D4DA46600E87CB6 /* SettingsReadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsReadingView.swift; sourceTree = "<group>"; };
 		E3DBB12D2D2775FA00394A91 /* SettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTab.swift; sourceTree = "<group>"; };
 		E3DBB12F2D27761400394A91 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -146,6 +158,12 @@
 			isa = PBXGroup;
 			children = (
 				E3DBB12F2D27761400394A91 /* SettingsView.swift */,
+				E3DA47AE2D4DA46600E87CB6 /* SettingsReadingView.swift */,
+				E3DA47AC2D4DA45500E87CB6 /* SettingsSpeechView.swift */,
+				E3DA47AA2D4DA3CE00E87CB6 /* SettingsGeneralView.swift */,
+				E3C29E342D540BB100894DDC /* SliderControls.swift */,
+				E3C29E322D540B8400894DDC /* ResetDefaultsButton.swift */,
+				E3C29E302D540B4600894DDC /* TextPlayground.swift */,
 				E3DBB12D2D2775FA00394A91 /* SettingsTab.swift */,
 				E3CAE2EB2D3C6C73004EE269 /* PronunciationTable.swift */,
 			);
@@ -233,15 +251,20 @@
 			buildActionMask = 2147483647;
 			files = (
 				E3A9AC572D0E5C4500FE2E57 /* WebAreaReadableElement.swift in Sources */,
+				E3DA47AD2D4DA45500E87CB6 /* SettingsSpeechView.swift in Sources */,
 				E3CE6D542D1906F000A1106A /* Defaults.swift in Sources */,
 				E3DBB12E2D2775FA00394A91 /* SettingsTab.swift in Sources */,
 				E3CAE2F22D3C845F004EE269 /* NowPlayingManager.swift in Sources */,
 				E3BC5DC92D0BEB1900D34D4F /* Readable.swift in Sources */,
 				E3CAE2F42D3F74A9004EE269 /* UIElement+Extensions.swift in Sources */,
 				E393FD172CD6E2D100DA7CA3 /* ContentView.swift in Sources */,
+				E3DA47AF2D4DA46600E87CB6 /* SettingsReadingView.swift in Sources */,
+				E3C29E312D540B4600894DDC /* TextPlayground.swift in Sources */,
 				E3A9AC5B2D0E60EE00FE2E57 /* TestingReadable.swift in Sources */,
+				E3C29E332D540B8400894DDC /* ResetDefaultsButton.swift in Sources */,
 				E393FD152CD6E2D100DA7CA3 /* EasyReaderApp.swift in Sources */,
 				E3CAE2EC2D3C6C73004EE269 /* PronunciationTable.swift in Sources */,
+				E3DA47AB2D4DA3CE00E87CB6 /* SettingsGeneralView.swift in Sources */,
 				E39C50012D14AADF0011D8C4 /* NLTextSelector.swift in Sources */,
 				E3CE6D562D19071D00A1106A /* Pronunciation.swift in Sources */,
 				E3DBB1302D27761400394A91 /* SettingsView.swift in Sources */,
@@ -250,6 +273,7 @@
 				E39C50032D15F1E20011D8C4 /* ReadableTextView.swift in Sources */,
 				E39BE5A72CD9E3A400B62873 /* TextSelector.swift in Sources */,
 				E39BE5A12CD8919400B62873 /* EasyReader.swift in Sources */,
+				E3C29E352D540BB100894DDC /* SliderControls.swift in Sources */,
 				E3A9AC592D0E5C4E00FE2E57 /* TextAreaReadableElement.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

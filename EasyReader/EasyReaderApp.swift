@@ -138,6 +138,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
 //        NSApplication.shared.setActivationPolicy(.accessory)
+#if DEBUG
+        NSApplication.shared.setActivationPolicy(.regular)
+#endif
 
         easyReader = EasyReader()
         easyReader.textSelector = NLTextSelector(unit: .sentence)
@@ -285,7 +288,7 @@ extension AppDelegate: NowPlayingManagerDelegate {
 
 extension AppDelegate: EasyReaderDelegate {
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
-        nowPlayingManager.updateInfo(easyReader.readable, state: Defaults[.useNowPlayingCenter] ? state : .stopped)
+        nowPlayingManager.updateInfo(easyReader.readable, state: Defaults[.nowPlayingCenterIntegration] ? state : .stopped)
         if let imageName = readerStateImages[state], let image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil) {
             statusItem.button?.image = image
         } else {

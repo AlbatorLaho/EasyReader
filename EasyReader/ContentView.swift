@@ -14,6 +14,11 @@ import SwiftUI
 //localization
 //don't have any nested types? (since protocols can't be nested, like EasyReaderDelegate) e.g. EasyReader.State > EasyReaderState
 //rename to play/pause instead of resume/pause?
+//make sure any buttons/menus that open a dialog, end with "..."
+//change playback rate while reading (also need global shortcuts)
+//fix speech settings to update while reading (if possible)
+//make sure scrolling selection into view happens when starting/resuming reading?
+//make sure selection unit/text selector is updated correctly, when changed in the settings
 struct ContentView: View {
     @State private var text = "This is some testing text... and it's gotta be pretty long, in order to test things well. So I guess we'll see how well it works\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nWe need lots of stuff to make it scrollable\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nDoes it work?\n\n\n\n\n\nI hope so"
 
@@ -23,9 +28,3 @@ struct ContentView: View {
             .padding()
     }
 }
-
-//struct ContentView_Previews: PreviewProvider {
-//    static var previews: some View {
-//        ContentView()
-//    }
-//}

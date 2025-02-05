@@ -11,12 +11,11 @@ import Defaults
 import KeyboardShortcuts
 
 extension Defaults.Keys {
-//    static let nowPlayingStaysOpen = Key<Bool>("nowPlayingStaysOpen", default: false)
-//    resume from start of word, selection, ¿file?, what else?
-//    static let mowPlayingPauseType = Key<Bool>("mowPlayingPauseType", default: true)
-//    static let useNowPlaying = Key<Bool>("useNowPlaying", default: true)
+    static let nowPlayingCenterIntegration = Key<Bool>("NowPlayingCenterIntegration", default: true)
+//    static let nowPlayingCenterStaysOpen = Key<Bool>("NowPlayingCenterStaysOpen", default: false)
+//    TODO: resume from start of word, selection, ¿file?, what else?
+//    static let nowPlayingCenterPauseType = Key<Bool>("NowPlayingCenterPauseType", default: true)
 
-//    static let useSystemVoice = Key<Bool>("useSystemVoice", default: false)
     static let speechVoice = Key<AVSpeechSynthesisVoice?>("SpeechVoice")
     static let speechVolume = Key<Float>("SpeechVolume", default: 1.0)
     static let speechRate = Key<Float>("SpeechRate", default: AVSpeechUtteranceDefaultSpeechRate)
@@ -29,9 +28,8 @@ extension Defaults.Keys {
     static let scrollSelectionIntoView = Key<Bool>("ScrollSelectionIntoView", default: true)
     static let scrollPadding = Key<Int>("ScrollPadding", default: 16)
     static let scrollSmooth = Key<Bool>("ScrollSmooth", default: true)
-    static let scrollDuration = Key<Double>("ScrollDuration", default: 0.25)
+    static let scrollDuration = Key<Double>("ScrollDuration", default: 0.3)
     static let scrollUpdateRate = Key<Double>("ScrollUpdateRate", default: 60)
-    static let useNowPlayingCenter = Key<Bool>("UseNowPlayingCenter", default: true)
 
 //    static let useVoiceOverPronunciations = Key<Bool>("useVoiceOverPronunciations", default: false)
     static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [])
