@@ -11,6 +11,7 @@ import Defaults
 struct SettingsReadingView: View {
 //    TODO: rename these to properly reflect their display names
     @Default(.selectionUnit) private var selectionUnit
+    @Default(.resumeUnit) private var resumeUnit
     @Default(.scrollSelectionIntoView) private var scrollSelectionIntoView
     @Default(.scrollPadding) private var scrollPadding
     @Default(.scrollSmooth) private var scrollSmooth
@@ -21,13 +22,19 @@ struct SettingsReadingView: View {
         VStack(alignment: .leading, spacing: 30) {
             GroupBox {
                 Form {
-                    Picker("Unit:", selection: $selectionUnit) {
+                    Picker("Selection Unit:", selection: $selectionUnit) {
                         Text("Sentence").tag(Selection.Unit.sentence)
                         Text("Paragraph").tag(Selection.Unit.paragraph)
                     }
+
+                    Picker("Resume From:", selection: $resumeUnit) {
+                        Text("Word").tag(EasyReader.ResumeUnit.word)
+                        Text("Selection").tag(EasyReader.ResumeUnit.selection)
+                    }
                 }
             } label: {
-                Label("Selecting", systemImage: "doc.text.magnifyingglass")
+//                Label("Selecting", systemImage: "doc.text.magnifyingglass")
+                Label("Reading", systemImage: "doc.plaintext")
             }
 
             GroupBox {

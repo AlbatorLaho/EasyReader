@@ -45,7 +45,7 @@ struct EasyReaderApp: App {
 //                        }
 //                    }
 //                    Button("Pause/Resume", systemImage: "playpause.fill") {
-//                        guard appDelegate.easyReader.togglePauseResume() else {
+//                        guard appDelegate.easyReader.togglePlayPause() else {
 //                            NSSound.beep()
 //                            return
 //                        }
@@ -108,6 +108,7 @@ struct EasyReaderApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var easyReader: EasyReader!
     var nowPlayingManager: NowPlayingManager!
+    var defaultsObservation: Defaults.Observation!
     var statusItem: NSStatusItem!
 //    TODO: handle these better
     var readerStateImageDefault = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)!
@@ -148,6 +149,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         nowPlayingManager = NowPlayingManager()
         nowPlayingManager.delegate = self
 
+        defaultsObservation = Defaults.observe(keys:
+            .speechVoice,
+            .speechVolume,
+            .speechRate,
+            .speechPitch
+        ) { [self] in
+            if easyReader.state == .reading {
+                easyReader.play(from: .word)
+            }
+        }
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = readerStateImageDefault
         statusItem.menu = NSMenu()
@@ -167,17 +179,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return menuItem
             }(),
             {
-                let menuItem = NSMenuItem(title: "Skip Backward", action: #selector(skipBackwardAction), keyEquivalent: "")
-                menuItem.image = NSImage(systemSymbolName: "gobackward", accessibilityDescription: nil)
-                menuItem.setShortcut(for: .skipBackward)
-                KeyboardShortcuts.onKeyDown(for: .skipBackward, action: skipBackwardAction)
-                return menuItem
-            }(),
-            {
                 let menuItem = NSMenuItem(title: "Skip Forward", action: #selector(skipForwardAction), keyEquivalent: "")
                 menuItem.image = NSImage(systemSymbolName: "goforward", accessibilityDescription: nil)
                 menuItem.setShortcut(for: .skipForward)
                 KeyboardShortcuts.onKeyDown(for: .skipForward, action: skipForwardAction)
+                return menuItem
+            }(),
+            {
+                let menuItem = NSMenuItem(title: "Skip Backward", action: #selector(skipBackwardAction), keyEquivalent: "")
+                menuItem.image = NSImage(systemSymbolName: "gobackward", accessibilityDescription: nil)
+                menuItem.setShortcut(for: .skipBackward)
+                KeyboardShortcuts.onKeyDown(for: .skipBackward, action: skipBackwardAction)
                 return menuItem
             }(),
             .separator(),
@@ -196,41 +208,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }(),
             NSMenuItem(title: "Quit", action: #selector(NSApplication.shared.terminate), keyEquivalent: "q"),
         ]
-    }
 
-    @objc func startAction() {
-        guard let app = NSWorkspace.shared.frontmostApplication, easyReader.start(reading: app) else {
-            NSSound.beep()
-            return
+        KeyboardShortcuts.onKeyDown(for: .increaseRate) {
+            Defaults[.speechRate] = min(max(Defaults[.speechRate] + 0.05, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
         }
-    }
-    
-    @objc func stopAction() {
-        guard easyReader.stop() else {
-            NSSound.beep()
-            return
+        KeyboardShortcuts.onKeyDown(for: .decreaseRate) {
+            Defaults[.speechRate] = min(max(Defaults[.speechRate] - 0.05, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
+        }
+        KeyboardShortcuts.onKeyDown(for: .defaultRate) {
+            Defaults.reset(.speechRate)
         }
     }
 
     @objc func toggleStartStopAction() {
         switch easyReader.state {
-            case .stopped: startAction()
-            case .reading: stopAction()
-            case .paused:
-                stopAction()
-                startAction()
+            case .reading:
+                guard easyReader.stop() else {
+                    NSSound.beep()
+                    return
+                }
+            case .paused, .stopped:
+                guard easyReader.start(reading: .frontmostApp) else {
+                    NSSound.beep()
+                    return
+                }
         }
     }
 
     @objc func togglePlayPauseAction() {
-        guard easyReader.togglePauseResume() else {
-            NSSound.beep()
-            return
-        }
-    }
-    
-    @objc func skipBackwardAction() {
-        guard easyReader.skip(.backward) else {
+        guard easyReader.togglePlayPause() else {
             NSSound.beep()
             return
         }
@@ -242,12 +248,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
     }
+
+    @objc func skipBackwardAction() {
+        guard easyReader.skip(.backward) else {
+            NSSound.beep()
+            return
+        }
+    }
 }
 
 //TODO: use commandFailed, noSuchContent, and noActionableNowPlayingItem?
 extension AppDelegate: NowPlayingManagerDelegate {
     func play(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        return easyReader.start() ? .success : .commandFailed
+        return easyReader.play(from: .selection) ? .success : .commandFailed
     }
     func stop(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
         return easyReader.stop() ? .success : .commandFailed
@@ -256,7 +269,7 @@ extension AppDelegate: NowPlayingManagerDelegate {
         return easyReader.pause() ? .success : .commandFailed
     }
     func togglePlayPause(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        return easyReader.togglePauseResume() ? .success : .commandFailed
+        return easyReader.togglePlayPause() ? .success : .commandFailed
     }
 
     func nextTrack(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
@@ -265,23 +278,30 @@ extension AppDelegate: NowPlayingManagerDelegate {
     func previousTrack(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
         return easyReader.skip(.backward) ? .success : .commandFailed
     }
-//    func skipForward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+//    func skipForward(_ event: MPSkipIntervalCommandEvent) -> MPRemoteCommandHandlerStatus {
+//        print("skipForward: \(event.interval)")
 //        return .success
 //    }
-//    func skipBackward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+//    func skipBackward(_ event: MPSkipIntervalCommandEvent) -> MPRemoteCommandHandlerStatus {
+//        print("skipBackward: \(event.interval)")
 //        return .success
 //    }
-//    func seekForward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+//    func seekForward(_ event: MPSeekCommandEvent) -> MPRemoteCommandHandlerStatus {
+//        print("seekForward: \(event.type)")
 //        return .success
 //    }
-//    func seekBackward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+//    func seekBackward(_ event: MPSeekCommandEvent) -> MPRemoteCommandHandlerStatus {
+//        print("seekBackward: \(event.type)")
 //        return .success
 //    }
 
-//    func changePlaybackRate(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-//        return .success
-//    }
-//    func changePlaybackPosition(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
+    func changePlaybackRate(_ event: MPChangePlaybackRateCommandEvent) -> MPRemoteCommandHandlerStatus {
+        print("changePlaybackRate: \(event.playbackRate)")
+        Defaults[.speechRate] = min(max(event.playbackRate, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
+        return .success
+    }
+//    func changePlaybackPosition(_ event: MPChangePlaybackPositionCommandEvent) -> MPRemoteCommandHandlerStatus {
+//        print("changePlaybackPosition: \(event.positionTime)")
 //        return .success
 //    }
 }
@@ -309,17 +329,10 @@ extension AppDelegate: NSMenuItemValidation {
                 menuItem.title = easyReader.state == .paused ? "Resume" : "Pause"
                 menuItem.image = NSImage(systemSymbolName: easyReader.state == .paused ? "play.fill" : "pause.fill", accessibilityDescription: nil)
                 return easyReader.state != .stopped
-            case #selector(skipBackwardAction): return easyReader.state != .stopped
             case #selector(skipForwardAction): return easyReader.state != .stopped
+            case #selector(skipBackwardAction): return easyReader.state != .stopped
             case nil: return false
             default: return true
         }
     }
 }
-
-//extension NSMenuItem {
-//    convenience init(title: String, systemSymbolName: String, action: Selector?, keyEquivalent: String = "") {
-//        self.init(title: title, action: action, keyEquivalent: keyEquivalent)
-//        image = NSImage(systemSymbolName: systemSymbolName, accessibilityDescription: nil)
-//    }
-//}

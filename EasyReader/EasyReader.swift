@@ -25,25 +25,16 @@ final class EasyReader: NSObject {
     }
 
     private let synthesizer = AVSpeechSynthesizer()
-    private var utterance: AVSpeechUtterance?
-//    var voice: AVSpeechSynthesisVoice?
-    var rate: Float? { utterance?.rate }
-////    private let defaultPronunciations: [Pronunciation] = []
-//    var pronunciations: [Pronunciation] = []
     var textSelector: TextSelector?
     var readable: Readable?
     weak var delegate: EasyReaderDelegate?
+    private var lastSelection: Selection?
+    private var lastSpeechString: String?
+    private var lastCharacterRange: NSRange?
 
     override init() {
         super.init()
         synthesizer.delegate = self
-//        setupVoiceSettings()
-//        setupPronunciationsAndMaybeVoice()
-//        print(AVSpeechUtteranceDefaultSpeechRate)
-//        print(AVSpeechUtteranceMinimumSpeechRate)
-//        print(AVSpeechUtteranceMaximumSpeechRate)
-//        print(NSSpeechSynthesizer.defaultVoice.rawValue)
-//        print(AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())?.identifier)
     }
 
 //    private func setupVoiceSettings() {
@@ -121,7 +112,7 @@ final class EasyReader: NSObject {
         return true
     }
 
-    private func readSelection() -> Bool {
+    private func readSelection(at index: Int? = nil) -> Bool {
         guard var selectedText = readable?.selectedText else { return false }
         for pronunciation in Defaults[.pronunciations].filter({ $0.domain == nil || $0.domain == readable?.appDomain }) {
             selectedText = selectedText.replacingOccurrences(
@@ -130,11 +121,14 @@ final class EasyReader: NSObject {
                 options: pronunciation.options
             )
         }
-//        print("reading: \(selectedText)")
+        if let index, let lastSpeechString, let lastSpeechStringRange = selectedText.range(of: lastSpeechString, options: [.anchored, .backwards]) {
+            let lastRange = NSRange(lastSpeechStringRange, in: selectedText)
+            let newRange = NSRange(index + lastRange.lowerBound..<lastRange.upperBound)
+            if let range = Range(newRange, in: selectedText) {
+                selectedText = String(selectedText[range])
+            }
+        }
         let utterance = AVSpeechUtterance(string: selectedText)
-        self.utterance = utterance
-//        NOTE: appears to have no affect
-        utterance.prefersAssistiveTechnologySettings = true
         utterance.voice = Defaults[.speechVoice]
         utterance.volume = Defaults[.speechVolume]
         utterance.rate = Defaults[.speechRate]
@@ -143,48 +137,52 @@ final class EasyReader: NSObject {
         utterance.postUtteranceDelay = Defaults[.speechDelayAfter]
         if synthesizer.isSpeaking {
             stopType = .stop
-//            synthesizer.pauseSpeaking(at: .immediate)
             synthesizer.stopSpeaking(at: .immediate)
         }
+        lastSelection = readable?.selection
+        lastSpeechString = nil
+        lastCharacterRange = nil
         synthesizer.speak(utterance)
         return true
     }
 
 
 
-    func start() -> Bool {
-        guard state == .stopped, ensureSelection() else { return false }
-        return readSelection()
+    @discardableResult
+    func play(from unit: ResumeUnit) -> Bool {
+        guard let selection = readable?.selection, lastSelection == selection else {
+            return ensureSelection() && readSelection()
+        }
+        switch unit {
+            case .word: return readSelection(at: lastCharacterRange?.lowerBound)
+            case .selection: return readSelection()
+        }
     }
 
-    func stop() -> Bool {
-        guard state != .stopped else { return false }
-        stopType = .cancel
-//        synthesizer.pauseSpeaking(at: Defaults[.speechStopBoundary])
-        return synthesizer.stopSpeaking(at: Defaults[.speechStopBoundary])
-    }
-
+    @discardableResult
     func pause() -> Bool {
         guard state == .reading else { return false }
         return synthesizer.pauseSpeaking(at: Defaults[.speechStopBoundary])
     }
 
-//    TODO: should have option to either resume from last word, or restart from begining of selection
-//    TODO: check if selection has changed, if so, don't resume, start over?
-    func resume() -> Bool {
-        guard state == .paused else { return false }
-        return synthesizer.continueSpeaking()
+    @discardableResult
+    func stop() -> Bool {
+        guard state != .stopped else { return false }
+        stopType = .cancel
+        return synthesizer.stopSpeaking(at: Defaults[.speechStopBoundary])
     }
 
-    func togglePauseResume() -> Bool {
+    @discardableResult
+    func togglePlayPause() -> Bool {
         switch state {
             case .reading: return pause()
-            case .paused: return resume()
-            default: return false
+            case .paused: return play(from: Defaults[.resumeUnit])
+            case .stopped: return play(from: .selection)
         }
     }
 
 //    TODO: should restart reading if selection location is 0 for backward?
+    @discardableResult
     func skip(_ direction: Selection.Direction) -> Bool {
         guard select(direction) else { return stop() }
         return readSelection()
@@ -197,9 +195,9 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        guard let selection = readable?.selection,
+        guard stopType == .none,
+              let selection = readable?.selection,
               !selection.isEmpty,
-              stopType == .none,
               skip(.forward)
         else {
             if stopType == .cancel {
@@ -225,6 +223,11 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
         state = .stopped
         stopType = .none
     }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
+        lastSpeechString = utterance.speechString
+        lastCharacterRange = characterRange
+    }
 }
 
 extension EasyReader {
@@ -236,32 +239,49 @@ extension EasyReader {
 
     enum State {
         case stopped
-        case reading
         case paused
+        case reading
+    }
+
+    enum ResumeUnit: String, Defaults.Serializable {
+        case word
+        case selection
     }
 }
 
 extension EasyReader {
-//    TODO: rename to something better
-//    func startReadingFrontmostApplication() -> Bool {
-//        guard let app = NSWorkspace.shared.frontmostApplication else { return false }
-//        return start(reading: app)
-////        return start(reading: systemWideElement, fromFocusedElement: true)
-//    }
+    enum ReadTarget {
+        case element(UIElement, useFocusedElement: Bool = false)
+        case app(NSRunningApplication?)
 
-    func start(reading app: NSRunningApplication) -> Bool {
-        guard let element = Application(app) else { return false }
-        return start(reading: element, fromFocusedElement: true)
+        static var systemWideElement: Self { .element(AXSwift.systemWideElement, useFocusedElement: true) }
+        static var currentApp: Self { .app(NSRunningApplication.current) }
+        static var frontmostApp: Self { .app(NSWorkspace.shared.frontmostApplication) }
     }
 
-    func start(reading element: UIElement, fromFocusedElement: Bool = false) -> Bool {
+    func start(reading readable: Readable) -> Bool {
+        self.readable = readable
+        return play(from: .selection)
+    }
+
+    func start(reading target: ReadTarget) -> Bool {
+        switch target {
+            case .element(let element, let useFocusedElement):
+                return start(reading: element, useFocusedElement: useFocusedElement)
+            case .app(let app):
+                guard let app, let element = Application(app) else { return false }
+                return start(reading: element, useFocusedElement: true)
+        }
+    }
+
+    private func start(reading element: UIElement, useFocusedElement: Bool) -> Bool {
         if NSRunningApplication.current.processIdentifier != (try? element.pid()) {
             guard UIElement.isProcessTrusted(withPrompt: true) else {
                 NSLog("No accessibility API permission.")
                 return false
             }
         }
-        guard let focusedElement: UIElement = (fromFocusedElement ? try? element.attribute(.focusedUIElement) : element) else {
+        guard let focusedElement: UIElement = (useFocusedElement ? try? element.attribute(.focusedUIElement) : element) else {
             NSLog("Unable to get focused element.")
             return false
         }
@@ -270,10 +290,5 @@ extension EasyReader {
             return false
         }
         return start(reading: readableElement)
-    }
-
-    func start(reading readable: Readable) -> Bool {
-        self.readable = readable
-        return start()
     }
 }

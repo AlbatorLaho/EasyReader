@@ -23,15 +23,6 @@ final class NLTextSelector: TextSelector {
         let startIndex: String.Index
         let endIndex: String.Index
         switch direction {
-            case .backward:
-                endIndex = selection.startIndex(in: string)
-                var tagRange: Range<String.Index>?
-                tagger.enumerateTagsReversed(in: string.startIndex..<endIndex, unit: taggerUnit, scheme: .lexicalClass) { tag, range in
-                    guard tag != .paragraphBreak else { return true }
-                    tagRange = range
-                    return false
-                }
-                startIndex = tagRange?.lowerBound ?? string.startIndex
             case .forward:
                 startIndex = selection.endIndex(in: string)
                 var tagRange: Range<String.Index>?
@@ -41,6 +32,15 @@ final class NLTextSelector: TextSelector {
                     return false
                 }
                 endIndex = tagRange?.upperBound ?? string.endIndex
+            case .backward:
+                endIndex = selection.startIndex(in: string)
+                var tagRange: Range<String.Index>?
+                tagger.enumerateTagsReversed(in: string.startIndex..<endIndex, unit: taggerUnit, scheme: .lexicalClass) { tag, range in
+                    guard tag != .paragraphBreak else { return true }
+                    tagRange = range
+                    return false
+                }
+                startIndex = tagRange?.lowerBound ?? string.startIndex
         }
         print(Selection(startIndex..<endIndex, in: string))
 //        print(String(string[startIndex..<endIndex]))

@@ -68,8 +68,8 @@ extension Selection {
 //TODO: makes more sense to be called SelectDirection
 extension Selection {
     enum Direction {
-        case backward
         case forward
+        case backward
     }
 }
 

@@ -7,6 +7,7 @@
 
 import Cocoa
 import MediaPlayer
+import Defaults
 
 @objc protocol NowPlayingManagerDelegate {
     @objc optional func play(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
@@ -16,13 +17,13 @@ import MediaPlayer
 
     @objc optional func nextTrack(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
     @objc optional func previousTrack(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func skipForward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func skipBackward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func seekForward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func seekBackward(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
+    @objc optional func skipForward(_ event: MPSkipIntervalCommandEvent) -> MPRemoteCommandHandlerStatus;
+    @objc optional func skipBackward(_ event: MPSkipIntervalCommandEvent) -> MPRemoteCommandHandlerStatus;
+    @objc optional func seekForward(_ event: MPSeekCommandEvent) -> MPRemoteCommandHandlerStatus;
+    @objc optional func seekBackward(_ event: MPSeekCommandEvent) -> MPRemoteCommandHandlerStatus;
 
-    @objc optional func changePlaybackRate(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func changePlaybackPosition(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
+    @objc optional func changePlaybackRate(_ event: MPChangePlaybackRateCommandEvent) -> MPRemoteCommandHandlerStatus;
+    @objc optional func changePlaybackPosition(_ event: MPChangePlaybackPositionCommandEvent) -> MPRemoteCommandHandlerStatus;
 }
 
 final class NowPlayingManager: NSObject {
@@ -38,13 +39,13 @@ final class NowPlayingManager: NSObject {
 
     @RemoteCommand(commandCenter.nextTrackCommand) var nextTrackCommand
     @RemoteCommand(commandCenter.previousTrackCommand) var previousTrackCommand
-    @RemoteCommand(commandCenter.skipForwardCommand) var skipForwardCommand
-    @RemoteCommand(commandCenter.skipBackwardCommand) var skipBackwardCommand
-    @RemoteCommand(commandCenter.seekForwardCommand) var seekForwardCommand
-    @RemoteCommand(commandCenter.seekBackwardCommand) var seekBackwardCommand
+    @RemoteCommand(commandCenter.skipForwardCommand, MPSkipIntervalCommandEvent.self) var skipForwardCommand
+    @RemoteCommand(commandCenter.skipBackwardCommand, MPSkipIntervalCommandEvent.self) var skipBackwardCommand
+    @RemoteCommand(commandCenter.seekForwardCommand, MPSeekCommandEvent.self) var seekForwardCommand
+    @RemoteCommand(commandCenter.seekBackwardCommand, MPSeekCommandEvent.self) var seekBackwardCommand
 
-    @RemoteCommand(commandCenter.changePlaybackRateCommand) var changePlaybackRateCommand
-    @RemoteCommand(commandCenter.changePlaybackPositionCommand) var changePlaybackPositionCommand
+    @RemoteCommand(commandCenter.changePlaybackRateCommand, MPChangePlaybackRateCommandEvent.self) var changePlaybackRateCommand
+    @RemoteCommand(commandCenter.changePlaybackPositionCommand, MPChangePlaybackPositionCommandEvent.self) var changePlaybackPositionCommand
 
 //    TODO: cleanup these functions
 //    TODO: add NSSound.beep()?
@@ -65,8 +66,13 @@ final class NowPlayingManager: NSObject {
         changePlaybackPositionCommand = delegate?.changePlaybackPosition
 
 //        TODO: what other properties can be changed?
-//        Self.commandCenter.changePlaybackRateCommand.supportedPlaybackRates
-//        Self.commandCenter.skipForwardCommand.preferredIntervals
+//        $skipForwardCommand.preferredIntervals = [1.0]
+//        $skipBackwardCommand.preferredIntervals = [1.0]
+//        $changePlaybackRateCommand.supportedPlaybackRates = [
+//            NSNumber(value: AVSpeechUtteranceMinimumSpeechRate),
+//            NSNumber(value: AVSpeechUtteranceDefaultSpeechRate),
+//            NSNumber(value: AVSpeechUtteranceMaximumSpeechRate),
+//        ]
     }
 
     func removeRemoteCommands() {
@@ -77,6 +83,7 @@ final class NowPlayingManager: NSObject {
         }
     }
 
+//    FIXME: seems like this is getting set every time we skip via Now Playing Center? (may be because it's the "next track", so it automatically removes the info?)
     func updateInfo(_ readable: Readable?, state: EasyReader.State) {
         switch state {
             case .reading:
@@ -89,12 +96,12 @@ final class NowPlayingManager: NSObject {
                     updatePlaybackInfo(&info)
                     Self.infoCenter.nowPlayingInfo = info
                 }
+            case .paused:
+                Self.infoCenter.playbackState = .paused
             case .stopped:
                 removeRemoteCommands()
                 Self.infoCenter.playbackState = .stopped
                 Self.infoCenter.nowPlayingInfo = nil
-            case .paused:
-                Self.infoCenter.playbackState = .paused
         }
     }
 
@@ -107,33 +114,36 @@ final class NowPlayingManager: NSObject {
 //        info[MPMediaItemPropertyMediaType] = MPMediaType.anyAudio.rawValue
 //        info[MPMediaItemPropertyMediaType] = MPMediaType.audioBook.rawValue
 //        info[MPMediaItemPropertyMediaType] = MPMediaType.podcast.rawValue
+        info[MPMediaItemPropertyPlaybackDuration] = Double.infinity
+
         info[MPMediaItemPropertyTitle] = readable.title
         info[MPMediaItemPropertyAlbumTitle] = readable.groupTitle
         info[MPMediaItemPropertyArtist] = NSRunningApplication.current.localizedName
-        info[MPMediaItemPropertyArtwork] = readable.icon.map { artwork in
+        info[MPMediaItemPropertyArtwork] = readable.icon.map({ artwork in
             MPMediaItemArtwork(boundsSize: artwork.size) { _ in artwork }
-        }
+        })
     }
 
     private func updatePlaybackInfo(_ info: inout [String: Any]) {
 //        TODO: MPNowPlayingInfoProperty
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = 0.0
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 0.5
-        info[MPNowPlayingInfoPropertyPlaybackRate] = 0.5
-//        info[MPNowPlayingInfoPropertyPlaybackRate] = easyReader.rate
+        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = Defaults.Keys.speechRate.defaultValue * 2
+        info[MPNowPlayingInfoPropertyPlaybackRate] = Defaults[.speechRate] * 2
+//        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = Double.ulpOfOne
+//        info[MPNowPlayingInfoPropertyPlaybackRate] = Double.ulpOfOne
     }
 }
 
 @propertyWrapper
-struct RemoteCommand {
-    private let command: MPRemoteCommand
-    private var handler: ((MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus)?
+struct RemoteCommand<Command: MPRemoteCommand, CommandEvent: MPRemoteCommandEvent> {
+    private let command: Command
+    private var handler: ((CommandEvent) -> MPRemoteCommandHandlerStatus)?
     private var target: Any?
 
-    var projectedValue: MPRemoteCommand { command }
+    var projectedValue: Command { command }
 
-    var wrappedValue: ((MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus)? {
+    var wrappedValue: ((CommandEvent) -> MPRemoteCommandHandlerStatus)? {
         get { handler }
         set {
             handler = newValue
@@ -142,12 +152,14 @@ struct RemoteCommand {
                 self.target = nil
             }
             if let handler {
-                target = command.addTarget(handler: handler)
+                target = command.addTarget() { event in
+                    handler(event as! CommandEvent)
+                }
             }
         }
     }
 
-    init(_ command: MPRemoteCommand) {
+    init(_ command: Command, _ eventType: CommandEvent.Type = MPRemoteCommandEvent.self) {
         self.command = command
     }
 }

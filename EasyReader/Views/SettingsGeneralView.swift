@@ -18,14 +18,15 @@ struct SettingsGeneralView: View {
             GroupBox {
                 Form {
                     KeyboardShortcuts.Recorder("Start/Stop:", name: .toggleStartStop)
-//                    KeyboardShortcuts.Recorder("Increase Rate:", name: .toggleStartStop)
-//                    KeyboardShortcuts.Recorder("Decrease Rate:", name: .toggleStartStop)
+                    KeyboardShortcuts.Recorder("Increase Rate:", name: .increaseRate)
+                    KeyboardShortcuts.Recorder("Decrease Rate:", name: .decreaseRate)
+                    KeyboardShortcuts.Recorder("Default Rate:", name: .defaultRate)
 
                     GroupBox {
                         Form {
                             KeyboardShortcuts.Recorder("Play/Pause:", name: .togglePlayPause)
-                            KeyboardShortcuts.Recorder("Skip Backward:", name: .skipBackward)
                             KeyboardShortcuts.Recorder("Skip Forward:", name: .skipForward)
+                            KeyboardShortcuts.Recorder("Skip Backward:", name: .skipBackward)
                         }
                     } label: {
                         Label("Not needed with \"Now Playing Center\"", systemImage: "info.circle")
@@ -106,7 +107,8 @@ struct SettingsGeneralView: View {
             • starts reading from your current selection, or will make a selection if there is none
             
             Caveats/Bugs:
-            • changes to settings may not take affect until current selection is finished reading (e.g. most speech settings)
+            • some UI elements don't look/behave correctly prior to MacOS 13
+            • reading sometimes hangs, and (usually) requires restarting the app to fix
             """
         }
     }

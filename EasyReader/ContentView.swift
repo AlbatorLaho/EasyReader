@@ -13,7 +13,6 @@ import SwiftUI
 //add a reader view that can be a speech playground sorta thing... (could be used the same as cmd-shift-x for TextEdit)
 //localization
 //don't have any nested types? (since protocols can't be nested, like EasyReaderDelegate) e.g. EasyReader.State > EasyReaderState
-//rename to play/pause instead of resume/pause?
 //make sure any buttons/menus that open a dialog, end with "..."
 //change playback rate while reading (also need global shortcuts)
 //fix speech settings to update while reading (if possible)

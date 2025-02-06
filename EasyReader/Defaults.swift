@@ -13,8 +13,6 @@ import KeyboardShortcuts
 extension Defaults.Keys {
     static let nowPlayingCenterIntegration = Key<Bool>("NowPlayingCenterIntegration", default: true)
 //    static let nowPlayingCenterStaysOpen = Key<Bool>("NowPlayingCenterStaysOpen", default: false)
-//    TODO: resume from start of word, selection, ¿file?, what else?
-//    static let nowPlayingCenterPauseType = Key<Bool>("NowPlayingCenterPauseType", default: true)
 
     static let speechVoice = Key<AVSpeechSynthesisVoice?>("SpeechVoice")
     static let speechVolume = Key<Float>("SpeechVolume", default: 1.0)
@@ -25,6 +23,7 @@ extension Defaults.Keys {
     static let speechDelayAfter = Key<Double>("SpeechDelayAfter", default: 0)
 
     static let selectionUnit = Key<Selection.Unit>("SelectionUnit", default: .sentence)
+    static let resumeUnit = Key<EasyReader.ResumeUnit>("ResumeUnit", default: .word)
     static let scrollSelectionIntoView = Key<Bool>("ScrollSelectionIntoView", default: true)
     static let scrollPadding = Key<Int>("ScrollPadding", default: 16)
     static let scrollSmooth = Key<Bool>("ScrollSmooth", default: true)
@@ -38,8 +37,11 @@ extension Defaults.Keys {
 extension KeyboardShortcuts.Name {
     static let toggleStartStop = Self("ToggleStartStop")
     static let togglePlayPause = Self("TogglePlayPause")
-    static let skipBackward = Self("SkipBackward")
     static let skipForward = Self("SkipForward")
+    static let skipBackward = Self("SkipBackward")
+    static let increaseRate = Self("IncreaseRate")
+    static let decreaseRate = Self("DecreaseRate")
+    static let defaultRate = Self("DefaultRate")
 }
 
 extension AVSpeechSynthesisVoice: Defaults.Serializable {

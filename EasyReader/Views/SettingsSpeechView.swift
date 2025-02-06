@@ -38,20 +38,10 @@ struct SettingsSpeechView: View {
         VStack(alignment: .leading, spacing: 30) {
             GroupBox {
                 Form {
-//                    Slider(value: $speechVolume, in: 0...1, step: 0.1) {
-////                        Label("Volume:", systemImage: speechVolume == 0 ? "speaker.fill" : "speaker.wave.\(1 + Int(speechVolume * 2)).fill")
-//                        Image(systemName: speechVolume == 0 ? "speaker.fill" : "speaker.wave.\(1 + Int(speechVolume * 2)).fill")
-//                            .frame(width: 24, alignment: .leading)
-//                        Text("Volume:")
-//                    } minimumValueLabel: { Text("0%") } maximumValueLabel: { Text("100%") }
-
-//                    SliderControls(value: $speechRate, in: 0.25...0.75, step: 0.05, max: 1) {
-//                        Text("Rate:")
-//                    } minimumValueLabel: { Text("½") } maximumValueLabel: { Text("2×") }
-//                    SliderControls(value: $speechPitch, in: 0.5...1.5, step: 0.1) {
-//                        Text("Pitch:")
-//                    } minimumValueLabel: { Text("½") } maximumValueLabel: { Text("2×") }
-
+//                    TODO: restart reading when value changes
+//                    if self.easyReader.state == .reading {
+//                        self.easyReader.play(from: .word)
+//                    }
                     SliderControls(value: $speechVolume, in: 0...1, step: 0.1, max: 1, format: .percent) {
                         Image(systemName: speechVolume == 0 ? "speaker.fill" : "speaker.wave.\(1 + Int(speechVolume * 2)).fill")
                             .frame(width: 24, alignment: .leading)
@@ -93,6 +83,7 @@ struct SettingsSpeechView: View {
 
             GroupBox {
                 Form {
+//                    TODO: do we also want to support stopping after selection?
                     Picker("Stop Boundary:", selection: $speechStopBoundary) {
                         Text("Immediate").tag(AVSpeechBoundary.immediate)
                         Text("Word").tag(AVSpeechBoundary.word)
