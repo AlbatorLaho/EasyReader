@@ -108,7 +108,6 @@ struct EasyReaderApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var easyReader: EasyReader!
     var nowPlayingManager: NowPlayingManager!
-    var defaultsObservation: Defaults.Observation!
     var statusItem: NSStatusItem!
 
     @available(macOS 14.0, *)
@@ -136,21 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 #endif
 
         easyReader = EasyReader()
-        easyReader.textSelector = NLTextSelector(unit: .sentence)
         easyReader.delegate = self
         nowPlayingManager = NowPlayingManager()
         nowPlayingManager.delegate = self
-
-        defaultsObservation = Defaults.observe(keys:
-            .speechVoice,
-            .speechVolume,
-            .speechRate,
-            .speechPitch
-        ) { [self] in
-            if easyReader.state == .reading {
-                easyReader.play(from: .word)
-            }
-        }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)
@@ -201,14 +188,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSMenuItem(title: "Quit", action: #selector(NSApplication.shared.terminate), keyEquivalent: "q"),
         ]
 
-        KeyboardShortcuts.onKeyDown(for: .increaseRate) {
-            Defaults[.speechRate] = min(max(Defaults[.speechRate] + 0.05, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
+        KeyboardShortcuts.onKeyDown(for: .increaseRate) { Defaults[.speechRate] += 0.05 }
+        KeyboardShortcuts.onKeyDown(for: .decreaseRate) { Defaults[.speechRate] -= 0.05 }
+        KeyboardShortcuts.onKeyDown(for: .defaultRate) { Defaults.reset(.speechRate) }
+
+        Task {
+            for await _ in Defaults.updates([
+                .speechVoice,
+                .speechVolume,
+                .speechRate,
+                .speechPitch,
+            ], initial: false) {
+                if easyReader.state == .reading {
+                    easyReader.play(from: .word)
+                }
+            }
         }
-        KeyboardShortcuts.onKeyDown(for: .decreaseRate) {
-            Defaults[.speechRate] = min(max(Defaults[.speechRate] - 0.05, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
+        Task {
+            for await value in Defaults.updates(.speechRate, initial: false) {
+                Defaults[.speechRate] = min(max(value, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
+            }
         }
-        KeyboardShortcuts.onKeyDown(for: .defaultRate) {
-            Defaults.reset(.speechRate)
+        Task {
+            for await value in Defaults.updates(.selectionUnit) {
+                easyReader.textSelector = NLTextSelector(unit: value)
+            }
+        }
+        Task {
+            for await value in Defaults.updates(.nowPlayingCenterIntegration) {
+                if value {
+                    nowPlayingManager.setupRemoteCommands()
+                } else {
+                    nowPlayingManager.removeRemoteCommands()
+                }
+            }
         }
     }
 
@@ -289,7 +302,7 @@ extension AppDelegate: NowPlayingManagerDelegate {
 
     func changePlaybackRate(_ event: MPChangePlaybackRateCommandEvent) -> MPRemoteCommandHandlerStatus {
         print("changePlaybackRate: \(event.playbackRate)")
-        Defaults[.speechRate] = min(max(event.playbackRate, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
+        Defaults[.speechRate] = event.playbackRate
         return .success
     }
 //    func changePlaybackPosition(_ event: MPChangePlaybackPositionCommandEvent) -> MPRemoteCommandHandlerStatus {
@@ -300,7 +313,10 @@ extension AppDelegate: NowPlayingManagerDelegate {
 
 extension AppDelegate: EasyReaderDelegate {
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
-        nowPlayingManager.updateInfo(easyReader.readable, state: Defaults[.nowPlayingCenterIntegration] ? state : .stopped)
+        if Defaults[.nowPlayingCenterIntegration] {
+            nowPlayingManager.updateInfo(easyReader.readable, state: state)
+        }
+//        nowPlayingManager.updateInfo(easyReader.readable, state: Defaults[.nowPlayingCenterIntegration] ? state : .stopped)
         statusItem.menu?.update()
     }
 }
