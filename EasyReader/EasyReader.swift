@@ -274,6 +274,7 @@ extension EasyReader {
         }
     }
 
+//    TODO: make a "smart" crawler to find readable elements
     private func start(reading element: UIElement, useFocusedElement: Bool) -> Bool {
         if NSRunningApplication.current.processIdentifier != (try? element.pid()) {
             guard UIElement.isProcessTrusted(withPrompt: true) else {

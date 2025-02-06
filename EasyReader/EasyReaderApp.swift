@@ -199,14 +199,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .speechRate,
                 .speechPitch,
             ], initial: false) {
-                if easyReader.state == .reading {
-                    easyReader.play(from: .word)
-                }
+                guard easyReader.state == .reading else { return }
+                easyReader.play(from: .word)
             }
         }
         Task {
             for await value in Defaults.updates(.speechRate, initial: false) {
-                Defaults[.speechRate] = min(max(value, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
+                Defaults.withoutPropagation {
+                    guard !(AVSpeechUtteranceMinimumSpeechRate...AVSpeechUtteranceMaximumSpeechRate).contains(value) else { return }
+                    Defaults[.speechRate] = min(max(value, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
+                }
             }
         }
         Task {
@@ -316,7 +318,6 @@ extension AppDelegate: EasyReaderDelegate {
         if Defaults[.nowPlayingCenterIntegration] {
             nowPlayingManager.updateInfo(easyReader.readable, state: state)
         }
-//        nowPlayingManager.updateInfo(easyReader.readable, state: Defaults[.nowPlayingCenterIntegration] ? state : .stopped)
         statusItem.menu?.update()
     }
 }
