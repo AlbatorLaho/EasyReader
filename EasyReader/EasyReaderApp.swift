@@ -110,14 +110,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var nowPlayingManager: NowPlayingManager!
     var defaultsObservation: Defaults.Observation!
     var statusItem: NSStatusItem!
-//    TODO: handle these better
-    var readerStateImageDefault = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)!
-    var readerStateImages: [EasyReader.State: String] = [
-//        .stopped: "waveform",
-        .stopped: "waveform.slash",
-//        .paused: "waveform",
-//        .reading: "waveform",
-    ]
 
     @available(macOS 14.0, *)
     private final class SettingsOpener: ObservableObject {
@@ -161,7 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = readerStateImageDefault
+        statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)
         statusItem.menu = NSMenu()
         statusItem.menu?.items = [
             {
@@ -309,11 +301,6 @@ extension AppDelegate: NowPlayingManagerDelegate {
 extension AppDelegate: EasyReaderDelegate {
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
         nowPlayingManager.updateInfo(easyReader.readable, state: Defaults[.nowPlayingCenterIntegration] ? state : .stopped)
-        if let imageName = readerStateImages[state], let image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil) {
-            statusItem.button?.image = image
-        } else {
-            statusItem.button?.image = readerStateImageDefault
-        }
         statusItem.menu?.update()
     }
 }
