@@ -29,8 +29,8 @@ final class EasyReader: NSObject {
     var readable: Readable?
     weak var delegate: EasyReaderDelegate?
     private var lastSelection: Selection?
-    private var lastSpeechString: String?
-    private var lastCharacterRange: NSRange?
+    private var lastReadString: String?
+    private var lastReadRange: NSRange?
 
     override init() {
         super.init()
@@ -85,76 +85,13 @@ final class EasyReader: NSObject {
 
 
 
-    private func select(_ direction: Selection.Direction) -> Bool {
-        guard let fullText = readable?.fullText,
-              let selection = readable?.selection,
-              let nextSelection = textSelector?.select(direction, from: selection, in: fullText)
-        else { return false }
-        readable?.selection = nextSelection
-        readable?.scroll(to: nextSelection, options: ScrollOptions(
-            padding: Defaults[.scrollPadding],
-            smooth: Defaults[.scrollSmooth],
-            duration: Defaults[.scrollDuration],
-            updateRate: Defaults[.scrollUpdateRate]
-        ))
-        return !nextSelection.isEmpty
-    }
-
-    private func ensureSelection() -> Bool {
-        guard let fullText = readable?.fullText, let selection = readable?.selection else { return false }
-        guard selection.startIndex(in: fullText) != fullText.endIndex else {
-            readable?.selection = Selection()
-            return select(.forward)
-        }
-        guard !selection.isEmpty else {
-            return select(.forward)
-        }
-        return true
-    }
-
-    private func readSelection(at index: Int? = nil) -> Bool {
-        guard var selectedText = readable?.selectedText else { return false }
-        for pronunciation in Defaults[.pronunciations].filter({ $0.domain == nil || $0.domain == readable?.appDomain }) {
-            selectedText = selectedText.replacingOccurrences(
-                of: pronunciation.search,
-                with: pronunciation.replace,
-                options: pronunciation.options
-            )
-        }
-        if let index, let lastSpeechString, let lastSpeechStringRange = selectedText.range(of: lastSpeechString, options: [.anchored, .backwards]) {
-            let lastRange = NSRange(lastSpeechStringRange, in: selectedText)
-            let newRange = NSRange(index + lastRange.lowerBound..<lastRange.upperBound)
-            if let range = Range(newRange, in: selectedText) {
-                selectedText = String(selectedText[range])
-            }
-        }
-        let utterance = AVSpeechUtterance(string: selectedText)
-        utterance.voice = Defaults[.speechVoice]
-        utterance.volume = Defaults[.speechVolume]
-        utterance.rate = Defaults[.speechRate]
-        utterance.pitchMultiplier = Defaults[.speechPitch]
-        utterance.preUtteranceDelay = Defaults[.speechDelayBefore]
-        utterance.postUtteranceDelay = Defaults[.speechDelayAfter]
-        if synthesizer.isSpeaking {
-            stopType = .stop
-            synthesizer.stopSpeaking(at: .immediate)
-        }
-        lastSelection = readable?.selection
-        lastSpeechString = nil
-        lastCharacterRange = nil
-        synthesizer.speak(utterance)
-        return true
-    }
-
-
-
     @discardableResult
     func play(from unit: ResumeUnit) -> Bool {
         guard let selection = readable?.selection, lastSelection == selection else {
             return ensureSelection() && readSelection()
         }
         switch unit {
-            case .word: return readSelection(at: lastCharacterRange?.lowerBound)
+            case .word: return readSelection(from: lastReadRange?.lowerBound)
             case .selection: return readSelection()
         }
     }
@@ -186,6 +123,83 @@ final class EasyReader: NSObject {
     func skip(_ direction: Selection.Direction) -> Bool {
         guard select(direction) else { return stop() }
         return readSelection()
+    }
+
+
+
+    private func pronunciations(with domain: String?) -> [Pronunciation] {
+        Defaults[.pronunciations].filter({ pronunciation in
+            pronunciation.domain == nil || pronunciation.domain == domain
+        })
+    }
+
+    private func read(string: String) {
+        let utterance = AVSpeechUtterance(string: string)
+        utterance.voice = Defaults[.speechVoice]
+        utterance.volume = Defaults[.speechVolume]
+        utterance.rate = Defaults[.speechRate]
+        utterance.pitchMultiplier = Defaults[.speechPitch]
+        utterance.preUtteranceDelay = Defaults[.speechDelayBefore]
+        utterance.postUtteranceDelay = Defaults[.speechDelayAfter]
+        lastSelection = readable?.selection
+        lastReadString = nil
+        lastReadRange = nil
+        synthesizer.speak(utterance)
+    }
+
+    private func scroll(to selection: Selection) {
+        readable?.scroll(to: selection, options: ScrollOptions(
+            padding: Defaults[.scrollPadding],
+            smooth: Defaults[.scrollSmooth],
+            duration: Defaults[.scrollDuration],
+            updateRate: Defaults[.scrollUpdateRate]
+        ))
+    }
+
+    private func select(_ direction: Selection.Direction) -> Bool {
+        guard let fullText = readable?.fullText,
+              let selection = readable?.selection,
+              let nextSelection = textSelector?.select(direction, from: selection, in: fullText)
+        else { return false }
+        readable?.selection = nextSelection
+        scroll(to: nextSelection)
+        return !nextSelection.isEmpty
+    }
+
+    private func ensureSelection() -> Bool {
+        guard let fullText = readable?.fullText, let selection = readable?.selection else { return false }
+        guard selection.startIndex(in: fullText) != fullText.endIndex else {
+            readable?.selection = Selection()
+            return select(.forward)
+        }
+        guard !selection.isEmpty else {
+            return select(.forward)
+        }
+        return true
+    }
+
+    private func readSelection(from index: Int? = nil) -> Bool {
+        guard var selectedText = readable?.selectedText else { return false }
+        for pronunciation in pronunciations(with: readable?.appDomain) {
+            selectedText = selectedText.replacingOccurrences(
+                of: pronunciation.search,
+                with: pronunciation.replace,
+                options: pronunciation.options
+            )
+        }
+        if let index, let lastReadString, let lastReadStringRange = selectedText.range(of: lastReadString, options: [.anchored, .backwards]) {
+            let lastRange = NSRange(lastReadStringRange, in: selectedText)
+            let newRange = NSRange(index + lastRange.lowerBound..<lastRange.upperBound)
+            if let range = Range(newRange, in: selectedText) {
+                selectedText = String(selectedText[range])
+            }
+        }
+        if synthesizer.isSpeaking {
+            stopType = .stop
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+        read(string: selectedText)
+        return true
     }
 }
 
@@ -225,8 +239,8 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
-        lastSpeechString = utterance.speechString
-        lastCharacterRange = characterRange
+        lastReadString = utterance.speechString
+        lastReadRange = characterRange
     }
 }
 
