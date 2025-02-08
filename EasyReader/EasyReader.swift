@@ -265,10 +265,10 @@ extension EasyReader {
 
 extension EasyReader {
     enum ReadTarget {
-        case element(UIElement, useFocusedElement: Bool = false)
+        case element(UIElement, fromFocused: Bool = false)
         case app(NSRunningApplication?)
 
-        static var systemWideElement: Self { .element(AXSwift.systemWideElement, useFocusedElement: true) }
+        static var systemWideElement: Self { .element(AXSwift.systemWideElement, fromFocused: true) }
         static var currentApp: Self { .app(NSRunningApplication.current) }
         static var frontmostApp: Self { .app(NSWorkspace.shared.frontmostApplication) }
     }
@@ -280,30 +280,56 @@ extension EasyReader {
 
     func start(reading target: ReadTarget) -> Bool {
         switch target {
-            case .element(let element, let useFocusedElement):
-                return start(reading: element, useFocusedElement: useFocusedElement)
+            case .element(let element, let fromFocused):
+                return start(reading: element, fromFocused: fromFocused)
             case .app(let app):
                 guard let app, let element = Application(app) else { return false }
-                return start(reading: element, useFocusedElement: true)
+                return start(reading: element, fromFocused: true)
         }
     }
 
-//    TODO: make a "smart" crawler to find readable elements
-    private func start(reading element: UIElement, useFocusedElement: Bool) -> Bool {
+    private func start(reading element: UIElement, fromFocused: Bool) -> Bool {
         if NSRunningApplication.current.processIdentifier != (try? element.pid()) {
             guard UIElement.isProcessTrusted(withPrompt: true) else {
                 NSLog("No accessibility API permission.")
                 return false
             }
         }
-        guard let focusedElement: UIElement = (useFocusedElement ? try? element.attribute(.focusedUIElement) : element) else {
+        guard let focusedElement: UIElement = (fromFocused ? try? element.attribute(.focusedUIElement) : element) else {
             NSLog("Unable to get focused element.")
             return false
         }
-        guard let readableElement = try? focusedElement.readableElement() else {
-            NSLog("Unable to get readable element.")
+        guard let readableElement = findReadableElement(from: focusedElement) else {
+            NSLog("Unable to find readable element.")
             return false
         }
         return start(reading: readableElement)
+    }
+
+    private func findReadableElement(from element: UIElement) -> ReadableElement? {
+        var queue: [UIElement] = [element]
+        var visited: Set<UIElement> = [element]
+
+        while !queue.isEmpty {
+            let current = queue.removeFirst()
+
+            if let readable = try? current.readableElement() {
+                return readable
+            }
+
+            if let children: [UIElement] = try? current.arrayAttribute(.children) {
+                for child in children where !visited.contains(child) {
+                    visited.insert(child)
+                    queue.append(child)
+                }
+            }
+
+            if let parent: UIElement = try? current.attribute(.parent), !visited.contains(parent) {
+                visited.insert(parent)
+                queue.append(parent)
+            }
+        }
+
+        return nil
     }
 }

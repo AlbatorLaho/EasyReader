@@ -10,15 +10,15 @@ import AXSwift
 
 extension UIElement {
     func readableElement() throws -> ReadableElement? {
-        guard let role: String = try attribute(.role) else {
-            NSLog("Unable to get element role.")
-            return nil
-        }
-        guard let readableType = ReadableElement[.init(role)] else {
-            NSLog("Unsupported readable element role: \(role)")
-            return nil
-        }
+        guard let role: String = try attribute(.role) else { return nil }
+        guard let readableType = ReadableElement[.init(role)] else { return nil }
         return readableType.init(self)
+    }
+}
+
+extension UIElement: @retroactive Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(element)
     }
 }
 

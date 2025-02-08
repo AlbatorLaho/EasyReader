@@ -12,6 +12,7 @@ struct TextPlayground<Label: View>: View {
 
     private let label: () -> Label
     private let defaultText: () -> String
+//    FIXME: state does not stay when switching settings tabs
     @State private var text = ""
 
     init(defaultText: @escaping () -> String, @ViewBuilder label: @escaping () -> Label = { Text("Playground") }) {
