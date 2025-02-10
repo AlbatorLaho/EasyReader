@@ -15,6 +15,7 @@ protocol EasyReaderDelegate: AnyObject {
 }
 
 //FIXME: won't properly stop/resume if paused at the end of reading
+//FIXME: what happens if the readable becomes invalid? e.g. the settings text playgrounds, when you switch the tab
 final class EasyReader: NSObject {
     private var stopType: StopType = .none
     private(set) var state: State = .stopped {
@@ -98,13 +99,18 @@ final class EasyReader: NSObject {
 
     @discardableResult
     func pause() -> Bool {
-        guard state == .reading else { return false }
-        return synthesizer.pauseSpeaking(at: Defaults[.speechStopBoundary])
+        guard synthesizer.isSpeaking else { return false }
+        stopType = .pause
+        return synthesizer.stopSpeaking(at: Defaults[.speechStopBoundary])
     }
 
     @discardableResult
     func stop() -> Bool {
-        guard state != .stopped else { return false }
+        guard synthesizer.isSpeaking else {
+            guard state == .paused else { return false }
+            state = .stopped
+            return true
+        }
         stopType = .cancel
         return synthesizer.stopSpeaking(at: Defaults[.speechStopBoundary])
     }
@@ -195,7 +201,7 @@ final class EasyReader: NSObject {
             }
         }
         if synthesizer.isSpeaking {
-            stopType = .stop
+            stopType = .willContinue
             synthesizer.stopSpeaking(at: .immediate)
         }
         read(string: selectedText)
@@ -214,27 +220,18 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
               !selection.isEmpty,
               skip(.forward)
         else {
-            if stopType == .cancel {
-                speechSynthesizer(synthesizer, didCancel: utterance)
-            } else {
-                state = .stopped
-                stopType = .none
-            }
+            speechSynthesizer(synthesizer, didCancel: utterance)
             return
         }
     }
 
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didPause utterance: AVSpeechUtterance) {
-        state = .paused
-    }
-
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didContinue utterance: AVSpeechUtterance) {
-        state = .reading
-    }
-
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        guard stopType == .cancel else { return }
-        state = .stopped
+        switch stopType {
+            case .none: break
+            case .willContinue: break
+            case .pause: state = .paused
+            case .cancel: state = .stopped
+        }
         stopType = .none
     }
 
@@ -247,14 +244,15 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
 extension EasyReader {
     enum StopType {
         case none
-        case stop
+        case willContinue
+        case pause
         case cancel
     }
 
     enum State {
-        case stopped
-        case paused
         case reading
+        case paused
+        case stopped
     }
 
     enum ResumeUnit: String, Defaults.Serializable {
@@ -306,6 +304,7 @@ extension EasyReader {
         return start(reading: readableElement)
     }
 
+//    FIXME: always fails the first time
     private func findReadableElement(from element: UIElement) -> ReadableElement? {
         var queue: [UIElement] = [element]
         var visited: Set<UIElement> = [element]

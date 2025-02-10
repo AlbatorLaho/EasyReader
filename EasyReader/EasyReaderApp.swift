@@ -147,7 +147,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let menuItem = NSMenuItem()
                 menuItem.action = #selector(toggleStartStopAction)
                 menuItem.setShortcut(for: .toggleStartStop)
-                KeyboardShortcuts.onKeyDown(for: .toggleStartStop, action: toggleStartStopAction)
+                KeyboardShortcuts.onKeyDown(for: .toggleStartStop) { [self] in
+                    if easyReader.state == .reading {
+                        guard easyReader.stop() else {
+                            NSSound.beep()
+                            return
+                        }
+                    } else {
+                        guard easyReader.start(reading: .frontmostApp) else {
+                            NSSound.beep()
+                            return
+                        }
+                    }
+                }
                 return menuItem
             }(),
             {
@@ -228,17 +240,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func toggleStartStopAction() {
-        switch easyReader.state {
-            case .reading:
-                guard easyReader.stop() else {
-                    NSSound.beep()
-                    return
-                }
-            case .paused, .stopped:
-                guard easyReader.start(reading: .frontmostApp) else {
-                    NSSound.beep()
-                    return
-                }
+        if easyReader.state == .stopped {
+            guard easyReader.start(reading: .frontmostApp) else {
+                NSSound.beep()
+                return
+            }
+        } else {
+            guard easyReader.stop() else {
+                NSSound.beep()
+                return
+            }
         }
     }
 
