@@ -307,7 +307,7 @@ extension EasyReader {
         return start(reading: readableElement)
     }
 
-//    FIXME: always fails the first time
+//    FIXME: text area's frame size seems to get messed up, if the first time this is run, it isn't the focused element
     private func findReadableElement(from element: UIElement) -> ReadableElement? {
         var queue: [UIElement] = [element]
         var visited: Set<UIElement> = [element]
@@ -316,10 +316,11 @@ extension EasyReader {
             let current = queue.removeFirst()
 
             if let readable = try? current.readableElement() {
+                try? current.setAttribute(.focused, value: true)
                 return readable
             }
 
-            if let children: [UIElement] = try? current.arrayAttribute(.children) {
+            if let children: [UIElement] = try? current.arrayAttribute(.childrenInNavigationOrder) {
                 for child in children where !visited.contains(child) {
                     visited.insert(child)
                     queue.append(child)
