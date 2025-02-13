@@ -42,12 +42,12 @@ final class TextAreaReadableElement: ReadableElement {
               let scrollAreaFrame: CGRect = try? scrollArea?.attribute(.frame)
         else { return }
 
-        let viewableFrame = scrollAreaFrame.insetBy(dx: 0, dy: CGFloat(options.padding))
-        guard !viewableFrame.contains(selectionBounds), selectionBounds.size != .zero else { return }
+        let padding = min(CGFloat(options.padding), scrollAreaFrame.height / 2)
+        guard selectionBounds.size != .zero, !scrollAreaFrame.insetBy(dx: 0, dy: padding).contains(selectionBounds) else { return }
 
         if let horizontalScrollBar: UIElement = try? scrollArea?.attribute(.horizontalScrollBar) {
             let value = selectionBounds.origin.x - contentFrame.origin.x
-            let max = contentFrame.width - viewableFrame.width
+            let max = contentFrame.width - scrollAreaFrame.width
             let scrollValue = max.isNormal ? value / max : 0
             if options.smooth {
                 horizontalScrollTimer?.invalidate()
@@ -57,8 +57,8 @@ final class TextAreaReadableElement: ReadableElement {
             }
         }
         if let verticalScrollBar: UIElement = try? scrollArea?.attribute(.verticalScrollBar) {
-            let value = selectionBounds.origin.y - contentFrame.origin.y
-            let max = contentFrame.height - viewableFrame.height
+            let value = (selectionBounds.origin.y - padding) - contentFrame.origin.y
+            let max = contentFrame.height - scrollAreaFrame.height
             let scrollValue = max.isNormal ? value / max : 0
             if options.smooth {
                 verticalScrollTimer?.invalidate()
