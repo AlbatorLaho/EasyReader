@@ -220,6 +220,9 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
               !selection.isEmpty,
               skip(.forward)
         else {
+            if stopType == .none {
+                stopType = .cancel
+            }
             speechSynthesizer(synthesizer, didCancel: utterance)
             return
         }
