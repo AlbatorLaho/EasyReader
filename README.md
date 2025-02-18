@@ -1,4 +1,4 @@
-# EasyReader
+# EasyReader [![Build](https://github.com/AlbatorLaho/EasyReader/actions/workflows/build.yml/badge.svg)](https://github.com/AlbatorLaho/EasyReader/actions/workflows/build.yml)
 A utility to assist the built-in MacOS screen reader.
 
 ## Description
@@ -17,7 +17,7 @@ EasyReader provides additional functionality to the built-in text to speech engi
 ### Requirements
 
 * MacOS 11+
-* Xcode 14+ (for building)
+* Xcode 16+ (for building)
 
 ### Installing
 
