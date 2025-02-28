@@ -44,7 +44,10 @@ jobs:
           xcodebuild -exportArchive -archivePath "$XCODE_ARCHIVE" -exportPath "$BUILD_DIR" -exportOptionsPlist "$EXPORT_OPTIONS_PLIST"
 
       - name: Make DMG
-        run: hdiutil create -srcdir "$BUILD_DIR" -volname "$DMG_NAME" "$DMG_FILE_NAME"
+        run: |
+          cp ./LICENSE "$BUILD_DIR"
+          cp ./README.md "$BUILD_DIR"
+          hdiutil create -srcdir "$BUILD_DIR" -volname "$DMG_NAME" "$DMG_FILE_NAME"
 
       - name: Publish
         uses: softprops/action-gh-release@v2
