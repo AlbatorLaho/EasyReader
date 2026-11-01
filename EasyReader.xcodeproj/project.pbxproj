@@ -11,6 +11,7 @@
 		E393FD152CD6E2D100DA7CA3 /* EasyReaderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E393FD142CD6E2D100DA7CA3 /* EasyReaderApp.swift */; };
 		E393FD172CD6E2D100DA7CA3 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E393FD162CD6E2D100DA7CA3 /* ContentView.swift */; };
 		E393FD192CD6E2D300DA7CA3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E393FD182CD6E2D300DA7CA3 /* Assets.xcassets */; };
+		E393FD192CD6E2D300DA7CA4 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = E393FD182CD6E2D300DA7CA4 /* AppIcon.icon */; };
 		E393FD1C2CD6E2D300DA7CA3 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E393FD1B2CD6E2D300DA7CA3 /* Preview Assets.xcassets */; };
 		E393FD272CD6FE7E00DA7CA3 /* AXSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E393FD262CD6FE7E00DA7CA3 /* AXSwift */; };
 		E39BE5A12CD8919400B62873 /* EasyReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39BE5A02CD8919400B62873 /* EasyReader.swift */; };
@@ -45,6 +46,7 @@
 		E393FD142CD6E2D100DA7CA3 /* EasyReaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyReaderApp.swift; sourceTree = "<group>"; };
 		E393FD162CD6E2D100DA7CA3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		E393FD182CD6E2D300DA7CA3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		E393FD182CD6E2D300DA7CA4 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		E393FD1B2CD6E2D300DA7CA3 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		E393FD1D2CD6E2D300DA7CA3 /* EasyReader.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EasyReader.entitlements; sourceTree = "<group>"; };
 		E39BE5A02CD8919400B62873 /* EasyReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyReader.swift; sourceTree = "<group>"; };
@@ -116,6 +118,7 @@
 				E39BE5A02CD8919400B62873 /* EasyReader.swift */,
 				E39C4FFE2D11770B0011D8C4 /* Selection.swift */,
 				E393FD182CD6E2D300DA7CA3 /* Assets.xcassets */,
+				E393FD182CD6E2D300DA7CA4 /* AppIcon.icon */,
 				E393FD1D2CD6E2D300DA7CA3 /* EasyReader.entitlements */,
 				E393FD1A2CD6E2D300DA7CA3 /* Preview Content */,
 				E3CE6D532D1906F000A1106A /* Defaults.swift */,
@@ -240,6 +243,7 @@
 			files = (
 				E393FD1C2CD6E2D300DA7CA3 /* Preview Assets.xcassets in Resources */,
 				E393FD192CD6E2D300DA7CA3 /* Assets.xcassets in Resources */,
+				E393FD192CD6E2D300DA7CA4 /* AppIcon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -409,7 +413,6 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_ASSET_PATHS = "\"EasyReader/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = EasyReader/Info.plist;
@@ -438,7 +441,6 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_ASSET_PATHS = "\"EasyReader/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = EasyReader/Info.plist;

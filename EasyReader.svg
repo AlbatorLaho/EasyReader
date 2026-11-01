@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+    <g id="background">
+        <rect width="1024" height="1024" rx="230" fill="#f4f4f4" />
+    </g>
+
+    <g id="headphone-band" fill="#2b2b2b">
+        <path d="M205 400 V335 A307 282 0 0 1 819 335 V400 H786 V327 A274 221 0 0 0 238 327 V400 Z" />
+        <path d="M205 320 L256 307 V563 L205 550 Z M819 320 L768 307 V563 L819 550 Z" />
+    </g>
+
+    <g id="back-cover" fill="#484848">
+        <path d="M340 358 H696 A72 72 0 0 1 768 430 V901 A72 72 0 0 1 696 973 H340 Z" />
+    </g>
+
+    <g id="back-spine" fill="#5f707d">
+        <path d="M251 282 Q256 356 340 358 V973 Q256 972 251 921 Z" />
+    </g>
+
+    <g id="page-1" fill="#b4b4b4">
+        <rect x="272" y="333" width="496" height="615" rx="72" ry="76" />
+    </g>
+
+    <g id="page-2" fill="#bababa">
+        <rect x="272" y="297" width="496" height="615" rx="72" ry="76" />
+    </g>
+
+    <g id="bookmark" fill="#96342f">
+        <path d="M358 845 H461 V998 L410 947 L358 998 Z" />
+    </g>
+
+    <g id="page-3" fill="#c0c0c0">
+        <rect x="272" y="261" width="496" height="615" rx="72" ry="76" />
+    </g>
+
+    <g id="front-cover" fill="#4d4d4d">
+        <path d="M340 230 H696 A72 72 0 0 1 768 302 V773 A72 72 0 0 1 696 845 H340 Z" />
+    </g>
+
+    <g id="front-spine" fill="#657783">
+        <path d="M340 230 Q256 232 251 282 V897 Q256 847 340 845 Z" />
+    </g>
+
+    <g id="front-spine-label" fill="#55849e">
+        <path d="M251 376 Q256 326 340 324 V384 Q256 386 251 436 Z" />
+    </g>
+
+    <g id="headphone-muffs" fill="#96342f">
+        <path d="M205 333 A51 102.5 0 0 0 205 538 Z" />
+        <path d="M819 333 A51 102.5 0 0 1 819 538 Z" />
+    </g>
+
+    <g id="speaker" fill="#5a98c3">
+        <path d="M418 410 H450 Q458 410 464 405 L503 368 Q511 361 511 372 V550 Q511 561 503 554 L464 517 Q458 512 450 512 H418 Q410 512 410 504 V418 Q410 410 418 410 Z" />
+        <path d="M558.8 424.4 A218.2 218.2 0 0 1 558.8 498.6 A12.5 12.5 0 0 1 534.2 494.4 A193.2 193.2 0 0 0 534.2 428.6 A12.5 12.5 0 0 1 558.8 424.4 Z" />
+        <path d="M598.3 375.8 A256.7 256.7 0 0 1 598.3 547.2 A12.5 12.5 0 0 1 574.7 538.8 A231.7 231.7 0 0 0 574.7 384.2 A12.5 12.5 0 0 1 598.3 375.8 Z" />
+        <path d="M628.8 330.6 A257.4 257.4 0 0 1 628.8 592.4 A12.5 12.5 0 0 1 607.2 579.6 A232.4 232.4 0 0 0 607.2 343.4 A12.5 12.5 0 0 1 628.8 330.6 Z" />
+    </g>
+
+    <g id="text-lines" fill="#7d766f">
+        <rect x="384" y="666" width="333" height="25" rx="12.5" />
+        <rect x="384" y="717" width="333" height="25" rx="12.5" />
+        <rect x="384" y="768.5" width="333" height="25" rx="12.5" />
+    </g>
+</svg>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+    <g id="headphone-band" fill="#2b2b2b">
+        <path d="M205 400 V335 A307 282 0 0 1 819 335 V400 H786 V327 A274 221 0 0 0 238 327 V400 Z" />
+        <path d="M205 320 L256 307 V563 L205 550 Z M819 320 L768 307 V563 L819 550 Z" />
+    </g>
+</svg>

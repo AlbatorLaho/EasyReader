@@ -1,0 +1,149 @@
+{
+  "fill" : {
+    "automatic-gradient" : "display-p3:0.96000,0.96000,0.96000,1.00000"
+  },
+  "groups" : [
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "13.text-lines.svg",
+          "name" : "13.text-lines"
+        },
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "12.speaker.svg",
+          "name" : "12.speaker"
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.5
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "11.headphone-muffs.svg",
+          "name" : "11.headphone-muffs"
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 1
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    },
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "10.front-spine-label.svg",
+          "name" : "10.front-spine-label"
+        },
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "09.front-spine.svg",
+          "name" : "09.front-spine"
+        },
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "08.front-cover.svg",
+          "name" : "08.front-cover"
+        },
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "07.page-3.svg",
+          "name" : "07.page-3"
+        },
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "06.bookmark.svg",
+          "name" : "06.bookmark"
+        },
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "05.page-2.svg",
+          "name" : "05.page-2"
+        },
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "04.page-1.svg",
+          "name" : "04.page-1"
+        },
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "03.back-spine.svg",
+          "name" : "03.back-spine"
+        },
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "02.back-cover.svg",
+          "name" : "02.back-cover"
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 1
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    },
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "01.headphone-band.svg",
+          "name" : "01.headphone-band"
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 1
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}
