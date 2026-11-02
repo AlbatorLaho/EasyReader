@@ -1,0 +1,7 @@
+// Signing for both targets (keep it out of project.pbxproj).
+// Ad-hoc by default: macOS drops the Accessibility grant every rebuild.
+// For a stable identity, set CODE_SIGN_IDENTITY = HawkRaven Code Signing Certificate in gitignored Config/SigningIdentity.xcconfig.
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
+
+#include? "SigningIdentity.xcconfig"

@@ -1,24 +1,90 @@
 name: Build
 
-permissions:
-  contents: write
+# Each job asks for what it needs: the job holding the signing key gets no write token.
+permissions: {}
 
 on:
   push:
     tags:
       - "v*.*.*"
 
+defaults:
+  run:
+    shell: bash  # explicit bash adds -o pipefail, so xcodebuild failures aren't hidden by the pipe
+
 jobs:
   build:
     runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check Version
+        run: |
+          versions=$(grep -oE 'MARKETING_VERSION = [^;]*;' EasyReader.xcodeproj/project.pbxproj | sort -u)
+          if [[ "$versions" != "MARKETING_VERSION = ${GITHUB_REF_NAME#v};" ]]; then
+            echo "::error::MARKETING_VERSION doesn't match tag $GITHUB_REF_NAME: $versions"
+            exit 1
+          fi
+
+      # Package manifests are code: evaluate them before the key is on the runner.
+      - name: Resolve Packages
+        run: xcodebuild -resolvePackageDependencies -project EasyReader.xcodeproj -scheme EasyReader
+
+      - name: Import Signing Certificate
+        env:
+          SIGNING_CERT_P12: ${{ secrets.SIGNING_CERT_P12 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          trap 'rm -f "$RUNNER_TEMP/cert.p12"' EXIT
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings "$KEYCHAIN"  # never auto-lock
+          base64 --decode <<< "$SIGNING_CERT_P12" > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$SIGNING_CERT_PASSWORD" -T /usr/bin/codesign
+          # let codesign use the key without a UI prompt
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain
+
+      # Same file as a local stable-signing setup (a command-line CODE_SIGN_IDENTITY would also hit the packages' bundles)
+      - name: Build
+        run: |
+          echo 'CODE_SIGN_IDENTITY = HawkRaven Code Signing Certificate' > Config/SigningIdentity.xcconfig
+          scripts/build-release.sh "$GITHUB_REF_NAME"
+
+      - name: Remove Signing Keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db"
+
+      - name: Upload Disk Image
+        uses: actions/upload-artifact@v7
+        with:
+          name: dmg
+          path: build/EasyReader-${{ github.ref_name }}.dmg
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: macos-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0  # history + tags for release-notes.sh
+          persist-credentials: false
 
-      - name: Build
-        run: scripts/build-release.sh "$GITHUB_REF_NAME"
+      - name: Download Disk Image
+        uses: actions/download-artifact@v8
+        with:
+          name: dmg
+          path: build
 
       - name: Publish
         env:

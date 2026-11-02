@@ -1,11 +1,11 @@
 #!/bin/bash
 # Builds the Release app and build/EasyReader-<version>.dmg (used by .github/workflows/build.yml).
-# Usage: scripts/build-release.sh [version]   (default: git describe --tags)
-# Signing comes from the project's settings; CODE_SIGN_IDENTITY env overrides it.
+# Usage: scripts/build-release.sh [version]   (default: git describe of the last v* tag)
+# Signing comes from Config/Signing.xcconfig (+ SigningIdentity.xcconfig, which CI writes too).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${1:-$(git describe --tags --always --dirty)}"
+VERSION="${1:-$(git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --always --dirty)}"
 ARCHIVE=build/EasyReader.xcarchive
 STAGING=build/dmg
 DMG="build/EasyReader-$VERSION.dmg"
@@ -15,7 +15,7 @@ pretty() { if command -v xcbeautify > /dev/null; then xcbeautify; else cat; fi; 
 
 rm -rf "$ARCHIVE" "$STAGING" "$DMG"
 xcodebuild archive -project EasyReader.xcodeproj -scheme EasyReader -configuration Release -archivePath "$ARCHIVE" \
-    ONLY_ACTIVE_ARCH=NO ${CODE_SIGN_IDENTITY:+"CODE_SIGN_IDENTITY=$CODE_SIGN_IDENTITY"} | pretty
+    ONLY_ACTIVE_ARCH=NO | pretty
 
 # "mac-application" = Organizer's "Copy App" (keeps our signature; "developer-id" would need an Apple account)
 plutil -convert xml1 -o build/ExportOptions.plist - <<< '{"method": "mac-application"}'

@@ -3,76 +3,56 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		E383FBD32CF539B500F32E57 /* Defaults in Frameworks */ = {isa = PBXBuildFile; productRef = E383FBD22CF539B500F32E57 /* Defaults */; };
-		E393FD152CD6E2D100DA7CA3 /* EasyReaderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E393FD142CD6E2D100DA7CA3 /* EasyReaderApp.swift */; };
-		E393FD172CD6E2D100DA7CA3 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E393FD162CD6E2D100DA7CA3 /* ContentView.swift */; };
-		E393FD192CD6E2D300DA7CA3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E393FD182CD6E2D300DA7CA3 /* Assets.xcassets */; };
-		E393FD192CD6E2D300DA7CA4 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = E393FD182CD6E2D300DA7CA4 /* AppIcon.icon */; };
-		E393FD1C2CD6E2D300DA7CA3 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E393FD1B2CD6E2D300DA7CA3 /* Preview Assets.xcassets */; };
 		E393FD272CD6FE7E00DA7CA3 /* AXSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E393FD262CD6FE7E00DA7CA3 /* AXSwift */; };
-		E39BE5A12CD8919400B62873 /* EasyReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39BE5A02CD8919400B62873 /* EasyReader.swift */; };
-		E39BE5A72CD9E3A400B62873 /* TextSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39BE5A62CD9E3A400B62873 /* TextSelector.swift */; };
-		E39C4FFF2D11770B0011D8C4 /* Selection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39C4FFE2D11770B0011D8C4 /* Selection.swift */; };
-		E39C50012D14AADF0011D8C4 /* NLTextSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39C50002D14AADF0011D8C4 /* NLTextSelector.swift */; };
-		E39C50032D15F1E20011D8C4 /* ReadableTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39C50022D15F1E20011D8C4 /* ReadableTextView.swift */; };
-		E3A9AC552D0E5A1100FE2E57 /* ReadableElement.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A9AC542D0E5A1100FE2E57 /* ReadableElement.swift */; };
-		E3A9AC572D0E5C4500FE2E57 /* WebAreaReadableElement.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A9AC562D0E5C4500FE2E57 /* WebAreaReadableElement.swift */; };
-		E3A9AC592D0E5C4E00FE2E57 /* TextAreaReadableElement.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A9AC582D0E5C4E00FE2E57 /* TextAreaReadableElement.swift */; };
-		E3A9AC5B2D0E60EE00FE2E57 /* TestingReadable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A9AC5A2D0E60EE00FE2E57 /* TestingReadable.swift */; };
-		E3BC5DC92D0BEB1900D34D4F /* Readable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3BC5DC82D0BEB1900D34D4F /* Readable.swift */; };
 		E3BE9A542D474DE80019EEC0 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = E3BE9A532D474DE80019EEC0 /* KeyboardShortcuts */; };
-		E3C29E312D540B4600894DDC /* TextPlayground.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C29E302D540B4600894DDC /* TextPlayground.swift */; };
-		E3C29E332D540B8400894DDC /* ResetDefaultsButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C29E322D540B8400894DDC /* ResetDefaultsButton.swift */; };
-		E3C29E352D540BB100894DDC /* SliderControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C29E342D540BB100894DDC /* SliderControls.swift */; };
-		E3CAE2EC2D3C6C73004EE269 /* PronunciationTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CAE2EB2D3C6C73004EE269 /* PronunciationTable.swift */; };
-		E3CAE2F22D3C845F004EE269 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CAE2F12D3C845F004EE269 /* NowPlayingManager.swift */; };
-		E3CAE2F42D3F74A9004EE269 /* UIElement+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CAE2F32D3F74A9004EE269 /* UIElement+Extensions.swift */; };
-		E3CE6D542D1906F000A1106A /* Defaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CE6D532D1906F000A1106A /* Defaults.swift */; };
-		E3CE6D562D19071D00A1106A /* Pronunciation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CE6D552D19071D00A1106A /* Pronunciation.swift */; };
-		E3DA47AB2D4DA3CE00E87CB6 /* SettingsGeneralView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DA47AA2D4DA3CE00E87CB6 /* SettingsGeneralView.swift */; };
-		E3DA47AD2D4DA45500E87CB6 /* SettingsSpeechView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DA47AC2D4DA45500E87CB6 /* SettingsSpeechView.swift */; };
-		E3DA47AF2D4DA46600E87CB6 /* SettingsReadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DA47AE2D4DA46600E87CB6 /* SettingsReadingView.swift */; };
-		E3DBB12E2D2775FA00394A91 /* SettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DBB12D2D2775FA00394A91 /* SettingsTab.swift */; };
-		E3DBB1302D27761400394A91 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DBB12F2D27761400394A91 /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		7E57000000000000000000D2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E393FD092CD6E2D100DA7CA3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E393FD102CD6E2D100DA7CA3;
+			remoteInfo = EasyReader;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
-		E383FBDA2CF554A600F32E57 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		E393FD112CD6E2D100DA7CA3 /* EasyReader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EasyReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		E393FD142CD6E2D100DA7CA3 /* EasyReaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyReaderApp.swift; sourceTree = "<group>"; };
-		E393FD162CD6E2D100DA7CA3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		E393FD182CD6E2D300DA7CA3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		E393FD182CD6E2D300DA7CA4 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
-		E393FD1B2CD6E2D300DA7CA3 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
-		E393FD1D2CD6E2D300DA7CA3 /* EasyReader.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EasyReader.entitlements; sourceTree = "<group>"; };
-		E39BE5A02CD8919400B62873 /* EasyReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyReader.swift; sourceTree = "<group>"; };
-		E39BE5A62CD9E3A400B62873 /* TextSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextSelector.swift; sourceTree = "<group>"; };
-		E39C4FFE2D11770B0011D8C4 /* Selection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Selection.swift; sourceTree = "<group>"; };
-		E39C50002D14AADF0011D8C4 /* NLTextSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NLTextSelector.swift; sourceTree = "<group>"; };
-		E39C50022D15F1E20011D8C4 /* ReadableTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadableTextView.swift; sourceTree = "<group>"; };
-		E3A9AC542D0E5A1100FE2E57 /* ReadableElement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadableElement.swift; sourceTree = "<group>"; };
-		E3A9AC562D0E5C4500FE2E57 /* WebAreaReadableElement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAreaReadableElement.swift; sourceTree = "<group>"; };
-		E3A9AC582D0E5C4E00FE2E57 /* TextAreaReadableElement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextAreaReadableElement.swift; sourceTree = "<group>"; };
-		E3A9AC5A2D0E60EE00FE2E57 /* TestingReadable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestingReadable.swift; sourceTree = "<group>"; };
-		E3BC5DC82D0BEB1900D34D4F /* Readable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Readable.swift; sourceTree = "<group>"; };
-		E3C29E302D540B4600894DDC /* TextPlayground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPlayground.swift; sourceTree = "<group>"; };
-		E3C29E322D540B8400894DDC /* ResetDefaultsButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResetDefaultsButton.swift; sourceTree = "<group>"; };
-		E3C29E342D540BB100894DDC /* SliderControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SliderControls.swift; sourceTree = "<group>"; };
-		E3CAE2EB2D3C6C73004EE269 /* PronunciationTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PronunciationTable.swift; sourceTree = "<group>"; };
-		E3CAE2F12D3C845F004EE269 /* NowPlayingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingManager.swift; sourceTree = "<group>"; };
-		E3CAE2F32D3F74A9004EE269 /* UIElement+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIElement+Extensions.swift"; sourceTree = "<group>"; };
-		E3CE6D532D1906F000A1106A /* Defaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Defaults.swift; sourceTree = "<group>"; };
-		E3CE6D552D19071D00A1106A /* Pronunciation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pronunciation.swift; sourceTree = "<group>"; };
-		E3DA47AA2D4DA3CE00E87CB6 /* SettingsGeneralView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsGeneralView.swift; sourceTree = "<group>"; };
-		E3DA47AC2D4DA45500E87CB6 /* SettingsSpeechView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSpeechView.swift; sourceTree = "<group>"; };
-		E3DA47AE2D4DA46600E87CB6 /* SettingsReadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsReadingView.swift; sourceTree = "<group>"; };
-		E3DBB12D2D2775FA00394A91 /* SettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTab.swift; sourceTree = "<group>"; };
-		E3DBB12F2D27761400394A91 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		7E57000000000000000000A4 /* EasyReaderTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EasyReaderTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E5700000000000000000101 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7E57000000000000000000F3 /* Exceptions for "EasyReader" folder in "EasyReader" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = E393FD102CD6E2D100DA7CA3 /* EasyReader */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		7E57000000000000000000F1 /* EasyReader */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7E57000000000000000000F3 /* Exceptions for "EasyReader" folder in "EasyReader" target */,
+			);
+			path = EasyReader;
+			sourceTree = "<group>";
+		};
+		7E57000000000000000000F2 /* EasyReaderTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = EasyReaderTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		E393FD0E2CD6E2D100DA7CA3 /* Frameworks */ = {
@@ -85,13 +65,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7E57000000000000000000C2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		E393FD082CD6E2D100DA7CA3 = {
 			isa = PBXGroup;
 			children = (
-				E393FD132CD6E2D100DA7CA3 /* EasyReader */,
+				7E57000000000000000000F1 /* EasyReader */,
+				7E57000000000000000000F2 /* EasyReaderTests */,
+				7E5700000000000000000102 /* Config */,
 				E393FD122CD6E2D100DA7CA3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -100,77 +89,17 @@
 			isa = PBXGroup;
 			children = (
 				E393FD112CD6E2D100DA7CA3 /* EasyReader.app */,
+				7E57000000000000000000A4 /* EasyReaderTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		E393FD132CD6E2D100DA7CA3 /* EasyReader */ = {
+		7E5700000000000000000102 /* Config */ = {
 			isa = PBXGroup;
 			children = (
-				E383FBDA2CF554A600F32E57 /* Info.plist */,
-				E39BE5A52CD9E38600B62873 /* Text Selectors */,
-				E3BC5DC72D0BEAD600D34D4F /* Readable */,
-				E3DBB12A2D2775BB00394A91 /* Views */,
-				E393FD142CD6E2D100DA7CA3 /* EasyReaderApp.swift */,
-				E3CAE2F12D3C845F004EE269 /* NowPlayingManager.swift */,
-				E3CE6D552D19071D00A1106A /* Pronunciation.swift */,
-				E393FD162CD6E2D100DA7CA3 /* ContentView.swift */,
-				E39BE5A02CD8919400B62873 /* EasyReader.swift */,
-				E39C4FFE2D11770B0011D8C4 /* Selection.swift */,
-				E393FD182CD6E2D300DA7CA3 /* Assets.xcassets */,
-				E393FD182CD6E2D300DA7CA4 /* AppIcon.icon */,
-				E393FD1D2CD6E2D300DA7CA3 /* EasyReader.entitlements */,
-				E393FD1A2CD6E2D300DA7CA3 /* Preview Content */,
-				E3CE6D532D1906F000A1106A /* Defaults.swift */,
-				E3CAE2F32D3F74A9004EE269 /* UIElement+Extensions.swift */,
+				7E5700000000000000000101 /* Signing.xcconfig */,
 			);
-			path = EasyReader;
-			sourceTree = "<group>";
-		};
-		E393FD1A2CD6E2D300DA7CA3 /* Preview Content */ = {
-			isa = PBXGroup;
-			children = (
-				E393FD1B2CD6E2D300DA7CA3 /* Preview Assets.xcassets */,
-			);
-			path = "Preview Content";
-			sourceTree = "<group>";
-		};
-		E39BE5A52CD9E38600B62873 /* Text Selectors */ = {
-			isa = PBXGroup;
-			children = (
-				E39BE5A62CD9E3A400B62873 /* TextSelector.swift */,
-				E39C50002D14AADF0011D8C4 /* NLTextSelector.swift */,
-			);
-			path = "Text Selectors";
-			sourceTree = "<group>";
-		};
-		E3BC5DC72D0BEAD600D34D4F /* Readable */ = {
-			isa = PBXGroup;
-			children = (
-				E3BC5DC82D0BEB1900D34D4F /* Readable.swift */,
-				E3A9AC542D0E5A1100FE2E57 /* ReadableElement.swift */,
-				E3A9AC582D0E5C4E00FE2E57 /* TextAreaReadableElement.swift */,
-				E3A9AC562D0E5C4500FE2E57 /* WebAreaReadableElement.swift */,
-				E39C50022D15F1E20011D8C4 /* ReadableTextView.swift */,
-				E3A9AC5A2D0E60EE00FE2E57 /* TestingReadable.swift */,
-			);
-			path = Readable;
-			sourceTree = "<group>";
-		};
-		E3DBB12A2D2775BB00394A91 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				E3DBB12F2D27761400394A91 /* SettingsView.swift */,
-				E3DA47AE2D4DA46600E87CB6 /* SettingsReadingView.swift */,
-				E3DA47AC2D4DA45500E87CB6 /* SettingsSpeechView.swift */,
-				E3DA47AA2D4DA3CE00E87CB6 /* SettingsGeneralView.swift */,
-				E3C29E342D540BB100894DDC /* SliderControls.swift */,
-				E3C29E322D540B8400894DDC /* ResetDefaultsButton.swift */,
-				E3C29E302D540B4600894DDC /* TextPlayground.swift */,
-				E3DBB12D2D2775FA00394A91 /* SettingsTab.swift */,
-				E3CAE2EB2D3C6C73004EE269 /* PronunciationTable.swift */,
-			);
-			path = Views;
+			path = Config;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -188,6 +117,9 @@
 			);
 			dependencies = (
 			);
+			fileSystemSynchronizedGroups = (
+				7E57000000000000000000F1 /* EasyReader */,
+			);
 			name = EasyReader;
 			packageProductDependencies = (
 				E393FD262CD6FE7E00DA7CA3 /* AXSwift */,
@@ -198,6 +130,27 @@
 			productReference = E393FD112CD6E2D100DA7CA3 /* EasyReader.app */;
 			productType = "com.apple.product-type.application";
 		};
+		7E57000000000000000000D1 /* EasyReaderTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E57000000000000000000E3 /* Build configuration list for PBXNativeTarget "EasyReaderTests" */;
+			buildPhases = (
+				7E57000000000000000000C1 /* Sources */,
+				7E57000000000000000000C2 /* Frameworks */,
+				7E57000000000000000000C3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7E57000000000000000000D3 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7E57000000000000000000F2 /* EasyReaderTests */,
+			);
+			name = EasyReaderTests;
+			productName = EasyReaderTests;
+			productReference = 7E57000000000000000000A4 /* EasyReaderTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -206,15 +159,19 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1420;
-				LastUpgradeCheck = 1620;
+				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					E393FD102CD6E2D100DA7CA3 = {
 						CreatedOnToolsVersion = 14.2;
 					};
+					7E57000000000000000000D1 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = E393FD102CD6E2D100DA7CA3;
+					};
 				};
 			};
 			buildConfigurationList = E393FD0C2CD6E2D100DA7CA3 /* Build configuration list for PBXProject "EasyReader" */;
-			compatibilityVersion = "Xcode 14.0";
+			preferredProjectObjectVersion = 77;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -232,6 +189,7 @@
 			projectRoot = "";
 			targets = (
 				E393FD102CD6E2D100DA7CA3 /* EasyReader */,
+				7E57000000000000000000D1 /* EasyReaderTests */,
 			);
 		};
 /* End PBXProject section */
@@ -241,9 +199,13 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E393FD1C2CD6E2D300DA7CA3 /* Preview Assets.xcassets in Resources */,
-				E393FD192CD6E2D300DA7CA3 /* Assets.xcassets in Resources */,
-				E393FD192CD6E2D300DA7CA4 /* AppIcon.icon in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E57000000000000000000C3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -254,35 +216,25 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E3A9AC572D0E5C4500FE2E57 /* WebAreaReadableElement.swift in Sources */,
-				E3DA47AD2D4DA45500E87CB6 /* SettingsSpeechView.swift in Sources */,
-				E3CE6D542D1906F000A1106A /* Defaults.swift in Sources */,
-				E3DBB12E2D2775FA00394A91 /* SettingsTab.swift in Sources */,
-				E3CAE2F22D3C845F004EE269 /* NowPlayingManager.swift in Sources */,
-				E3BC5DC92D0BEB1900D34D4F /* Readable.swift in Sources */,
-				E3CAE2F42D3F74A9004EE269 /* UIElement+Extensions.swift in Sources */,
-				E393FD172CD6E2D100DA7CA3 /* ContentView.swift in Sources */,
-				E3DA47AF2D4DA46600E87CB6 /* SettingsReadingView.swift in Sources */,
-				E3C29E312D540B4600894DDC /* TextPlayground.swift in Sources */,
-				E3A9AC5B2D0E60EE00FE2E57 /* TestingReadable.swift in Sources */,
-				E3C29E332D540B8400894DDC /* ResetDefaultsButton.swift in Sources */,
-				E393FD152CD6E2D100DA7CA3 /* EasyReaderApp.swift in Sources */,
-				E3CAE2EC2D3C6C73004EE269 /* PronunciationTable.swift in Sources */,
-				E3DA47AB2D4DA3CE00E87CB6 /* SettingsGeneralView.swift in Sources */,
-				E39C50012D14AADF0011D8C4 /* NLTextSelector.swift in Sources */,
-				E3CE6D562D19071D00A1106A /* Pronunciation.swift in Sources */,
-				E3DBB1302D27761400394A91 /* SettingsView.swift in Sources */,
-				E3A9AC552D0E5A1100FE2E57 /* ReadableElement.swift in Sources */,
-				E39C4FFF2D11770B0011D8C4 /* Selection.swift in Sources */,
-				E39C50032D15F1E20011D8C4 /* ReadableTextView.swift in Sources */,
-				E39BE5A72CD9E3A400B62873 /* TextSelector.swift in Sources */,
-				E39BE5A12CD8919400B62873 /* EasyReader.swift in Sources */,
-				E3C29E352D540BB100894DDC /* SliderControls.swift in Sources */,
-				E3A9AC592D0E5C4E00FE2E57 /* TextAreaReadableElement.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E57000000000000000000C1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7E57000000000000000000D3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E393FD102CD6E2D100DA7CA3 /* EasyReader */;
+			targetProxy = 7E57000000000000000000D2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		E393FD1E2CD6E2D300DA7CA3 /* Debug */ = {
@@ -342,6 +294,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -397,6 +350,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 			};
@@ -404,12 +358,11 @@
 		};
 		E393FD212CD6E2D300DA7CA3 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7E5700000000000000000101 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = EasyReader/EasyReader.entitlements;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
@@ -423,7 +376,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = HawkRaven.EasyReader;
+				PRODUCT_BUNDLE_IDENTIFIER = HawkRaven.EasyReader.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -432,12 +385,11 @@
 		};
 		E393FD222CD6E2D300DA7CA3 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7E5700000000000000000101 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = EasyReader/EasyReader.entitlements;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
@@ -455,6 +407,40 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		7E57000000000000000000E1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7E5700000000000000000101 /* Signing.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = HawkRaven.EasyReaderTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EasyReader.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EasyReader";
+			};
+			name = Debug;
+		};
+		7E57000000000000000000E2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7E5700000000000000000101 /* Signing.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = HawkRaven.EasyReaderTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EasyReader.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EasyReader";
 			};
 			name = Release;
 		};
@@ -475,6 +461,15 @@
 			buildConfigurations = (
 				E393FD212CD6E2D300DA7CA3 /* Debug */,
 				E393FD222CD6E2D300DA7CA3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E57000000000000000000E3 /* Build configuration list for PBXNativeTarget "EasyReaderTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E57000000000000000000E1 /* Debug */,
+				7E57000000000000000000E2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
