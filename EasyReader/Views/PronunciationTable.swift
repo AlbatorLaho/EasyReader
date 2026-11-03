@@ -17,12 +17,12 @@ struct PronunciationTable: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        print("makeCoordinator")
+        Log.settings.debug("PronunciationTable.makeCoordinator")
         return Coordinator(self)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        print("makeNSView")
+        Log.settings.debug("PronunciationTable.makeNSView")
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
@@ -69,7 +69,7 @@ struct PronunciationTable: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        print("updateNSView")
+        Log.settings.debug("PronunciationTable.updateNSView")
         if let tableView = nsView.documentView as? NSTableView {
             tableView.reloadData()
             if let selection, let index = data.firstIndex(of: selection) {
@@ -190,6 +190,7 @@ struct PronunciationTable: NSViewRepresentable {
             DispatchQueue.main.async {
                 guard let textField = obj.object as? NSTextField else { return }
                 let row = textField.tag
+                guard self.parent.data.indices.contains(row) else { return }
                 if textField.identifier?.rawValue == "Search" {
                     self.parent.data[row].search = textField.stringValue
                 } else if textField.identifier?.rawValue == "Replace" {
@@ -201,8 +202,8 @@ struct PronunciationTable: NSViewRepresentable {
         func tableViewSelectionDidChange(_ notification: Notification) {
             DispatchQueue.main.async {
                 guard let tableView = notification.object as? NSTableView else { return }
-                let row = tableView.selectedRow
-                self.parent.selection = self.parent.data[row]
+                let row = tableView.selectedRow  // -1 when nothing is selected
+                self.parent.selection = self.parent.data.indices.contains(row) ? self.parent.data[row] : nil
             }
         }
 
@@ -214,6 +215,7 @@ struct PronunciationTable: NSViewRepresentable {
 
         @objc func onCheckBoxChange(_ sender: NSButton) {
             let row = sender.tag
+            guard parent.data.indices.contains(row) else { return }
             if sender.identifier?.rawValue == "Ignore Case" {
                 parent.data[row].ignoreCase = (sender.state == .on)
             } else if sender.identifier?.rawValue == "Enabled" {

@@ -7,7 +7,7 @@
 
 import Cocoa
 
-protocol Readable {
+protocol Readable: AnyObject {
     var title: String? { get }
     var groupTitle: String? { get }
     var appDomain: String? { get }
@@ -15,6 +15,8 @@ protocol Readable {
     var fullText: String? { get }
     var selectedText: String? { get }
     var selection: Selection? { get set }
+    /// Called when the readable goes away (e.g. its text view leaves the window or the window closes).
+    var onInvalidate: (() -> Void)? { get set }
 
     func scroll(to selection: Selection, options: ScrollOptions);
 }

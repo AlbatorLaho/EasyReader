@@ -61,4 +61,11 @@ final class NLTextSelectorTests: XCTestCase {
         let back = selector.select(.backward, from: second, in: string)
         XCTAssertEqual(text(of: back, in: string), "😀 Hello there.")
     }
+
+    /// A selection starting inside the first character's UTF-16 surrogate pair rounds down to the start
+    /// (used to make `enumerateTagsReversed` call `index(before:)` on the start index and trap).
+    func testBackwardFromInsideLeadingSurrogatePair() {
+        let string = "😀 Hi."
+        XCTAssertTrue(NLTextSelector(unit: .sentence).select(.backward, from: Selection(1..<3), in: string).isEmpty)
+    }
 }

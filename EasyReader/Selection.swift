@@ -37,12 +37,29 @@ struct Selection: Equatable, Hashable {
         self.init(NSRange(region, in: string))
     }
     
+    /// Clamped to the string and rounded down to a character boundary, so it's always safe to use
+    /// (the text may have changed since the offsets were read, or they may split a surrogate pair).
     func startIndex<S: StringProtocol>(in string: S) -> String.Index {
-        return String.Index(utf16Offset: lowerBound, in: string)
+        return Self.characterIndex(atUTF16Offset: lowerBound, in: string)
     }
-    
+
+    /// See `startIndex(in:)`.
     func endIndex<S: StringProtocol>(in string: S) -> String.Index {
-        return String.Index(utf16Offset: upperBound, in: string)
+        return Self.characterIndex(atUTF16Offset: upperBound, in: string)
+    }
+
+    /// Between `startIndex(in:)` and `endIndex(in:)`.
+    func substring<S: StringProtocol>(of string: S) -> String {
+        String(string[startIndex(in: string)..<endIndex(in: string)])
+    }
+
+    private static func characterIndex<S: StringProtocol>(atUTF16Offset offset: Int, in string: S) -> String.Index {
+        let utf16 = string.utf16
+        var index = utf16.index(utf16.startIndex, offsetBy: offset.clamped(to: 0...utf16.count))
+        while String.Index(index, within: string) == nil {
+            index = utf16.index(before: index)
+        }
+        return index
     }
 }
 

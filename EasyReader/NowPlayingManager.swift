@@ -85,6 +85,7 @@ final class NowPlayingManager: NSObject {
 
 //    FIXME: seems like this is getting set every time we skip via Now Playing Center? (may be because it's the "next track", so it automatically removes the info?)
     func updateInfo(_ readable: Readable?, state: EasyReader.State) {
+        Log.nowPlaying.debug("update info: \(state)")
         switch state {
             case .reading:
                 setupRemoteCommands()
@@ -153,7 +154,8 @@ struct RemoteCommand<Command: MPRemoteCommand, CommandEvent: MPRemoteCommandEven
             }
             if let handler {
                 target = command.addTarget() { event in
-                    handler(event as! CommandEvent)
+                    Log.nowPlaying.debug("command: \(type(of: event))")
+                    return handler(event as! CommandEvent)
                 }
             }
         }

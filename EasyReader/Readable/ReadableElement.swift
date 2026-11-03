@@ -33,7 +33,20 @@ class ReadableElement: Readable {
     var fullText: String? { nil }
     var selectedText: String? { nil }
     var selection: Selection?
-    
+    /// Destruction is observed only while a handler is set, so a readable nobody listens to
+    /// (e.g. one created and dropped during a search) holds no AX observer.
+    var onInvalidate: (() -> Void)? {
+        didSet {
+            if onInvalidate == nil {
+                observer?.stop()
+                observer = nil
+            } else if observer == nil {
+                observeDestruction()
+            }
+        }
+    }
+    private var observer: Observer?
+
     private static var values: [Role: ReadableElement.Type] = [
         .textArea: TextAreaReadableElement.self,
 //        .webArea: WebAreaReadableElement.self,
@@ -49,6 +62,27 @@ class ReadableElement: Readable {
         app = (try? handle.pid()).flatMap({ pid in
             NSWorkspace.shared.runningApplications.first(where: { $0.processIdentifier == pid })
         })
+        Log.accessibility.debug("\(Self.self) for \(app?.bundleIdentifier ?? "unknown app")")
+    }
+
+    /// AppKit posts `AXUIElementDestroyed` for the element when it leaves its window (even if the view
+    /// lives on), and for the window when it closes (the element itself stays valid then), so watch both.
+    private func observeDestruction() {
+        guard let pid = try? handle.pid() else { return }
+        do {
+            let observer = try Observer(processID: pid) { [weak self] _, _, _ in
+                Log.accessibility.debug("readable element or its window destroyed")
+                self?.onInvalidate?()
+            }
+            try observer.addNotification(.uiElementDestroyed, forElement: handle)
+            if let window: UIElement = try? handle.attribute(.window) {
+                try observer.addNotification(.uiElementDestroyed, forElement: window)
+            }
+            observer.start()
+            self.observer = observer
+        } catch {
+            Log.accessibility.error("Unable to observe readable element destruction: \(error)")
+        }
     }
     
     func scroll(to selection: Selection, options: ScrollOptions) {}

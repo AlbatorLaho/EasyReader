@@ -42,9 +42,9 @@ final class NLTextSelector: TextSelector {
                 }
                 startIndex = tagRange?.lowerBound ?? string.startIndex
         }
-        print(Selection(startIndex..<endIndex, in: string))
-//        print(String(string[startIndex..<endIndex]))
-        return Selection(startIndex..<endIndex, in: string)
+        let result = Selection(startIndex..<endIndex, in: string)
+        Log.selector.debug("\(taggerUnit.rawValue) \(direction) from \(selection) → \(result)")
+        return result
     }
 }
 
@@ -53,8 +53,13 @@ extension NLTagger {
         guard let string else { return }
         var currentIndex = range.upperBound
         while currentIndex > range.lowerBound {
-            let tags = tags(in: string.index(before: currentIndex)..<currentIndex, unit: unit, scheme: scheme, options: options)
-            guard let (tag, tagRange) = tags.last else { continue }
+            let previousIndex = string.index(before: currentIndex)
+            let tags = tags(in: previousIndex..<currentIndex, unit: unit, scheme: scheme, options: options)
+            guard let (tag, tagRange) = tags.last, tagRange.lowerBound < currentIndex else {
+                // Never seen in practice; step back anyway so the loop always terminates.
+                currentIndex = previousIndex
+                continue
+            }
             guard block(tag, tagRange) else { break }
             currentIndex = tagRange.lowerBound
         }

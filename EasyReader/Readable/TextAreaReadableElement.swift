@@ -40,15 +40,23 @@ final class TextAreaReadableElement: ReadableElement {
         guard let selectionBounds: CGRect = try? handle.parameterizedAttribute(.boundsForRangeParameterized, param: CFRange(selection)),
               let contentFrame: CGRect = try? handle.attribute(.frame),
               let scrollAreaFrame: CGRect = try? scrollArea?.attribute(.frame)
-        else { return }
+        else {
+            Log.scroll.debug("scroll to \(selection): missing bounds, frame, or scroll area")
+            return
+        }
 
         let padding = min(CGFloat(options.padding), scrollAreaFrame.height / 2)
-        guard selectionBounds.size != .zero, !scrollAreaFrame.insetBy(dx: 0, dy: padding).contains(selectionBounds) else { return }
+        guard selectionBounds.size != .zero, !scrollAreaFrame.insetBy(dx: 0, dy: padding).contains(selectionBounds) else {
+            Log.scroll.debug("scroll to \(selection): already visible (bounds \(selectionBounds))")
+            return
+        }
 
         if let horizontalScrollBar: UIElement = try? scrollArea?.attribute(.horizontalScrollBar) {
-            let value = selectionBounds.origin.x - contentFrame.origin.x
-            let max = contentFrame.width - scrollAreaFrame.width
-            let scrollValue = max.isNormal ? value / max : 0
+            let scrollValue = Self.scrollValue(
+                offset: selectionBounds.origin.x - contentFrame.origin.x,
+                scrollableLength: contentFrame.width - scrollAreaFrame.width
+            )
+            Log.scroll.debug("horizontal scroll → \(scrollValue) (smooth: \(options.smooth))")
             if options.smooth {
                 horizontalScrollTimer?.invalidate()
                 horizontalScrollTimer = lerpScroll(for: horizontalScrollBar, to: scrollValue, options: options)
@@ -57,9 +65,11 @@ final class TextAreaReadableElement: ReadableElement {
             }
         }
         if let verticalScrollBar: UIElement = try? scrollArea?.attribute(.verticalScrollBar) {
-            let value = (selectionBounds.origin.y - padding) - contentFrame.origin.y
-            let max = contentFrame.height - scrollAreaFrame.height
-            let scrollValue = max.isNormal ? value / max : 0
+            let scrollValue = Self.scrollValue(
+                offset: (selectionBounds.origin.y - padding) - contentFrame.origin.y,
+                scrollableLength: contentFrame.height - scrollAreaFrame.height
+            )
+            Log.scroll.debug("vertical scroll → \(scrollValue) (smooth: \(options.smooth))")
             if options.smooth {
                 verticalScrollTimer?.invalidate()
                 verticalScrollTimer = lerpScroll(for: verticalScrollBar, to: scrollValue, options: options)
@@ -67,6 +77,13 @@ final class TextAreaReadableElement: ReadableElement {
                 try? verticalScrollBar.setAttribute(.value, value: scrollValue)
             }
         }
+    }
+
+    /// Scroll bar value (0...1) that puts `offset` at the top/left. Padding can push the offset below 0
+    /// near the start, and content near the end can't scroll any further than 1.
+    static func scrollValue(offset: CGFloat, scrollableLength: CGFloat) -> CGFloat {
+        guard scrollableLength.isNormal, scrollableLength > 0 else { return 0 }
+        return min(max(offset / scrollableLength, 0), 1)
     }
 
     private func lerpScroll(for scrollBar: UIElement, to target: CGFloat, options: ScrollOptions) -> Timer? {
@@ -88,7 +105,11 @@ final class TextAreaReadableElement: ReadableElement {
             } else {
                 value = current + (step * CGFloat(currentFrame))
             }
-            try? scrollBar.setAttribute(.value, value: value)
+            do {
+                try scrollBar.setAttribute(.value, value: value)
+            } catch {
+                timer.invalidate()  // element went away
+            }
             currentFrame += 1
         }
     }

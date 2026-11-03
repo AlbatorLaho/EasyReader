@@ -73,6 +73,7 @@ struct SettingsReadingView: View {
                 Spacer()
                 ResetDefaultsButton(for: "reading", keys: [
                     .selectionUnit,
+                    .resumeUnit,
                     .scrollSelectionIntoView,
                     .scrollPadding,
                     .scrollSmooth,

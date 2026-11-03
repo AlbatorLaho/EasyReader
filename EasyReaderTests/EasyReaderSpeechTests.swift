@@ -5,35 +5,6 @@ import XCTest
 
 @testable import EasyReader
 
-/// In-memory readable that records every selection EasyReader makes.
-private final class MockReadable: Readable {
-    let title: String? = "Mock"
-    let groupTitle: String? = nil
-    let appDomain: String? = nil
-    let icon: NSImage? = nil
-    let fullText: String?
-    var selection: Selection? {
-        didSet { if let selection { history.append(selection) } }
-    }
-    private(set) var history: [Selection] = []
-    var selectedText: String? {
-        guard let fullText, let selection, let range = Range(selection, in: fullText) else { return nil }
-        return String(fullText[range])
-    }
-
-    init(_ text: String) {
-        fullText = text
-        selection = Selection()
-    }
-
-    func text(of selection: Selection) -> String? {
-        guard let fullText, let range = Range(selection, in: fullText) else { return nil }
-        return String(fullText[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    func scroll(to selection: Selection, options: ScrollOptions) {}
-}
-
 /// Runs the real speech state machine silently (volume 0, max rate).
 /// Debug builds and tests use their own bundle ID, so these settings never touch a release install.
 final class EasyReaderSpeechTests: XCTestCase, EasyReaderDelegate {
@@ -48,6 +19,8 @@ final class EasyReaderSpeechTests: XCTestCase, EasyReaderDelegate {
         Defaults[.speechDelayAfter] = 0
         Defaults[.speechStopBoundary] = .immediate
         Defaults[.resumeUnit] = .word
+        Defaults[.pronunciations] = []
+        Defaults[.scrollSelectionIntoView] = true
         reader = EasyReader()
         reader.delegate = self
         reader.textSelector = NLTextSelector(unit: .sentence)
@@ -65,7 +38,7 @@ final class EasyReaderSpeechTests: XCTestCase, EasyReaderDelegate {
     }
 
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
-        pending.filter { $0.state == state }.forEach { $0.expectation.fulfill() }
+        for entry in pending where entry.state == state { entry.expectation.fulfill() }
         pending.removeAll { $0.state == state }
     }
 
@@ -121,13 +94,82 @@ final class EasyReaderSpeechTests: XCTestCase, EasyReaderDelegate {
         XCTAssertEqual(reader.state, .stopped)
     }
 
-    /// Known issue: skipping backward from the first sentence stops reading.
+    /// Skipping backward from the first sentence re-reads it.
     func testSkipBackwardAtStartKeepsReading() {
         let readable = MockReadable("First one here. Second one here.")
         XCTAssertTrue(reader.start(reading: readable))
-        XCTExpectFailure("skip(.backward) at start stops instead of re-reading") {
-            XCTAssertTrue(reader.skip(.backward))
-            XCTAssertEqual(readable.selection.flatMap(readable.text(of:)), "First one here.")
-        }
+        XCTAssertTrue(reader.skip(.backward))
+        XCTAssertEqual(readable.selection.flatMap(readable.text(of:)), "First one here.")
+    }
+
+    func testAutoScrollingOffDoesNotScroll() {
+        Defaults[.scrollSelectionIntoView] = false
+        let readable = MockReadable("First one here. Second one here.")
+        XCTAssertTrue(reader.start(reading: readable))
+        XCTAssertTrue(reader.skip(.forward))
+        XCTAssertEqual(readable.scrolls, [])
+    }
+
+    func testDisabledPronunciationIsNotApplied() {
+        Defaults[.pronunciations] = [Pronunciation(search: "GUI", replace: "gooey", ignoreCase: true, enabled: false)]
+        XCTAssertEqual(reader.pronunciations(with: nil), [])
+    }
+
+    func testPronunciationsFilteredByAppDomain() {
+        let any = Pronunciation(search: "a", replace: "b", ignoreCase: true, enabled: true)
+        let mine = Pronunciation(search: "c", replace: "d", domain: "com.example.mine", ignoreCase: true, enabled: true)
+        let other = Pronunciation(search: "e", replace: "f", domain: "com.example.other", ignoreCase: true, enabled: true)
+        Defaults[.pronunciations] = [any, mine, other]
+        XCTAssertEqual(reader.pronunciations(with: "com.example.mine"), [any, mine])
+        XCTAssertEqual(reader.pronunciations(with: nil), [any])
+    }
+
+    /// The text got shorter while reading (selection now past the end): advancing finds nothing instead of trapping.
+    func testSkipAfterTextShrinks() {
+        let readable = MockReadable("Short.", selection: Selection(40..<50))
+        reader.readable = readable
+        XCTAssertFalse(reader.skip(.forward))
+    }
+
+    /// Pausing on the last word lets the utterance finish (`didFinish` with stopType `.pause`);
+    /// resuming must move on (here: stop at the end) instead of re-reading the finished sentence.
+    func testPauseAtEndOfTextStopsOnResume() {
+        Defaults[.speechStopBoundary] = .word
+        let readable = MockReadable("Hi.")
+        let reading = expect(.reading)
+        XCTAssertTrue(reader.start(reading: readable))
+        wait(for: [reading], timeout: 10)
+        let paused = expect(.paused)
+        XCTAssertTrue(reader.pause())
+        wait(for: [paused], timeout: 10)
+        let reads = readable.selectedTextReads
+        let stopped = expect(.stopped)
+        XCTAssertTrue(reader.togglePlayPause())
+        wait(for: [stopped], timeout: 10)
+        XCTAssertEqual(readable.selectedTextReads, reads)
+    }
+
+    func testStopsAndDropsReadableWhenInvalidated() {
+        let readable = MockReadable(Array(repeating: "This is a fairly long sentence to keep speaking.", count: 20).joined(separator: " "))
+        let reading = expect(.reading)
+        XCTAssertTrue(reader.start(reading: readable))
+        wait(for: [reading], timeout: 10)
+        let stopped = expect(.stopped)
+        readable.onInvalidate?()
+        wait(for: [stopped], timeout: 5)
+        XCTAssertNil(reader.readable)
+        XCTAssertNil(readable.onInvalidate)
+    }
+
+    /// Guards the shared `stopType`: a stop's late `didCancel` must not stop the reading that replaced it.
+    func testStopThenImmediateRestartKeepsReading() {
+        let readable = MockReadable(Array(repeating: "This is a fairly long sentence to keep speaking.", count: 20).joined(separator: " "))
+        let reading = expect(.reading)
+        XCTAssertTrue(reader.start(reading: readable))
+        wait(for: [reading], timeout: 10)
+        XCTAssertTrue(reader.stop())
+        XCTAssertTrue(reader.start(reading: readable))
+        spinRunLoop(1)
+        XCTAssertEqual(reader.state, .reading)
     }
 }

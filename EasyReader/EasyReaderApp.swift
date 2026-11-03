@@ -147,19 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let menuItem = NSMenuItem()
                 menuItem.action = #selector(toggleStartStopAction)
                 menuItem.setShortcut(for: .toggleStartStop)
-                KeyboardShortcuts.onKeyDown(for: .toggleStartStop) { [self] in
-                    if easyReader.state == .reading {
-                        guard easyReader.stop() else {
-                            NSSound.beep()
-                            return
-                        }
-                    } else {
-                        guard easyReader.start(reading: .frontmostApp) else {
-                            NSSound.beep()
-                            return
-                        }
-                    }
-                }
+                KeyboardShortcuts.onKeyDown(for: .toggleStartStop, action: toggleStartStopAction)
                 return menuItem
             }(),
             {
@@ -200,9 +188,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSMenuItem(title: "Quit", action: #selector(NSApplication.shared.terminate), keyEquivalent: "q"),
         ]
 
-        KeyboardShortcuts.onKeyDown(for: .increaseRate) { Defaults[.speechRate] += 0.05 }
-        KeyboardShortcuts.onKeyDown(for: .decreaseRate) { Defaults[.speechRate] -= 0.05 }
-        KeyboardShortcuts.onKeyDown(for: .defaultRate) { Defaults.reset(.speechRate) }
+        KeyboardShortcuts.onKeyDown(for: .increaseRate) { [self] in
+            adjustSpeechRate(by: 0.05)
+            Log.app.debug("shortcut: increase rate → \(Defaults[.speechRate])")
+        }
+        KeyboardShortcuts.onKeyDown(for: .decreaseRate) { [self] in
+            adjustSpeechRate(by: -0.05)
+            Log.app.debug("shortcut: decrease rate → \(Defaults[.speechRate])")
+        }
+        KeyboardShortcuts.onKeyDown(for: .defaultRate) {
+            Defaults.reset(.speechRate)
+            Log.app.debug("shortcut: reset rate → \(Defaults[.speechRate])")
+        }
 
         Task {
             for await _ in Defaults.updates([
@@ -211,25 +208,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .speechRate,
                 .speechPitch,
             ], initial: false) {
-                guard easyReader.state == .reading else { return }
+                Log.settings.debug("speech settings changed (state \(easyReader.state))")
+                guard easyReader.state == .reading else { continue }
                 easyReader.play(from: .word)
             }
         }
         Task {
-            for await value in Defaults.updates(.speechRate, initial: false) {
-                Defaults.withoutPropagation {
-                    guard !(AVSpeechUtteranceMinimumSpeechRate...AVSpeechUtteranceMaximumSpeechRate).contains(value) else { return }
-                    Defaults[.speechRate] = min(max(value, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
-                }
-            }
-        }
-        Task {
             for await value in Defaults.updates(.selectionUnit) {
+                Log.settings.debug("selection unit: \(value)")
                 easyReader.textSelector = NLTextSelector(unit: value)
             }
         }
         Task {
             for await value in Defaults.updates(.nowPlayingCenterIntegration) {
+                Log.settings.debug("Now Playing integration: \(value)")
                 if value {
                     nowPlayingManager.setupRemoteCommands()
                 } else {
@@ -239,7 +231,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Writers clamp rather than a separate clamping loop, which raced the speech-settings restart.
+    static func clampedSpeechRate(_ rate: Float) -> Float {
+        min(max(rate, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
+    }
+
+    func adjustSpeechRate(by delta: Float) {
+        Defaults[.speechRate] = Self.clampedSpeechRate(Defaults[.speechRate] + delta)
+    }
+
     @objc func toggleStartStopAction() {
+        Log.app.debug("toggle start/stop (state \(easyReader.state))")
         if easyReader.state == .stopped {
             guard easyReader.start(reading: .frontmostApp) else {
                 NSSound.beep()
@@ -254,6 +256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func togglePlayPauseAction() {
+        Log.app.debug("toggle play/pause (state \(easyReader.state))")
         guard easyReader.togglePlayPause() else {
             NSSound.beep()
             return
@@ -261,6 +264,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc func skipForwardAction() {
+        Log.app.debug("skip forward")
         guard easyReader.skip(.forward) else {
             NSSound.beep()
             return
@@ -268,6 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func skipBackwardAction() {
+        Log.app.debug("skip backward")
         guard easyReader.skip(.backward) else {
             NSSound.beep()
             return
@@ -314,9 +319,15 @@ extension AppDelegate: NowPlayingManagerDelegate {
 //    }
 
     func changePlaybackRate(_ event: MPChangePlaybackRateCommandEvent) -> MPRemoteCommandHandlerStatus {
-        print("changePlaybackRate: \(event.playbackRate)")
-        Defaults[.speechRate] = event.playbackRate
+        Log.nowPlaying.debug("change playback rate: \(event.playbackRate)")
+        setSpeechRate(fromPlaybackRate: event.playbackRate)
         return .success
+    }
+
+    /// Now Playing playback rate → `speechRate`; Now Playing publishes `speechRate * 2`
+    /// (see `NowPlayingManager.updatePlaybackInfo`).
+    func setSpeechRate(fromPlaybackRate playbackRate: Float) {
+        Defaults[.speechRate] = Self.clampedSpeechRate(playbackRate / 2)
     }
 //    func changePlaybackPosition(_ event: MPChangePlaybackPositionCommandEvent) -> MPRemoteCommandHandlerStatus {
 //        print("changePlaybackPosition: \(event.positionTime)")

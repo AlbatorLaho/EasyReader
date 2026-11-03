@@ -43,4 +43,18 @@ final class SelectionTests: XCTestCase {
     func testStringIndexRangeOutOfBoundsIsNil() {
         XCTAssertNil(Range<String.Index>(Selection(0..<10), in: "abc"))
     }
+
+    /// Offsets past the end clamp (used to trap once the index was used).
+    func testOutOfRangeOffsetIsClamped() {
+        let string = "abc"
+        XCTAssertEqual(Selection(0..<10).endIndex(in: string), string.endIndex)
+        XCTAssertEqual(Selection(-2..<1).startIndex(in: string), string.startIndex)
+    }
+
+    /// Offsets inside a surrogate pair round down to the character boundary.
+    func testOffsetInsideSurrogatePairRoundsDown() {
+        let string = "a😀b"
+        XCTAssertEqual(Selection(2..<2).startIndex(in: string).utf16Offset(in: string), 1)
+        XCTAssertEqual(Selection(0..<2).endIndex(in: string).utf16Offset(in: string), 1)
+    }
 }
