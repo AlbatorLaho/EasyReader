@@ -81,22 +81,18 @@ final class AppDelegateTests: XCTestCase, EasyReaderDelegate {
         XCTAssertGreaterThan(readable.selectedTextReads, reads)
     }
 
-    /// Now Playing publishes `speechRate * 2`; the rate command must scale it back.
+    /// Now Playing publishes `SpeechRate.multiplier(forRate:)`; the rate command must map it back.
     func testNowPlayingRateRoundTrips() {
-        Defaults[.speechRate] = 0.4
-        let published = Defaults[.speechRate] * 2  // NowPlayingManager.updatePlaybackInfo
-        AppDelegate().setSpeechRate(fromPlaybackRate: published)
-        XCTAssertEqual(Defaults[.speechRate], 0.4, accuracy: 0.001)
+        for rate: Float in [0.4, 0.7] {
+            Defaults[.speechRate] = rate
+            let published = SpeechRate.multiplier(forRate: rate)  // NowPlayingManager.updatePlaybackInfo
+            AppDelegate().setSpeechRate(fromPlaybackRate: published)
+            XCTAssertEqual(Defaults[.speechRate], rate, accuracy: 0.001)
+        }
     }
 
     func testRateChangesClampAtWriteSite() {
         let app = AppDelegate()
-        Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-        app.adjustSpeechRate(by: 0.05)
-        XCTAssertEqual(Defaults[.speechRate], AVSpeechUtteranceMaximumSpeechRate)
-        Defaults[.speechRate] = AVSpeechUtteranceMinimumSpeechRate
-        app.adjustSpeechRate(by: -0.05)
-        XCTAssertEqual(Defaults[.speechRate], AVSpeechUtteranceMinimumSpeechRate)
         app.setSpeechRate(fromPlaybackRate: 10)
         XCTAssertEqual(Defaults[.speechRate], AVSpeechUtteranceMaximumSpeechRate)
     }

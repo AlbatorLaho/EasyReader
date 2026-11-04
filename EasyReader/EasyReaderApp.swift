@@ -189,11 +189,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]
 
         KeyboardShortcuts.onKeyDown(for: .increaseRate) { [self] in
-            adjustSpeechRate(by: 0.05)
+            Defaults[.speechRate] = SpeechRate.adjusted(Defaults[.speechRate], byMultiplier: 0.1)
             Log.app.debug("shortcut: increase rate → \(Defaults[.speechRate])")
         }
         KeyboardShortcuts.onKeyDown(for: .decreaseRate) { [self] in
-            adjustSpeechRate(by: -0.05)
+            Defaults[.speechRate] = SpeechRate.adjusted(Defaults[.speechRate], byMultiplier: -0.1)
             Log.app.debug("shortcut: decrease rate → \(Defaults[.speechRate])")
         }
         KeyboardShortcuts.onKeyDown(for: .defaultRate) {
@@ -231,27 +231,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Writers clamp rather than a separate clamping loop, which raced the speech-settings restart.
-    static func clampedSpeechRate(_ rate: Float) -> Float {
-        min(max(rate, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
-    }
-
-    func adjustSpeechRate(by delta: Float) {
-        Defaults[.speechRate] = Self.clampedSpeechRate(Defaults[.speechRate] + delta)
-    }
-
     @objc func toggleStartStopAction() {
         Log.app.debug("toggle start/stop (state \(easyReader.state))")
-        if easyReader.state == .stopped {
-            guard easyReader.start(reading: .frontmostApp) else {
-                NSSound.beep()
-                return
-            }
-        } else {
-            guard easyReader.stop() else {
-                NSSound.beep()
-                return
-            }
+        switch easyReader.state {
+            case .stopped, .paused:
+                // Paused: resumes if the frontmost element is the one being read, else starts on it.
+                guard easyReader.start(reading: .frontmostApp) else {
+                    NSSound.beep()
+                    return
+                }
+            case .reading:
+                guard easyReader.stop() else {
+                    NSSound.beep()
+                    return
+                }
         }
     }
 
@@ -324,10 +317,10 @@ extension AppDelegate: NowPlayingManagerDelegate {
         return .success
     }
 
-    /// Now Playing playback rate → `speechRate`; Now Playing publishes `speechRate * 2`
+    /// Now Playing playback rate → `speechRate`; Now Playing publishes `SpeechRate.multiplier(forRate:)`
     /// (see `NowPlayingManager.updatePlaybackInfo`).
     func setSpeechRate(fromPlaybackRate playbackRate: Float) {
-        Defaults[.speechRate] = Self.clampedSpeechRate(playbackRate / 2)
+        Defaults[.speechRate] = SpeechRate.clamped(SpeechRate.rate(forMultiplier: playbackRate))
     }
 //    func changePlaybackPosition(_ event: MPChangePlaybackPositionCommandEvent) -> MPRemoteCommandHandlerStatus {
 //        print("changePlaybackPosition: \(event.positionTime)")
@@ -348,14 +341,14 @@ extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
             case #selector(toggleStartStopAction):
-                menuItem.title = easyReader.state == .stopped ? "Start" : "Stop"
-                menuItem.image = NSImage(systemSymbolName: easyReader.state == .stopped ? "play.fill" : "stop.fill", accessibilityDescription: nil)
+                menuItem.title = easyReader.state == .reading ? "Stop" : "Start"
+                menuItem.image = NSImage(systemSymbolName: easyReader.state == .reading ? "stop.fill" : "play.fill", accessibilityDescription: nil)
                 return true
             case #selector(togglePlayPauseAction):
                 menuItem.title = easyReader.state == .paused ? "Resume" : "Pause"
                 menuItem.image = NSImage(systemSymbolName: easyReader.state == .paused ? "play.fill" : "pause.fill", accessibilityDescription: nil)
                 return easyReader.state != .stopped
-            case #selector(skipForwardAction): return easyReader.state != .stopped
+            case #selector(skipForwardAction): return easyReader.state != .stopped && easyReader.canSkipForward
             case #selector(skipBackwardAction): return easyReader.state != .stopped
             case nil: return false
             default: return true

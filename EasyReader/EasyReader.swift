@@ -23,11 +23,12 @@ final class EasyReader: NSObject {
             delegate?.easyReader(self, didChangeState: state)
         }
     }
-    /// A pause landed on the utterance's last word, so it finished instead of being cancelled;
-    /// resuming continues with the next unit rather than re-reading the finished one.
-    private var finishedWhilePausing = false
 
     private let synthesizer = AVSpeechSynthesizer()
+    /// Utterance handed to the synthesizer and not yet finished/cancelled. Unlike `isSpeaking`,
+    /// it covers the gap between `speak` and `didStart`.
+    private var currentUtterance: AVSpeechUtterance?
+    private var isSpeaking: Bool { synthesizer.isSpeaking || currentUtterance != nil }
     var textSelector: TextSelector?
     var readable: Readable? {
         didSet {
@@ -104,10 +105,6 @@ final class EasyReader: NSObject {
             Log.reader.debug("play(from: \(unit)): selection changed (\(String(describing: lastSelection)) → \(String(describing: readable?.selection))), reading selection")
             return ensureSelection() && readSelection()
         }
-        if state == .paused, finishedWhilePausing {
-            Log.reader.debug("play(from: \(unit)): utterance finished while pausing, continuing")
-            return skip(.forward)
-        }
         Log.reader.debug("play(from: \(unit)): resuming \(selection), last spoken range \(String(describing: lastReadRange))")
         switch unit {
             case .word: return readSelection(from: lastReadRange?.lowerBound)
@@ -117,7 +114,7 @@ final class EasyReader: NSObject {
 
     @discardableResult
     func pause() -> Bool {
-        guard synthesizer.isSpeaking else {
+        guard isSpeaking else {
             Log.reader.debug("pause: not speaking")
             return false
         }
@@ -128,7 +125,7 @@ final class EasyReader: NSObject {
 
     @discardableResult
     func stop() -> Bool {
-        guard synthesizer.isSpeaking else {
+        guard isSpeaking else {
             guard state == .paused else {
                 Log.reader.debug("stop: not speaking or paused")
                 return false
@@ -151,8 +148,25 @@ final class EasyReader: NSObject {
         }
     }
 
+    /// User-initiated skip. Forward on the last unit does nothing (see `canSkipForward`);
+    /// reaching the end on its own still stops (`advance`).
     @discardableResult
     func skip(_ direction: Selection.Direction) -> Bool {
+        if direction == .forward, !canSkipForward {
+            Log.reader.debug("skip(forward): at last unit, ignoring")
+            return false
+        }
+        return advance(direction)
+    }
+
+    /// Whether a unit follows the current selection.
+    var canSkipForward: Bool {
+        nextSelection(.forward).map { !$0.isEmpty } ?? false
+    }
+
+    /// Selects and reads the next unit; stops when there is none forward.
+    @discardableResult
+    private func advance(_ direction: Selection.Direction) -> Bool {
         guard select(direction) else {
             if direction == .backward {
                 Log.reader.debug("skip(backward): at start, re-reading current selection")
@@ -184,7 +198,7 @@ final class EasyReader: NSObject {
         lastSelection = readable?.selection
         lastReadString = nil
         lastReadRange = nil
-        finishedWhilePausing = false
+        currentUtterance = utterance
         synthesizer.speak(utterance)
     }
 
@@ -198,15 +212,20 @@ final class EasyReader: NSObject {
         ))
     }
 
-    private func select(_ direction: Selection.Direction) -> Bool {
+    private func nextSelection(_ direction: Selection.Direction) -> Selection? {
         guard let fullText = readable?.fullText,
               let selection = readable?.selection,
               let nextSelection = textSelector?.select(direction, from: selection, in: fullText)
         else {
-            Log.reader.debug("select(\(direction)): no text, selection, or selector")
-            return false
+            Log.reader.debug("nextSelection(\(direction)): no text, selection, or selector")
+            return nil
         }
-        Log.reader.debug("select(\(direction)): \(selection) → \(nextSelection) of \(fullText.utf16.count)")
+        Log.reader.debug("nextSelection(\(direction)): \(selection) → \(nextSelection) of \(fullText.utf16.count)")
+        return nextSelection
+    }
+
+    private func select(_ direction: Selection.Direction) -> Bool {
+        guard let nextSelection = nextSelection(direction) else { return false }
         // Backward from the start: keep the current selection (forward keeps the empty end selection,
         // which `ensureSelection` uses to wrap around).
         guard direction == .forward || !nextSelection.isEmpty else { return false }
@@ -256,7 +275,7 @@ final class EasyReader: NSObject {
                 Log.reader.debug("resuming from offset \(index)")
             }
         }
-        if synthesizer.isSpeaking {
+        if isSpeaking {
             Log.reader.debug("interrupting current utterance (stopType was \(stopType))")
             stopType = .willContinue
             synthesizer.stopSpeaking(at: .immediate)
@@ -274,13 +293,14 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Log.speech.debug("didFinish (stopType \(stopType))")
-        if stopType == .pause {
-            finishedWhilePausing = true
-        }
+        if utterance === currentUtterance { currentUtterance = nil }
+        // macOS reports `didFinish` (not `didCancel`) for `stopSpeaking` too. With the word boundary it
+        // first fires `willSpeakRange` for the word it stops *before* (unspoken), so whether the last word
+        // was spoken can't be told; resuming re-reads from that word rather than risk skipping text.
         guard stopType == .none,
               let selection = readable?.selection,
               !selection.isEmpty,
-              skip(.forward)
+              advance(.forward)
         else {
             if stopType == .none {
                 stopType = .cancel
@@ -292,6 +312,7 @@ extension EasyReader: AVSpeechSynthesizerDelegate {
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Log.speech.debug("didCancel (stopType \(stopType))")
+        if utterance === currentUtterance { currentUtterance = nil }
         switch stopType {
             case .none: break
             case .willContinue: break
@@ -337,10 +358,24 @@ extension EasyReader {
         static var frontmostApp: Self { .app(NSWorkspace.shared.frontmostApplication) }
     }
 
+    /// While paused, starting the same element resumes it; any other element starts fresh.
     func start(reading readable: Readable) -> Bool {
+        if state == .paused, let current = self.readable, Self.isSameTarget(current, readable) {
+            Log.reader.debug("start: resuming paused \(type(of: readable))")
+            return play(from: Defaults[.resumeUnit])
+        }
         Log.reader.debug("start reading \(type(of: readable)) in \(readable.appDomain ?? "unknown app")")
+        if state == .paused {
+            state = .stopped
+        }
         self.readable = readable
         return play(from: .selection)
+    }
+
+    private static func isSameTarget(_ lhs: Readable, _ rhs: Readable) -> Bool {
+        if lhs === rhs { return true }
+        guard let lhs = lhs as? ReadableElement, let rhs = rhs as? ReadableElement else { return false }
+        return lhs.handle == rhs.handle
     }
 
     func start(reading target: ReadTarget) -> Bool {

@@ -6,7 +6,7 @@ import XCTest
 @testable import EasyReader
 
 /// Runs the real speech state machine silently (volume 0, max rate).
-/// Debug builds and tests use their own bundle ID, so these settings never touch a release install.
+/// Settings writes go to an in-memory store under XCTest (`UserDefaults.app`), so they never touch a real install.
 final class EasyReaderSpeechTests: XCTestCase, EasyReaderDelegate {
     private var reader: EasyReader!
     private var pending: [(state: EasyReader.State, expectation: XCTestExpectation)] = []
@@ -89,6 +89,93 @@ final class EasyReaderSpeechTests: XCTestCase, EasyReaderDelegate {
         XCTAssertEqual(readable.selection.flatMap(readable.text(of:)), "First one here.")
     }
 
+    /// Skipping forward on the last unit is ignored: reading continues on the same unit.
+    func testSkipForwardOnLastUnitKeepsReading() {
+        let long = Array(repeating: "word", count: 2000).joined(separator: " ")
+        let readable = MockReadable("First one here. Then \(long).")
+        let reading = expect(.reading)
+        XCTAssertTrue(reader.start(reading: readable))
+        XCTAssertTrue(reader.canSkipForward)
+        XCTAssertTrue(reader.skip(.forward))
+        let last = readable.selection
+        XCTAssertFalse(reader.canSkipForward)
+        XCTAssertFalse(reader.skip(.forward))
+        XCTAssertEqual(readable.selection, last)
+        wait(for: [reading], timeout: 10)
+        spinRunLoop(0.5)  // a stray stop (e.g. from a queued first utterance finishing) would land here
+        XCTAssertEqual(reader.state, .reading)
+    }
+
+    /// Stopping on a unit's last word (word boundary lets it finish) then starting again re-reads that unit.
+    func testStopOnLastWordThenStartRereadsSameUnit() {
+        Defaults[.speechStopBoundary] = .word
+        let readable = MockReadable("Alpha. Bravo. Charlie. Delta.")
+        let reading = expect(.reading)
+        XCTAssertTrue(reader.start(reading: readable))
+        wait(for: [reading], timeout: 10)
+        let first = readable.selection
+        let stopped = expect(.stopped)
+        XCTAssertTrue(reader.stop())
+        wait(for: [stopped], timeout: 10)
+        spinRunLoop(0.5)
+        XCTAssertEqual(readable.selection, first, "selection moved after stop")
+        let restarted = expect(.reading)
+        XCTAssertTrue(reader.start(reading: readable))
+        wait(for: [restarted], timeout: 10)
+        XCTAssertEqual(readable.selection, first, "restart didn't re-read the stopped unit")
+    }
+
+    /// Between `speak` and `didStart` the synthesizer reports not speaking; pause must still work there.
+    func testPauseBeforeSpeechStartsPausesSameUnit() {
+        let readable = MockReadable("First one here. Second one here.")
+        let paused = expect(.paused)
+        XCTAssertTrue(reader.start(reading: readable))
+        let first = readable.selection
+        XCTAssertTrue(reader.pause())
+        wait(for: [paused], timeout: 10)
+        XCTAssertEqual(readable.selection, first)
+        let reading = expect(.reading)
+        XCTAssertTrue(reader.togglePlayPause())
+        wait(for: [reading], timeout: 10)
+        XCTAssertEqual(readable.selection, first)
+    }
+
+    func testStopBeforeSpeechStartsStops() {
+        let readable = MockReadable("First one here. Second one here.")
+        let stopped = expect(.stopped)
+        XCTAssertTrue(reader.start(reading: readable))
+        XCTAssertTrue(reader.stop())
+        wait(for: [stopped], timeout: 10)
+    }
+
+    /// Start while paused on the same readable resumes; on another readable it reads that one instead.
+    func testStartWhilePausedResumesSameReadableOnly() {
+        let long = Array(repeating: "This is a fairly long sentence to keep speaking.", count: 20).joined(separator: " ")
+        let first = MockReadable(long)
+        let reading = expect(.reading)
+        XCTAssertTrue(reader.start(reading: first))
+        wait(for: [reading], timeout: 10)
+        let firstSelection = first.selection
+        let paused = expect(.paused)
+        XCTAssertTrue(reader.pause())
+        wait(for: [paused], timeout: 10)
+
+        let resumed = expect(.reading)
+        XCTAssertTrue(reader.start(reading: first))
+        wait(for: [resumed], timeout: 10)
+        XCTAssertEqual(first.selection, firstSelection)
+        let pausedAgain = expect(.paused)
+        XCTAssertTrue(reader.pause())
+        wait(for: [pausedAgain], timeout: 10)
+
+        let other = MockReadable("Other text here. More.")
+        let readingOther = expect(.reading)
+        XCTAssertTrue(reader.start(reading: other))
+        wait(for: [readingOther], timeout: 10)
+        XCTAssertTrue(reader.readable === other)
+        XCTAssertEqual(other.selection.flatMap(other.text(of:)), "Other text here.")
+    }
+
     func testStopWhenNotReadingFails() {
         XCTAssertFalse(reader.stop())
         XCTAssertEqual(reader.state, .stopped)
@@ -131,22 +218,47 @@ final class EasyReaderSpeechTests: XCTestCase, EasyReaderDelegate {
         XCTAssertFalse(reader.skip(.forward))
     }
 
-    /// Pausing on the last word lets the utterance finish (`didFinish` with stopType `.pause`);
-    /// resuming must move on (here: stop at the end) instead of re-reading the finished sentence.
-    func testPauseAtEndOfTextStopsOnResume() {
+    /// With the word boundary macOS reports the word it stops *before* as spoken and then `didFinish`,
+    /// so a pause anywhere in a one-word sentence must resume that sentence, not skip to the next.
+    func testPauseInLastWordResumesSameSentence() {
         Defaults[.speechStopBoundary] = .word
-        let readable = MockReadable("Hi.")
+        Defaults[.speechRate] = AVSpeechUtteranceDefaultSpeechRate
+        let readable = MockReadable("Alpha. Bravo.")
         let reading = expect(.reading)
         XCTAssertTrue(reader.start(reading: readable))
         wait(for: [reading], timeout: 10)
+        let first = readable.selection
         let paused = expect(.paused)
         XCTAssertTrue(reader.pause())
         wait(for: [paused], timeout: 10)
-        let reads = readable.selectedTextReads
-        let stopped = expect(.stopped)
+        let resumed = expect(.reading)
         XCTAssertTrue(reader.togglePlayPause())
-        wait(for: [stopped], timeout: 10)
-        XCTAssertEqual(readable.selectedTextReads, reads)
+        wait(for: [resumed], timeout: 10)
+        XCTAssertEqual(readable.selection, first)
+    }
+
+    /// Pausing mid-utterance then resuming keeps reading the same sentence (any stop boundary).
+    func testPauseMidSentenceResumesSameSentence() {
+        for boundary in [AVSpeechBoundary.immediate, .word] {
+            Defaults[.speechStopBoundary] = boundary
+            let long = Array(repeating: "word", count: 200).joined(separator: " ")
+            let readable = MockReadable("\(long). Second sentence.")
+            let reading = expect(.reading)
+            XCTAssertTrue(reader.start(reading: readable))
+            wait(for: [reading], timeout: 10)
+            spinRunLoop(0.3)
+            let first = readable.selection
+            let paused = expect(.paused)
+            XCTAssertTrue(reader.pause())
+            wait(for: [paused], timeout: 10)
+            let resumed = expect(.reading)
+            XCTAssertTrue(reader.togglePlayPause())
+            wait(for: [resumed], timeout: 10)
+            XCTAssertEqual(readable.selection, first, "boundary \(boundary.rawValue)")
+            let stopped = expect(.stopped)
+            XCTAssertTrue(reader.stop())
+            wait(for: [stopped], timeout: 10)
+        }
     }
 
     func testStopsAndDropsReadableWhenInvalidated() {

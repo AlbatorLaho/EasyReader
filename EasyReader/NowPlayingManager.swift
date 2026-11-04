@@ -129,8 +129,8 @@ final class NowPlayingManager: NSObject {
 //        TODO: MPNowPlayingInfoProperty
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = 0.0
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = Defaults.Keys.speechRate.defaultValue * 2
-        info[MPNowPlayingInfoPropertyPlaybackRate] = Defaults[.speechRate] * 2
+        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = SpeechRate.multiplier(forRate: Defaults.Keys.speechRate.defaultValue)
+        info[MPNowPlayingInfoPropertyPlaybackRate] = SpeechRate.multiplier(forRate: Defaults[.speechRate])
 //        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = Double.ulpOfOne
 //        info[MPNowPlayingInfoPropertyPlaybackRate] = Double.ulpOfOne
     }

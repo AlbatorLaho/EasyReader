@@ -49,11 +49,13 @@ struct SettingsSpeechView: View {
                     } minimumValueLabel: { Text("0%") } maximumValueLabel: { Text("100%") }
 
                     SliderControls(value: Binding(
-                        get: { speechRate * 2 },
-                        set: { newValue in speechRate = newValue / 2 }
-                    ), in: 0.5...2, step: 0.1, max: 2, format: .percent) {
+                        get: { SpeechRate.multiplier(forRate: speechRate) },
+                        set: { newValue in
+                            speechRate = SpeechRate.clamped(SpeechRate.rate(forMultiplier: newValue))
+                        }
+                    ), in: SpeechRate.minimumMultiplier...SpeechRate.maximumMultiplier, step: 0.25, max: 4, format: .percent) {
                         Text("Rate:")
-                    } minimumValueLabel: { Text("½") } maximumValueLabel: { Text("2×") }
+                    } minimumValueLabel: { Text("½") } maximumValueLabel: { Text("4×") }
 
                     SliderControls(value: $speechPitch, in: 0.5...2, step: 0.1, min: 0.5, max: 2, format: .percent) {
                         Text("Pitch:")

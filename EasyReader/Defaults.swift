@@ -10,28 +10,52 @@ import AVKit
 import Defaults
 import KeyboardShortcuts
 
+extension UserDefaults {
+    /// Settings store. Tests run inside the Debug app (test host), so they get an in-memory store
+    /// instead of the Debug app's saved settings.
+    static let app: UserDefaults =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil ? .standard : InMemoryDefaults()
+}
+
+/// `UserDefaults` that never persists. Posts KVO on writes so `Defaults.updates`/`@Default` still observe changes.
+private final class InMemoryDefaults: UserDefaults {
+    private var values: [String: Any] = [:]
+
+    override func object(forKey defaultName: String) -> Any? { values[defaultName] }
+
+    override func set(_ value: Any?, forKey defaultName: String) {
+        willChangeValue(forKey: defaultName)
+        values[defaultName] = value
+        didChangeValue(forKey: defaultName)
+    }
+
+    override func removeObject(forKey defaultName: String) { set(nil, forKey: defaultName) }
+
+    override func dictionaryRepresentation() -> [String: Any] { values }
+}
+
 extension Defaults.Keys {
-    static let nowPlayingCenterIntegration = Key<Bool>("NowPlayingCenterIntegration", default: true)
+    static let nowPlayingCenterIntegration = Key<Bool>("NowPlayingCenterIntegration", default: true, suite: .app)
 //    static let nowPlayingCenterStaysOpen = Key<Bool>("NowPlayingCenterStaysOpen", default: false)
 
-    static let speechVoice = Key<AVSpeechSynthesisVoice?>("SpeechVoice")
-    static let speechVolume = Key<Float>("SpeechVolume", default: 1.0)
-    static let speechRate = Key<Float>("SpeechRate", default: AVSpeechUtteranceDefaultSpeechRate)
-    static let speechPitch = Key<Float>("SpeechPitch", default: 1.0)
-    static let speechStopBoundary = Key<AVSpeechBoundary>("SpeechStopBoundary", default: .immediate)
-    static let speechDelayBefore = Key<Double>("SpeechDelayBefore", default: 0)
-    static let speechDelayAfter = Key<Double>("SpeechDelayAfter", default: 0)
+    static let speechVoice = Key<AVSpeechSynthesisVoice?>("SpeechVoice", suite: .app)
+    static let speechVolume = Key<Float>("SpeechVolume", default: 1.0, suite: .app)
+    static let speechRate = Key<Float>("SpeechRate", default: AVSpeechUtteranceDefaultSpeechRate, suite: .app)
+    static let speechPitch = Key<Float>("SpeechPitch", default: 1.0, suite: .app)
+    static let speechStopBoundary = Key<AVSpeechBoundary>("SpeechStopBoundary", default: .immediate, suite: .app)
+    static let speechDelayBefore = Key<Double>("SpeechDelayBefore", default: 0, suite: .app)
+    static let speechDelayAfter = Key<Double>("SpeechDelayAfter", default: 0, suite: .app)
 
-    static let selectionUnit = Key<Selection.Unit>("SelectionUnit", default: .sentence)
-    static let resumeUnit = Key<EasyReader.ResumeUnit>("ResumeUnit", default: .word)
-    static let scrollSelectionIntoView = Key<Bool>("ScrollSelectionIntoView", default: true)
-    static let scrollPadding = Key<Int>("ScrollPadding", default: 16)
-    static let scrollSmooth = Key<Bool>("ScrollSmooth", default: true)
-    static let scrollDuration = Key<Double>("ScrollDuration", default: 0.3)
-    static let scrollUpdateRate = Key<Double>("ScrollUpdateRate", default: 60)
+    static let selectionUnit = Key<Selection.Unit>("SelectionUnit", default: .sentence, suite: .app)
+    static let resumeUnit = Key<EasyReader.ResumeUnit>("ResumeUnit", default: .word, suite: .app)
+    static let scrollSelectionIntoView = Key<Bool>("ScrollSelectionIntoView", default: true, suite: .app)
+    static let scrollPadding = Key<Int>("ScrollPadding", default: 16, suite: .app)
+    static let scrollSmooth = Key<Bool>("ScrollSmooth", default: true, suite: .app)
+    static let scrollDuration = Key<Double>("ScrollDuration", default: 0.3, suite: .app)
+    static let scrollUpdateRate = Key<Double>("ScrollUpdateRate", default: 60, suite: .app)
 
 //    static let useVoiceOverPronunciations = Key<Bool>("useVoiceOverPronunciations", default: false)
-    static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [])
+    static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [], suite: .app)
 }
 
 extension KeyboardShortcuts.Name {
