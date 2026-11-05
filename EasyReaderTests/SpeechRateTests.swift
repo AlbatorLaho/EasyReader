@@ -4,43 +4,63 @@
 //
 
 import AVFoundation
-import XCTest
+import Testing
 
 @testable import EasyReader
 
-final class SpeechRateTests: XCTestCase {
-    func testKnownPoints() {
-        XCTAssertEqual(SpeechRate.multiplier(forRate: AVSpeechUtteranceMinimumSpeechRate), 0.5, accuracy: 0.001)
-        XCTAssertEqual(SpeechRate.multiplier(forRate: AVSpeechUtteranceDefaultSpeechRate), 1, accuracy: 0.001)
-        XCTAssertEqual(SpeechRate.multiplier(forRate: AVSpeechUtteranceMaximumSpeechRate), 4, accuracy: 0.001)
+/// `|a - b| <= tolerance`, for `#expect` on rates and multipliers (Float math isn't exact).
+func isClose(_ a: Float, _ b: Float, tolerance: Float = 0.001) -> Bool {
+    abs(a - b) <= tolerance
+}
+
+struct SpeechRateTests {
+    @Test(
+        arguments: [
+            (AVSpeechUtteranceMinimumSpeechRate, 0.5),
+            (AVSpeechUtteranceDefaultSpeechRate, 1),
+            (AVSpeechUtteranceMaximumSpeechRate, 4),
+        ] as [(Float, Float)])
+    func knownPoints(rate: Float, multiplier: Float) {
+        #expect(isClose(SpeechRate.multiplier(forRate: rate), multiplier))
     }
 
-    func testRoundTripsAcrossRange() {
-        for step in 0...20 {
-            let rate = Float(step) / 20
-            XCTAssertEqual(SpeechRate.rate(forMultiplier: SpeechRate.multiplier(forRate: rate)), rate, accuracy: 0.001)
-        }
+    @Test(arguments: 0...20)
+    func roundTripsAcrossRange(step: Int) {
+        let rate = Float(step) / 20
+        #expect(isClose(SpeechRate.rate(forMultiplier: SpeechRate.multiplier(forRate: rate)), rate))
     }
 
-    func testAdjustedStepsEvenlyInSpeed() {
-        for rate: Float in [0.2, 0.5, 0.8] {
-            let before = SpeechRate.multiplier(forRate: rate)
-            XCTAssertEqual(SpeechRate.multiplier(forRate: SpeechRate.adjusted(rate, byMultiplier: 0.1)), before + 0.1, accuracy: 0.001)
-            XCTAssertEqual(SpeechRate.multiplier(forRate: SpeechRate.adjusted(rate, byMultiplier: -0.1)), before - 0.1, accuracy: 0.001)
-        }
+    @Test(arguments: [Float(0.2), 0.5, 0.8])
+    func adjustedStepsEvenlyInSpeed(rate: Float) {
+        let before = SpeechRate.multiplier(forRate: rate)
+        #expect(isClose(SpeechRate.multiplier(forRate: SpeechRate.adjusted(rate, byMultiplier: 0.1)), before + 0.1))
+        #expect(isClose(SpeechRate.multiplier(forRate: SpeechRate.adjusted(rate, byMultiplier: -0.1)), before - 0.1))
     }
 
-    func testAdjustedClampsAtEnds() {
-        XCTAssertEqual(SpeechRate.adjusted(AVSpeechUtteranceMaximumSpeechRate, byMultiplier: 0.1), AVSpeechUtteranceMaximumSpeechRate)
-        XCTAssertEqual(SpeechRate.adjusted(AVSpeechUtteranceMinimumSpeechRate, byMultiplier: -0.1), AVSpeechUtteranceMinimumSpeechRate)
+    @Test func adjustedClampsAtEnds() {
+        #expect(SpeechRate.adjusted(AVSpeechUtteranceMaximumSpeechRate, byMultiplier: 0.1) == AVSpeechUtteranceMaximumSpeechRate)
+        #expect(SpeechRate.adjusted(AVSpeechUtteranceMinimumSpeechRate, byMultiplier: -0.1) == AVSpeechUtteranceMinimumSpeechRate)
     }
 
-    func testIsIncreasing() {
+    @Test func multiplierIncreasesWithRate() {
         var previous = -Float.infinity
         for step in 0...100 {
             let multiplier = SpeechRate.multiplier(forRate: Float(step) / 100)
-            XCTAssertGreaterThan(multiplier, previous)
+            #expect(multiplier > previous, "step \(step)")
             previous = multiplier
         }
+    }
+
+    @Test(arguments: [(-0.5, 0), (0, 0), (0.3, 0.3), (1, 1), (1.5, 1)] as [(Float, Float)])
+    func clamped(rate: Float, expected: Float) {
+        #expect(SpeechRate.clamped(rate) == expected)
+    }
+
+    /// Multipliers outside 0.5–4× map to rates outside 0–1 (not clamped), which `clamped` brings back.
+    @Test func outOfRangeMultipliers() {
+        #expect(isClose(SpeechRate.rate(forMultiplier: 0.25), -0.25))
+        #expect(SpeechRate.rate(forMultiplier: 5) > AVSpeechUtteranceMaximumSpeechRate)
+        #expect(SpeechRate.clamped(SpeechRate.rate(forMultiplier: 0.25)) == AVSpeechUtteranceMinimumSpeechRate)
+        #expect(SpeechRate.clamped(SpeechRate.rate(forMultiplier: 5)) == AVSpeechUtteranceMaximumSpeechRate)
     }
 }

@@ -23,9 +23,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		E393FD112CD6E2D100DA7CA3 /* EasyReader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EasyReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7E57000000000000000000A4 /* EasyReaderTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EasyReaderTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7E5700000000000000000101 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		E393FD112CD6E2D100DA7CA3 /* EasyReader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EasyReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -55,6 +55,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		7E57000000000000000000C2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E393FD0E2CD6E2D100DA7CA3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -65,16 +72,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		7E57000000000000000000C2 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		7E5700000000000000000102 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				7E5700000000000000000101 /* Signing.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
 		E393FD082CD6E2D100DA7CA3 = {
 			isa = PBXGroup;
 			children = (
@@ -94,17 +102,30 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		7E5700000000000000000102 /* Config */ = {
-			isa = PBXGroup;
-			children = (
-				7E5700000000000000000101 /* Signing.xcconfig */,
-			);
-			path = Config;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		7E57000000000000000000D1 /* EasyReaderTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E57000000000000000000E3 /* Build configuration list for PBXNativeTarget "EasyReaderTests" */;
+			buildPhases = (
+				7E57000000000000000000C1 /* Sources */,
+				7E57000000000000000000C2 /* Frameworks */,
+				7E57000000000000000000C3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7E57000000000000000000D3 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7E57000000000000000000F2 /* EasyReaderTests */,
+			);
+			name = EasyReaderTests;
+			productName = EasyReaderTests;
+			productReference = 7E57000000000000000000A4 /* EasyReaderTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		E393FD102CD6E2D100DA7CA3 /* EasyReader */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E393FD202CD6E2D300DA7CA3 /* Build configuration list for PBXNativeTarget "EasyReader" */;
@@ -130,27 +151,6 @@
 			productReference = E393FD112CD6E2D100DA7CA3 /* EasyReader.app */;
 			productType = "com.apple.product-type.application";
 		};
-		7E57000000000000000000D1 /* EasyReaderTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 7E57000000000000000000E3 /* Build configuration list for PBXNativeTarget "EasyReaderTests" */;
-			buildPhases = (
-				7E57000000000000000000C1 /* Sources */,
-				7E57000000000000000000C2 /* Frameworks */,
-				7E57000000000000000000C3 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				7E57000000000000000000D3 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				7E57000000000000000000F2 /* EasyReaderTests */,
-			);
-			name = EasyReaderTests;
-			productName = EasyReaderTests;
-			productReference = 7E57000000000000000000A4 /* EasyReaderTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -161,17 +161,16 @@
 				LastSwiftUpdateCheck = 1420;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
-					E393FD102CD6E2D100DA7CA3 = {
-						CreatedOnToolsVersion = 14.2;
-					};
 					7E57000000000000000000D1 = {
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = E393FD102CD6E2D100DA7CA3;
 					};
+					E393FD102CD6E2D100DA7CA3 = {
+						CreatedOnToolsVersion = 14.2;
+					};
 				};
 			};
 			buildConfigurationList = E393FD0C2CD6E2D100DA7CA3 /* Build configuration list for PBXProject "EasyReader" */;
-			preferredProjectObjectVersion = 77;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -184,6 +183,7 @@
 				E383FBD12CF539B500F32E57 /* XCRemoteSwiftPackageReference "Defaults" */,
 				E3BE9A522D474DE80019EEC0 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 			);
+			preferredProjectObjectVersion = 77;
 			productRefGroup = E393FD122CD6E2D100DA7CA3 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -195,14 +195,14 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		E393FD0F2CD6E2D100DA7CA3 /* Resources */ = {
+		7E57000000000000000000C3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		7E57000000000000000000C3 /* Resources */ = {
+		E393FD0F2CD6E2D100DA7CA3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -212,14 +212,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		E393FD0D2CD6E2D100DA7CA3 /* Sources */ = {
+		7E57000000000000000000C1 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		7E57000000000000000000C1 /* Sources */ = {
+		E393FD0D2CD6E2D100DA7CA3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -237,6 +237,42 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		7E57000000000000000000E1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7E5700000000000000000101 /* Signing.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = HawkRaven.EasyReaderTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EasyReader.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EasyReader";
+			};
+			name = Debug;
+		};
+		7E57000000000000000000E2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7E5700000000000000000101 /* Signing.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = HawkRaven.EasyReaderTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EasyReader.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EasyReader";
+			};
+			name = Release;
+		};
 		E393FD1E2CD6E2D300DA7CA3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -378,8 +414,9 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = HawkRaven.EasyReader;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -405,48 +442,24 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = HawkRaven.EasyReader;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
-		7E57000000000000000000E1 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 7E5700000000000000000101 /* Signing.xcconfig */;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = HawkRaven.EasyReaderTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EasyReader.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EasyReader";
-			};
-			name = Debug;
-		};
-		7E57000000000000000000E2 /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 7E5700000000000000000101 /* Signing.xcconfig */;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = HawkRaven.EasyReaderTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EasyReader.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EasyReader";
+				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		7E57000000000000000000E3 /* Build configuration list for PBXNativeTarget "EasyReaderTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E57000000000000000000E1 /* Debug */,
+				7E57000000000000000000E2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		E393FD0C2CD6E2D100DA7CA3 /* Build configuration list for PBXProject "EasyReader" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -461,15 +474,6 @@
 			buildConfigurations = (
 				E393FD212CD6E2D300DA7CA3 /* Debug */,
 				E393FD222CD6E2D300DA7CA3 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		7E57000000000000000000E3 /* Build configuration list for PBXNativeTarget "EasyReaderTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				7E57000000000000000000E1 /* Debug */,
-				7E57000000000000000000E2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

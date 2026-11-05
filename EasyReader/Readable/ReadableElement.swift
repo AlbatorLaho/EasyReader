@@ -8,6 +8,7 @@
 import Cocoa
 import AXSwift
 
+@MainActor
 class ReadableElement: Readable {
 //    private let handle: UIElement
 //    private let app: NSRunningApplication?

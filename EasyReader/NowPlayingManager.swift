@@ -9,159 +9,188 @@ import Cocoa
 import MediaPlayer
 import Defaults
 
-@objc protocol NowPlayingManagerDelegate {
-    @objc optional func play(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func stop(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func pause(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func togglePlayPause(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
-
-    @objc optional func nextTrack(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func previousTrack(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func skipForward(_ event: MPSkipIntervalCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func skipBackward(_ event: MPSkipIntervalCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func seekForward(_ event: MPSeekCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func seekBackward(_ event: MPSeekCommandEvent) -> MPRemoteCommandHandlerStatus;
-
-    @objc optional func changePlaybackRate(_ event: MPChangePlaybackRateCommandEvent) -> MPRemoteCommandHandlerStatus;
-    @objc optional func changePlaybackPosition(_ event: MPChangePlaybackPositionCommandEvent) -> MPRemoteCommandHandlerStatus;
-}
-
-final class NowPlayingManager: NSObject {
-//    TODO: should these be property getters?
-    private static let commandCenter = MPRemoteCommandCenter.shared()
-    private static let infoCenter = MPNowPlayingInfoCenter.default()
-    weak var delegate: NowPlayingManagerDelegate?
-
-    @RemoteCommand(commandCenter.playCommand) var playCommand
-    @RemoteCommand(commandCenter.stopCommand) var stopCommand
-    @RemoteCommand(commandCenter.pauseCommand) var pauseCommand
-    @RemoteCommand(commandCenter.togglePlayPauseCommand) var togglePlayPauseCommand
-
-    @RemoteCommand(commandCenter.nextTrackCommand) var nextTrackCommand
-    @RemoteCommand(commandCenter.previousTrackCommand) var previousTrackCommand
-    @RemoteCommand(commandCenter.skipForwardCommand, MPSkipIntervalCommandEvent.self) var skipForwardCommand
-    @RemoteCommand(commandCenter.skipBackwardCommand, MPSkipIntervalCommandEvent.self) var skipBackwardCommand
-    @RemoteCommand(commandCenter.seekForwardCommand, MPSeekCommandEvent.self) var seekForwardCommand
-    @RemoteCommand(commandCenter.seekBackwardCommand, MPSeekCommandEvent.self) var seekBackwardCommand
-
-    @RemoteCommand(commandCenter.changePlaybackRateCommand, MPChangePlaybackRateCommandEvent.self) var changePlaybackRateCommand
-    @RemoteCommand(commandCenter.changePlaybackPositionCommand, MPChangePlaybackPositionCommandEvent.self) var changePlaybackPositionCommand
-
-//    TODO: cleanup these functions
-//    TODO: add NSSound.beep()?
-    func setupRemoteCommands() {
-        playCommand = delegate?.play
-        stopCommand = delegate?.stop
-        pauseCommand = delegate?.pause
-        togglePlayPauseCommand = delegate?.togglePlayPause
-
-        nextTrackCommand = delegate?.nextTrack
-        previousTrackCommand = delegate?.previousTrack
-        skipForwardCommand = delegate?.skipForward
-        skipBackwardCommand = delegate?.skipBackward
-        seekForwardCommand = delegate?.seekForward
-        seekBackwardCommand = delegate?.seekBackward
-
-        changePlaybackRateCommand = delegate?.changePlaybackRate
-        changePlaybackPositionCommand = delegate?.changePlaybackPosition
-
-//        TODO: what other properties can be changed?
-//        $skipForwardCommand.preferredIntervals = [1.0]
-//        $skipBackwardCommand.preferredIntervals = [1.0]
-//        $changePlaybackRateCommand.supportedPlaybackRates = [
-//            NSNumber(value: AVSpeechUtteranceMinimumSpeechRate),
-//            NSNumber(value: AVSpeechUtteranceDefaultSpeechRate),
-//            NSNumber(value: AVSpeechUtteranceMaximumSpeechRate),
-//        ]
+/// Media keys / Control Center (`MPRemoteCommandCenter`) and the Now Playing panel (`MPNowPlayingInfoCenter`)
+/// for an `EasyReader`.
+///
+/// Remote commands are registered only while the integration is enabled and the reader is reading or paused,
+/// so media keys go to other apps once reading stops.
+@MainActor
+final class NowPlayingManager {
+    /// Remote commands this app supports. Any command not listed is never registered.
+    enum Action: Equatable {
+        case play
+        case pause
+        case stop
+        case togglePlayPause
+        case nextTrack
+        case previousTrack
+        /// Now Playing playback rate (the speed multiplier published in `nowPlayingInfo`).
+        case changePlaybackRate(Float)
     }
 
-    func removeRemoteCommands() {
-        if let delegate {
-            self.delegate = nil
-            setupRemoteCommands()
-            self.delegate = delegate
+    private struct Registration {
+        let command: MPRemoteCommand
+        let action: (MPRemoteCommandEvent) -> Action?
+        var target: Any?
+    }
+
+    private let reader: EasyReader
+    private let infoCenter = MPNowPlayingInfoCenter.default()
+    private var registrations: [Registration]
+    private var readable: Readable?
+    private var state: EasyReader.State = .stopped
+
+    /// The "Now Playing Center" integration setting. Turning it off unregisters commands and clears the panel.
+    var isEnabled = false {
+        didSet {
+            guard isEnabled != oldValue else { return }
+            Log.nowPlaying.debug("integration \(isEnabled ? "enabled" : "disabled")")
+            if isEnabled {
+                apply()
+            } else {
+                setCommandsRegistered(false)
+                clearInfo()
+            }
         }
     }
 
-//    FIXME: seems like this is getting set every time we skip via Now Playing Center? (may be because it's the "next track", so it automatically removes the info?)
-    func updateInfo(_ readable: Readable?, state: EasyReader.State) {
-        Log.nowPlaying.debug("update info: \(state)")
+    /// Whether remote command targets are currently registered.
+    private(set) var areCommandsRegistered = false
+
+    init(reader: EasyReader) {
+        self.reader = reader
+        let center = MPRemoteCommandCenter.shared()
+        registrations = [
+            Registration(command: center.playCommand) { _ in .play },
+            Registration(command: center.pauseCommand) { _ in .pause },
+            Registration(command: center.stopCommand) { _ in .stop },
+            Registration(command: center.togglePlayPauseCommand) { _ in .togglePlayPause },
+            Registration(command: center.nextTrackCommand) { _ in .nextTrack },
+            Registration(command: center.previousTrackCommand) { _ in .previousTrack },
+            Registration(command: center.changePlaybackRateCommand) { event in
+                (event as? MPChangePlaybackRateCommandEvent).map { .changePlaybackRate($0.playbackRate) }
+            },
+        ]
+    }
+
+    /// Call on every reader state change.
+    func update(readable: Readable?, state: EasyReader.State) {
+        self.readable = readable
+        self.state = state
+        guard isEnabled else { return }
+        apply()
+    }
+
+    @discardableResult
+    func perform(_ action: Action) -> MPRemoteCommandHandlerStatus {
+        Log.nowPlaying.debug("command: \(String(describing: action))")
+        let succeeded: Bool
+        switch action {
+            case .play: succeeded = reader.play(from: .selection)
+            case .pause: succeeded = reader.pause()
+            case .stop: succeeded = reader.stop()
+            case .togglePlayPause: succeeded = reader.togglePlayPause()
+            case .nextTrack: succeeded = reader.skip(.forward)
+            case .previousTrack: succeeded = reader.skip(.backward)
+            case .changePlaybackRate(let playbackRate):
+                Self.setSpeechRate(fromPlaybackRate: playbackRate)
+                succeeded = true
+        }
+        return succeeded ? .success : .commandFailed
+    }
+
+    /// Now Playing playback rate → `speechRate`; the inverse of what `playbackInfo` publishes.
+    static func setSpeechRate(fromPlaybackRate playbackRate: Float) {
+        Defaults[.speechRate] = SpeechRate.clamped(SpeechRate.rate(forMultiplier: playbackRate))
+    }
+
+    // MARK: - Commands
+
+    // TODO: keep commands registered (and the panel showing) after reading finishes on its own, so Play
+    // afterwards does what Start does (read the frontmost text area). Unclear how that fits Now Playing
+    // conventions: holding the media keys while idle steals them from other apps, and "finished" vs.
+    // "stopped by the user" would need telling apart (EasyReader only reports `.stopped`).
+    private func apply() {
+        setCommandsRegistered(state != .stopped)
         switch state {
             case .reading:
-                setupRemoteCommands()
-                Self.infoCenter.playbackState = .playing
-//                var info = Self.infoCenter.nowPlayingInfo ?? [String: Any]()
+                infoCenter.playbackState = .playing
+                // FIXME: seems to get reset on every skip via Now Playing (maybe because it's "next track")
                 if let readable {
-                    var info = [String: Any]()
-                    updateItemMetadata(&info, item: readable)
-                    updatePlaybackInfo(&info)
-                    Self.infoCenter.nowPlayingInfo = info
+                    infoCenter.nowPlayingInfo = Self.itemMetadata(readable).merging(Self.playbackInfo()) { $1 }
                 }
             case .paused:
-                Self.infoCenter.playbackState = .paused
+                infoCenter.playbackState = .paused
             case .stopped:
-                removeRemoteCommands()
-                Self.infoCenter.playbackState = .stopped
-                Self.infoCenter.nowPlayingInfo = nil
+                clearInfo()
         }
     }
 
-    private func updateItemMetadata(_ info: inout [String: Any], item readable: Readable) {
-//        TODO: MPMediaItemProperty
-//        info[MPMediaItemPropertyMediaType] = MPMediaType.anyAudio
-//        info[MPMediaItemPropertyMediaType] = MPMediaType.anyAudio.rawValue
-//        info[MPMediaItemPropertyMediaType] = NSNumber(value: MPMediaType.anyAudio.rawValue)
-        info[MPMediaItemPropertyMediaType] = MPMediaType.anyAudio.rawValue
-//        info[MPMediaItemPropertyMediaType] = MPMediaType.anyAudio.rawValue
-//        info[MPMediaItemPropertyMediaType] = MPMediaType.audioBook.rawValue
-//        info[MPMediaItemPropertyMediaType] = MPMediaType.podcast.rawValue
-        info[MPMediaItemPropertyPlaybackDuration] = Double.infinity
+    private func setCommandsRegistered(_ registered: Bool) {
+        guard registered != areCommandsRegistered else { return }
+        areCommandsRegistered = registered
+        Log.nowPlaying.debug("\(registered ? "registering" : "removing") remote commands")
+        for index in registrations.indices {
+            if registered {
+                let action = registrations[index].action
+                registrations[index].target = Self.addTarget(to: registrations[index].command) { [weak self] event in
+                    guard let self, let action = action(event) else { return .commandFailed }
+                    return perform(action)
+                }
+            } else if let target = registrations[index].target {
+                registrations[index].command.removeTarget(target)
+                registrations[index].target = nil
+            }
+        }
+    }
 
+    /// Built outside the main actor: a closure formed in main-actor code gets a runtime isolation check,
+    /// which would trap if MediaPlayer ever called it off the main thread. Hop to main explicitly instead.
+    private nonisolated static func addTarget(
+        to command: MPRemoteCommand,
+        handler: @escaping @MainActor (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus
+    ) -> Any {
+        command.addTarget { event in
+            nonisolated(unsafe) let event = event
+            if Thread.isMainThread {
+                return MainActor.assumeIsolated { handler(event) }
+            }
+            // Would deadlock if main ever waited on MediaPlayer's callback thread.
+            return DispatchQueue.main.sync { MainActor.assumeIsolated { handler(event) } }
+        }
+    }
+
+    // MARK: - Info
+
+    private func clearInfo() {
+        infoCenter.playbackState = .stopped
+        infoCenter.nowPlayingInfo = nil
+    }
+
+    private static func itemMetadata(_ readable: Readable) -> [String: Any] {
+        var info: [String: Any] = [
+            MPMediaItemPropertyMediaType: MPMediaType.anyAudio.rawValue,
+            MPMediaItemPropertyPlaybackDuration: Double.infinity,
+        ]
         info[MPMediaItemPropertyTitle] = readable.title
         info[MPMediaItemPropertyAlbumTitle] = readable.groupTitle
         info[MPMediaItemPropertyArtist] = NSRunningApplication.current.localizedName
-        info[MPMediaItemPropertyArtwork] = readable.icon.map({ artwork in
-            MPMediaItemArtwork(boundsSize: artwork.size) { _ in artwork }
-        })
+        info[MPMediaItemPropertyArtwork] = readable.icon.map(artwork)
+        return info
     }
 
-    private func updatePlaybackInfo(_ info: inout [String: Any]) {
-//        TODO: MPNowPlayingInfoProperty
-        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = 0.0
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = SpeechRate.multiplier(forRate: Defaults.Keys.speechRate.defaultValue)
-        info[MPNowPlayingInfoPropertyPlaybackRate] = SpeechRate.multiplier(forRate: Defaults[.speechRate])
-//        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = Double.ulpOfOne
-//        info[MPNowPlayingInfoPropertyPlaybackRate] = Double.ulpOfOne
-    }
-}
-
-@propertyWrapper
-struct RemoteCommand<Command: MPRemoteCommand, CommandEvent: MPRemoteCommandEvent> {
-    private let command: Command
-    private var handler: ((CommandEvent) -> MPRemoteCommandHandlerStatus)?
-    private var target: Any?
-
-    var projectedValue: Command { command }
-
-    var wrappedValue: ((CommandEvent) -> MPRemoteCommandHandlerStatus)? {
-        get { handler }
-        set {
-            handler = newValue
-            if let target {
-                command.removeTarget(target)
-                self.target = nil
-            }
-            if let handler {
-                target = command.addTarget() { event in
-                    Log.nowPlaying.debug("command: \(type(of: event))")
-                    return handler(event as! CommandEvent)
-                }
-            }
-        }
+    /// MediaPlayer may call the request handler off the main thread; a closure formed in main-actor code
+    /// would trap on its isolation check there, so build it outside the main actor.
+    private nonisolated static func artwork(_ image: NSImage) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }
 
-    init(_ command: Command, _ eventType: CommandEvent.Type = MPRemoteCommandEvent.self) {
-        self.command = command
+    private static func playbackInfo() -> [String: Any] {
+        [
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: SpeechRate.multiplier(forRate: Defaults.Keys.speechRate.defaultValue),
+            MPNowPlayingInfoPropertyPlaybackRate: SpeechRate.multiplier(forRate: Defaults[.speechRate]),
+        ]
     }
 }

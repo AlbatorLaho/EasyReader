@@ -2,193 +2,222 @@ import AVFoundation
 import AXSwift
 import AppKit
 import Defaults
-import XCTest
+import SwiftUI
+import Testing
 
 @testable import EasyReader
 
-/// Drives the real AX code path against a text view in the test host's own process.
-/// Reading your own process's accessibility tree does not require Accessibility permission.
-final class TextAreaReadableElementTests: XCTestCase, EasyReaderDelegate {
-    private var window: NSWindow!
-    private var reader: EasyReader?
-    private var pending: [(state: EasyReader.State, expectation: XCTestExpectation)] = []
-    private var scrollView: NSScrollView!
-    private var textView: NSTextView!
-    private let text = (1...80).map { "Sentence 😀 number \($0)." }.joined(separator: "\n")
-
-    override func setUp() {
-        super.setUp()
-        scrollView = NSTextView.scrollableTextView()
-        textView = scrollView.documentView as? NSTextView
-        textView.string = text
-        window = NSWindow(
-            contentRect: NSRect(x: 200, y: 200, width: 400, height: 200),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        window.isReleasedWhenClosed = false
-        window.title = "AX Test \(UUID().uuidString)"
-        window.contentView = scrollView
-        window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(textView)
-        spinRunLoop()
-    }
-
-    override func tearDown() {
-        reader?.stop()
-        reader = nil
-        pending = []
-        window.close()
-        window = nil
-        super.tearDown()
-    }
-
-    func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
-        for entry in pending where entry.state == state { entry.expectation.fulfill() }
-        pending.removeAll { $0.state == state }
-    }
-
-    private func expect(_ state: EasyReader.State) -> XCTestExpectation {
-        let expectation = expectation(description: "state \(state)")
-        pending.append((state, expectation))
-        return expectation
-    }
-
-    /// Silent reader (see EasyReaderSpeechTests).
-    private func makeReader() -> EasyReader {
-        Defaults[.speechVolume] = 0
-        Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-        Defaults[.speechDelayBefore] = 0
-        Defaults[.speechDelayAfter] = 0
-        Defaults[.speechStopBoundary] = .immediate
-        let reader = EasyReader()
-        reader.delegate = self
-        reader.textSelector = NLTextSelector(unit: .sentence)
-        self.reader = reader
-        return reader
-    }
-
-    private func axWindow(for window: NSWindow) throws -> UIElement {
-        let app = try XCTUnwrap(Application(NSRunningApplication.current))
-        let windows = try XCTUnwrap(app.windows())
-        return try XCTUnwrap(
-            windows.first { (try? $0.attribute(.title) as String?) == window.title },
-            "test window not found in AX tree"
-        )
-    }
-
-    private func readable() throws -> TextAreaReadableElement {
-        var queue = [try axWindow(for: window)]
-        while !queue.isEmpty {
-            let element = queue.removeFirst()
-            if let readable = try element.readableElement() {
-                return try XCTUnwrap(readable as? TextAreaReadableElement)
-            }
-            queue += (try? element.arrayAttribute(.children) as [UIElement]?) ?? []
+extension IntegrationTests {
+    /// Drives the real AX code path against a text view in the test host's own process.
+    /// Reading your own process's accessibility tree does not require Accessibility permission.
+    @MainActor
+    struct TextAreaReadableElementTests {
+        private struct TextAreaNotFound: Error, CustomStringConvertible {
+            var description: String { "no AXTextArea found" }
         }
-        throw XCTSkip("no AXTextArea found")
-    }
 
-    func testFindsTextAreaWithFullText() throws {
-        let readable = try readable()
-        XCTAssertEqual(readable.fullText, text)
-        XCTAssertEqual(readable.appDomain, Bundle.main.bundleIdentifier)
-        XCTAssertEqual(readable.title, window.title)
-    }
+        private let window: NSWindow
+        private let scrollView: NSScrollView
+        private let textView: NSTextView
+        private let recorder = StateRecorder()
+        private let text = (1...80).map { "Sentence 😀 number \($0)." }.joined(separator: "\n")
 
-    func testSettingSelectionUpdatesTextView() throws {
-        let readable = try readable()
-        readable.selection = Selection(3..<9)
-        XCTAssertEqual(textView.selectedRange(), NSRange(location: 3, length: 6))
-        XCTAssertEqual(readable.selection, Selection(3..<9))
-        XCTAssertEqual(readable.selectedText, (text as NSString).substring(with: NSRange(location: 3, length: 6)))
-    }
+        init() async throws {
+            scrollView = NSTextView.scrollableTextView()
+            textView = try #require(scrollView.documentView as? NSTextView)
+            textView.string = text
+            window = NSWindow(
+                contentRect: NSRect(x: 200, y: 200, width: 400, height: 200),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            window.isReleasedWhenClosed = false
+            window.title = "AX Test \(UUID().uuidString)"
+            window.contentView = scrollView
+            window.makeKeyAndOrderFront(nil)
+            window.makeFirstResponder(textView)
+            let window = window
+            Teardown.add { window.close() }
+            await settle()
+        }
 
-    func testReadsSelectionChangedInTextView() throws {
-        let readable = try readable()
-        textView.setSelectedRange(NSRange(location: 20, length: 4))
-        XCTAssertEqual(readable.selection, Selection(20..<24))
-    }
+        /// Silent reader (see EasyReaderSpeechTests).
+        private func makeReader() -> EasyReader {
+            Defaults[.speechVolume] = 0
+            Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
+            Defaults[.speechDelayBefore] = 0
+            Defaults[.speechDelayAfter] = 0
+            Defaults[.speechStopBoundary] = .immediate
+            let reader = EasyReader()
+            reader.delegate = recorder
+            reader.textSelector = NLTextSelector(unit: .sentence)
+            Teardown.add { reader.stop() }  // runs before the window closes (newest first)
+            return reader
+        }
 
-    /// AX ranges are UTF-16; each 😀 is two code units, so offsets drift if treated as Characters.
-    func testSelectorStepsThroughNonBMPTextViaAX() throws {
-        let readable = try readable()
-        let selector = NLTextSelector(unit: .sentence)
-        readable.selection = Selection()
-        for n in 1...3 {
-            let next = selector.select(.forward, from: try XCTUnwrap(readable.selection), in: try XCTUnwrap(readable.fullText))
-            readable.selection = next
-            XCTAssertEqual(
-                readable.selectedText?.trimmingCharacters(in: .whitespacesAndNewlines),
-                "Sentence 😀 number \(n)."
+        private func axWindow(for window: NSWindow) throws -> UIElement {
+            let app = try #require(Application(NSRunningApplication.current))
+            let windows = try #require(try app.windows())
+            return try #require(
+                windows.first(where: { (try? $0.attribute(.title) as String?) == window.title }),
+                "test window not found in AX tree"
             )
         }
-    }
 
-    func testScrollBringsSelectionIntoView() throws {
-        let readable = try readable()
-        XCTAssertEqual(scrollView.contentView.bounds.origin.y, 0)
-        let last = Selection((text as NSString).range(of: "Sentence 😀 number 80."))
-        readable.selection = last
-        scrollView.contentView.scroll(to: .zero)  // selecting may auto-scroll; reset to test our scroll code
-        spinRunLoop()
-        readable.scroll(to: last, options: ScrollOptions(padding: 16, smooth: false, duration: 0, updateRate: 60))
-        spinRunLoop()
-        XCTAssertGreaterThan(scrollView.contentView.bounds.origin.y, 0)
-    }
+        private func readable() throws -> TextAreaReadableElement {
+            var queue = [try axWindow(for: window)]
+            while !queue.isEmpty {
+                let element = queue.removeFirst()
+                if let readable = try element.readableElement() {
+                    return try #require(readable as? TextAreaReadableElement)
+                }
+                queue += (try? element.arrayAttribute(.children) as [UIElement]?) ?? []
+            }
+            throw TextAreaNotFound()
+        }
 
-    func testScrollValueIsClamped() {
-        XCTAssertEqual(TextAreaReadableElement.scrollValue(offset: 50, scrollableLength: 100), 0.5)
-        XCTAssertEqual(TextAreaReadableElement.scrollValue(offset: -16, scrollableLength: 100), 0)
-        XCTAssertEqual(TextAreaReadableElement.scrollValue(offset: 150, scrollableLength: 100), 1)
-        XCTAssertEqual(TextAreaReadableElement.scrollValue(offset: 10, scrollableLength: 0), 0)
-        XCTAssertEqual(TextAreaReadableElement.scrollValue(offset: 10, scrollableLength: -20), 0)
-    }
+        @Test func findsTextAreaWithFullText() throws {
+            let readable = try readable()
+            #expect(readable.fullText == text)
+            #expect(readable.appDomain == Bundle.main.bundleIdentifier)
+            #expect(readable.title == window.title)
+        }
 
-    /// `findReadableElement` descends via `.childrenInNavigationOrder`; AppKit supports it (other apps may not).
-    func testFindsTextAreaStartingFromWindow() throws {
-        let reader = makeReader()
-        let start = try axWindow(for: window)
-        XCTAssertTrue(reader.start(reading: .element(start)))
-    }
+        @Test func settingSelectionUpdatesTextView() throws {
+            let readable = try readable()
+            readable.selection = Selection(3..<9)
+            #expect(textView.selectedRange() == NSRange(location: 3, length: 6))
+            #expect(readable.selection == Selection(3..<9))
+            #expect(readable.selectedText == (text as NSString).substring(with: NSRange(location: 3, length: 6)))
+        }
 
-    /// The search must not climb past the window and find (and focus) a text area in another window.
-    func testDoesNotLeaveStartingWindow() throws {
-        let other = NSWindow(contentRect: NSRect(x: 650, y: 200, width: 200, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
-        other.isReleasedWhenClosed = false
-        other.title = "AX Other \(UUID().uuidString)"
-        other.contentView = NSButton(title: "No text here", target: nil, action: nil)
-        other.makeKeyAndOrderFront(nil)
-        defer { other.close() }
-        spinRunLoop()
-        let reader = makeReader()
-        let start = try axWindow(for: other)
-        XCTAssertFalse(reader.start(reading: .element(start)))
-    }
+        @Test func readsSelectionChangedInTextView() throws {
+            let readable = try readable()
+            textView.setSelectedRange(NSRange(location: 20, length: 4))
+            #expect(readable.selection == Selection(20..<24))
+        }
 
-    /// Reading stops once the text view leaves its window.
-    func testStopsWhenTextViewIsRemoved() throws {
-        textView.string = Array(repeating: "word", count: 400).joined(separator: " ") + "."
-        let reader = makeReader()
-        let reading = expect(.reading)
-        XCTAssertTrue(reader.start(reading: try readable()))
-        wait(for: [reading], timeout: 10)
-        let stopped = expect(.stopped)
-        window.contentView = NSView()
-        spinRunLoop()
-        wait(for: [stopped], timeout: 3)
-    }
+        /// AX ranges are UTF-16; each 😀 is two code units, so offsets drift if treated as Characters.
+        @Test func selectorStepsThroughNonBMPTextViaAX() throws {
+            let readable = try readable()
+            let selector = NLTextSelector(unit: .sentence)
+            readable.selection = Selection()
+            for n in 1...3 {
+                let next = selector.select(.forward, from: try #require(readable.selection), in: try #require(readable.fullText))
+                readable.selection = next
+                #expect(readable.selectedText?.trimmingCharacters(in: .whitespacesAndNewlines) == "Sentence 😀 number \(n).")
+            }
+        }
 
-    /// Closing the window only destroys the window element; the text area still answers AX.
-    func testStopsWhenWindowCloses() throws {
-        textView.string = Array(repeating: "word", count: 400).joined(separator: " ") + "."
-        let reader = makeReader()
-        let reading = expect(.reading)
-        XCTAssertTrue(reader.start(reading: try readable()))
-        wait(for: [reading], timeout: 10)
-        let stopped = expect(.stopped)
-        window.close()
-        wait(for: [stopped], timeout: 3)
+        @Test func scrollBringsSelectionIntoView() async throws {
+            let readable = try readable()
+            #expect(scrollView.contentView.bounds.origin.y == 0)
+            let last = Selection((text as NSString).range(of: "Sentence 😀 number 80."))
+            readable.selection = last
+            scrollView.contentView.scroll(to: .zero)  // selecting may auto-scroll; reset to test our scroll code
+            await settle()
+            readable.scroll(to: last, options: ScrollOptions(padding: 16, smooth: false, duration: 0, updateRate: 60))
+            await settle()
+            #expect(scrollView.contentView.bounds.origin.y > 0)
+        }
+
+        /// SwiftUI's `TextEditor` (the Settings playgrounds) reports only its visible frame over AX, so scrolling
+        /// from the element frame alone always went to the top; the full text's bounds give the document size.
+        @Test func scrollsSwiftUITextEditor() async throws {
+            struct Editor: View {
+                @State var text = (1...80).map { "Sentence number \($0)." }.joined(separator: " ")
+                var body: some View { TextEditor(text: $text).font(.system(size: 24)) }
+            }
+            let editorWindow = NSWindow(
+                contentRect: NSRect(x: 200, y: 200, width: 400, height: 200),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            editorWindow.isReleasedWhenClosed = false
+            editorWindow.title = "AX SwiftUI Test \(UUID().uuidString)"
+            editorWindow.contentView = NSHostingView(rootView: Editor())
+            editorWindow.makeKeyAndOrderFront(nil)
+            editorWindow.makeFirstResponder(nil)  // like Settings before any click
+            Teardown.add { editorWindow.close() }
+            await settle(0.5)
+
+            let reader = makeReader()
+            #expect(reader.start(reading: .element(try axWindow(for: editorWindow))))
+            reader.stop()
+            let readable = try #require(reader.readable as? TextAreaReadableElement)
+            let fullText = try #require(readable.fullText)
+            let target = Selection((fullText as NSString).range(of: "Sentence number 70."))
+
+            let scrollArea = try #require(try readable.handle.parent(with: .scrollArea))
+            let scrollBar: UIElement = try #require(try scrollArea.attribute(.verticalScrollBar))
+            readable.selection = target
+            await settle(0.3)
+            try scrollBar.setAttribute(.value, value: CGFloat(0))  // selecting may auto-scroll; reset
+            await settle(0.3)
+            readable.scroll(to: target, options: ScrollOptions(padding: 16, smooth: false, duration: 0, updateRate: 60))
+            await settle(0.3)
+            let value: CGFloat = try #require(try scrollBar.attribute(.value))
+            #expect(value > 0.5)
+        }
+
+        @Test(
+            arguments: [
+                (50, 100, 0.5),
+                (-16, 100, 0),
+                (150, 100, 1),
+                (10, 0, 0),
+                (10, -20, 0),
+            ] as [(CGFloat, CGFloat, CGFloat)])
+        func scrollValueIsClamped(offset: CGFloat, scrollableLength: CGFloat, expected: CGFloat) {
+            #expect(TextAreaReadableElement.scrollValue(offset: offset, scrollableLength: scrollableLength) == expected)
+        }
+
+        /// `findReadableElement` descends via `.childrenInNavigationOrder`; AppKit supports it (other apps may not).
+        @Test func findsTextAreaStartingFromWindow() throws {
+            let reader = makeReader()
+            let start = try axWindow(for: window)
+            #expect(reader.start(reading: .element(start)))
+        }
+
+        /// The search must not climb past the window and find (and focus) a text area in another window.
+        @Test func doesNotLeaveStartingWindow() async throws {
+            let other = NSWindow(contentRect: NSRect(x: 650, y: 200, width: 200, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+            other.isReleasedWhenClosed = false
+            other.title = "AX Other \(UUID().uuidString)"
+            other.contentView = NSButton(title: "No text here", target: nil, action: nil)
+            other.makeKeyAndOrderFront(nil)
+            defer { other.close() }
+            await settle()
+            let reader = makeReader()
+            let start = try axWindow(for: other)
+            #expect(!reader.start(reading: .element(start)))
+        }
+
+        /// Reading stops once the text view leaves its window.
+        @Test func stopsWhenTextViewIsRemoved() async throws {
+            textView.string = Array(repeating: "word", count: 400).joined(separator: " ") + "."
+            let reader = makeReader()
+            let reading = recorder.expect(.reading)
+            #expect(reader.start(reading: try readable()))
+            try await reading.wait(timeout: 10)
+            let stopped = recorder.expect(.stopped)
+            window.contentView = NSView()
+            await settle()
+            try await stopped.wait(timeout: 3)
+        }
+
+        /// Closing the window only destroys the window element; the text area still answers AX.
+        @Test func stopsWhenWindowCloses() async throws {
+            textView.string = Array(repeating: "word", count: 400).joined(separator: " ") + "."
+            let reader = makeReader()
+            let reading = recorder.expect(.reading)
+            #expect(reader.start(reading: try readable()))
+            try await reading.wait(timeout: 10)
+            let stopped = recorder.expect(.stopped)
+            window.close()
+            try await stopped.wait(timeout: 3)
+        }
     }
 }

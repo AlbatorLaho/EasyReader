@@ -9,7 +9,7 @@ import ApplicationServices
 import AXSwift
 
 extension UIElement {
-    func readableElement() throws -> ReadableElement? {
+    @MainActor func readableElement() throws -> ReadableElement? {
         guard let role: String = try attribute(.role) else { return nil }
         guard let readableType = ReadableElement[.init(role)] else { return nil }
         return readableType.init(self)

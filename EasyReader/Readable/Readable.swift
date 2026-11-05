@@ -7,6 +7,7 @@
 
 import Cocoa
 
+@MainActor
 protocol Readable: AnyObject {
     var title: String? { get }
     var groupTitle: String? { get }

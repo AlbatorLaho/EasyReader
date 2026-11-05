@@ -82,7 +82,7 @@ struct PronunciationTable: NSViewRepresentable {
 //        }
     }
 
-    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+    @MainActor final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
         var parent: PronunciationTable
 //        var data: Binding<[Pronunciation]>
 //        var dataSource: NSTableViewDiffableDataSource<String, Int>?
@@ -187,8 +187,9 @@ struct PronunciationTable: NSViewRepresentable {
         }
 
         func controlTextDidEndEditing(_ obj: Notification) {
-            DispatchQueue.main.async {
-                guard let textField = obj.object as? NSTextField else { return }
+            // Defer the binding write out of the AppKit callback (SwiftUI may be mid-update).
+            guard let textField = obj.object as? NSTextField else { return }
+            Task {
                 let row = textField.tag
                 guard self.parent.data.indices.contains(row) else { return }
                 if textField.identifier?.rawValue == "Search" {
@@ -200,8 +201,8 @@ struct PronunciationTable: NSViewRepresentable {
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
-            DispatchQueue.main.async {
-                guard let tableView = notification.object as? NSTableView else { return }
+            guard let tableView = notification.object as? NSTableView else { return }
+            Task {
                 let row = tableView.selectedRow  // -1 when nothing is selected
                 self.parent.selection = self.parent.data.indices.contains(row) ? self.parent.data[row] : nil
             }

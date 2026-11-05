@@ -10,10 +10,12 @@ import AVKit
 import AXSwift
 import Defaults
 
+@MainActor
 protocol EasyReaderDelegate: AnyObject {
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State)
 }
 
+@MainActor
 final class EasyReader: NSObject {
     private var stopType: StopType = .none
     private(set) var state: State = .stopped {
@@ -285,7 +287,8 @@ final class EasyReader: NSObject {
     }
 }
 
-extension EasyReader: AVSpeechSynthesizerDelegate {
+// AVSpeechSynthesizer calls its delegate on the main thread; `@preconcurrency` checks that at runtime.
+extension EasyReader: @preconcurrency AVSpeechSynthesizerDelegate {
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
         Log.speech.debug("didStart")
         state = .reading
@@ -353,8 +356,6 @@ extension EasyReader {
         case element(UIElement, fromFocused: Bool = false)
         case app(NSRunningApplication?)
 
-        static var systemWideElement: Self { .element(AXSwift.systemWideElement, fromFocused: true) }
-        static var currentApp: Self { .app(NSRunningApplication.current) }
         static var frontmostApp: Self { .app(NSWorkspace.shared.frontmostApplication) }
     }
 
@@ -406,7 +407,6 @@ extension EasyReader {
         return start(reading: readableElement)
     }
 
-//    FIXME: text area's frame size seems to get messed up, if the first time this is run, it isn't the focused element
     /// BFS over children and parents, staying inside the starting element's window
     /// (never climbing to the window's parent, the application) and visiting at most `limit` elements.
     private func findReadableElement(from element: UIElement, limit: Int = 1000) -> ReadableElement? {

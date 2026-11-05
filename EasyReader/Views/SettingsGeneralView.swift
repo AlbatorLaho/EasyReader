@@ -55,21 +55,7 @@ struct SettingsGeneralView: View {
             Spacer()
 
             HStack {
-                Button {
-                    _ = UIElement.isProcessTrusted(withPrompt: true)
-                } label: {
-//                    FIXME: color doesn't update reliably
-                    if #available(macOS 12.0, *) {
-                        Image(systemName: "circle.fill")
-                            .imageScale(.small)
-                            .foregroundStyle(UIElement.isProcessTrusted() ? .green : .red)
-                    } else {
-                        Image(systemName: "circle.fill")
-                            .imageScale(.small)
-                            .foregroundColor(UIElement.isProcessTrusted() ? .green : .red)
-                    }
-                    Text("Request Accessibility Permission")
-                }
+                AccessibilityPermissionButton()
                 Spacer()
 //                ResetDefaultsButton(for: "general", keys: [
 //                    .nowPlayingCenterIntegration,
@@ -111,5 +97,52 @@ struct SettingsGeneralView: View {
             • reading sometimes hangs, and (usually) requires restarting the app to fix
             """
         }
+    }
+}
+
+/// Trust takes effect immediately (no relaunch needed); re-check when the system's Accessibility list
+/// changes and when the app becomes active, since the view otherwise never redraws.
+private struct AccessibilityPermissionButton: View {
+    @State private var isTrusted = UIElement.isProcessTrusted()
+    private static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+
+    var body: some View {
+        Button {
+            if isTrusted {
+                // Undocumented URL (System Preferences' pane ID, still mapped by System Settings on macOS 13+);
+                // fall back to opening System Settings itself.
+                if !NSWorkspace.shared.open(Self.settingsURL) {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:")!)
+                }
+            } else {
+                // The system prompt also adds the app to the Accessibility list.
+                isTrusted = UIElement.isProcessTrusted(withPrompt: true)
+            }
+        } label: {
+            if #available(macOS 12.0, *) {
+                Image(systemName: "circle.fill")
+                    .imageScale(.small)
+                    .foregroundStyle(isTrusted ? .green : .red)
+            } else {
+                Image(systemName: "circle.fill")
+                    .imageScale(.small)
+                    .foregroundColor(isTrusted ? .green : .red)
+            }
+            Text(isTrusted ? "Accessibility Settings…" : "Request Accessibility Permission…")
+        }
+        .onReceive(DistributedNotificationCenter.default().publisher(for: Notification.Name("com.apple.accessibility.api"))) { _ in
+            // Posted as the change is being applied; the trust check can lag briefly.
+            Task {
+                try? await Task.sleep(seconds: 0.5)
+                refresh()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refresh()
+        }
+    }
+
+    private func refresh() {
+        isTrusted = UIElement.isProcessTrusted()
     }
 }

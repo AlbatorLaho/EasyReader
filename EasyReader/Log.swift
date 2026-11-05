@@ -15,7 +15,7 @@ import os
 /// View in Xcode's console, or stream while running a Debug build:
 ///
 ///     log stream --level debug --predicate 'subsystem == "HawkRaven.EasyReader"'
-struct Log {
+struct Log: Sendable {
     private let logger: Logger
 
     private init(category: String) {

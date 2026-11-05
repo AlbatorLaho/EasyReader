@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import MediaPlayer
 import AXSwift
 import Defaults
 import KeyboardShortcuts
@@ -105,19 +104,41 @@ struct EasyReaderApp: App {
     }
 }
 
+/// Opens the settings window (the SwiftUI `Settings` scene) from AppKit, e.g. the status item's menu.
+@MainActor
+final class SettingsOpener: NSObject {
+    /// The settings window, once it was opened.
+    static var window: NSWindow? {
+        NSApp.windows.first { $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" }
+    }
+
+    /// Opens the settings window, or brings it to the front if it's already open. An accessory app opening a window
+    /// isn't activated (the window opens behind the frontmost app, or nothing happens if it's already open), so
+    /// activate first. Not the cooperative `activate()` (macOS 14+): it was declined in tests (no user event).
+    @objc static func open() {
+        NSApp.activate(ignoringOtherApps: true)
+        if #available(macOS 14.0, *) {
+            Modern.openSettings()
+        } else if #available(macOS 13.0, *) {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
+        window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// `openSettings` (macOS 14+; the selectors above only log a warning there), read outside a view.
+    @available(macOS 14.0, *)
+    @MainActor private enum Modern {
+        @Environment(\.openSettings) static var openSettings
+    }
+}
+
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var easyReader: EasyReader!
     var nowPlayingManager: NowPlayingManager!
     var statusItem: NSStatusItem!
-
-    @available(macOS 14.0, *)
-    private final class SettingsOpener: ObservableObject {
-        @Environment(\.openSettings) static private var openSettings
-
-        @objc static func open() {
-            openSettings()
-        }
-    }
 
 //    TODO: use .prohibited unless a window needs to be opened, then use .accessory or .regular (make sure the permisions dialog can be opened)
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -136,8 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         easyReader = EasyReader()
         easyReader.delegate = self
-        nowPlayingManager = NowPlayingManager()
-        nowPlayingManager.delegate = self
+        nowPlayingManager = NowPlayingManager(reader: easyReader)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)
@@ -173,26 +193,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }(),
             .separator(),
             {
-                let menuItem = NSMenuItem(title: "Settings...", action: nil, keyEquivalent: ",")
-                if #available(macOS 14.0, *) {
-                    menuItem.target = SettingsOpener.self
-                    menuItem.action = #selector(SettingsOpener.open)
-                } else if #available(macOS 13.0, *) {
-                    menuItem.action = Selector(("showSettingsWindow:"))
-                } else {
+                let menuItem = NSMenuItem(title: "Settings...", action: #selector(SettingsOpener.open), keyEquivalent: ",")
+                menuItem.target = SettingsOpener.self
+                if #unavailable(macOS 13.0) {
                     menuItem.title = "Preferences..."
-                    menuItem.action = Selector(("showPreferencesWindow:"))
                 }
                 return menuItem
             }(),
             NSMenuItem(title: "Quit", action: #selector(NSApplication.shared.terminate), keyEquivalent: "q"),
         ]
 
-        KeyboardShortcuts.onKeyDown(for: .increaseRate) { [self] in
+        KeyboardShortcuts.onKeyDown(for: .increaseRate) {
             Defaults[.speechRate] = SpeechRate.adjusted(Defaults[.speechRate], byMultiplier: 0.1)
             Log.app.debug("shortcut: increase rate → \(Defaults[.speechRate])")
         }
-        KeyboardShortcuts.onKeyDown(for: .decreaseRate) { [self] in
+        KeyboardShortcuts.onKeyDown(for: .decreaseRate) {
             Defaults[.speechRate] = SpeechRate.adjusted(Defaults[.speechRate], byMultiplier: -0.1)
             Log.app.debug("shortcut: decrease rate → \(Defaults[.speechRate])")
         }
@@ -222,11 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             for await value in Defaults.updates(.nowPlayingCenterIntegration) {
                 Log.settings.debug("Now Playing integration: \(value)")
-                if value {
-                    nowPlayingManager.setupRemoteCommands()
-                } else {
-                    nowPlayingManager.removeRemoteCommands()
-                }
+                nowPlayingManager.isEnabled = value
             }
         }
     }
@@ -273,66 +284,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-//TODO: use commandFailed, noSuchContent, and noActionableNowPlayingItem?
-extension AppDelegate: NowPlayingManagerDelegate {
-    func play(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        return easyReader.play(from: .selection) ? .success : .commandFailed
-    }
-    func stop(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        return easyReader.stop() ? .success : .commandFailed
-    }
-    func pause(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        return easyReader.pause() ? .success : .commandFailed
-    }
-    func togglePlayPause(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        return easyReader.togglePlayPause() ? .success : .commandFailed
-    }
-
-    func nextTrack(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        return easyReader.skip(.forward) ? .success : .commandFailed
-    }
-    func previousTrack(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        return easyReader.skip(.backward) ? .success : .commandFailed
-    }
-//    func skipForward(_ event: MPSkipIntervalCommandEvent) -> MPRemoteCommandHandlerStatus {
-//        print("skipForward: \(event.interval)")
-//        return .success
-//    }
-//    func skipBackward(_ event: MPSkipIntervalCommandEvent) -> MPRemoteCommandHandlerStatus {
-//        print("skipBackward: \(event.interval)")
-//        return .success
-//    }
-//    func seekForward(_ event: MPSeekCommandEvent) -> MPRemoteCommandHandlerStatus {
-//        print("seekForward: \(event.type)")
-//        return .success
-//    }
-//    func seekBackward(_ event: MPSeekCommandEvent) -> MPRemoteCommandHandlerStatus {
-//        print("seekBackward: \(event.type)")
-//        return .success
-//    }
-
-    func changePlaybackRate(_ event: MPChangePlaybackRateCommandEvent) -> MPRemoteCommandHandlerStatus {
-        Log.nowPlaying.debug("change playback rate: \(event.playbackRate)")
-        setSpeechRate(fromPlaybackRate: event.playbackRate)
-        return .success
-    }
-
-    /// Now Playing playback rate → `speechRate`; Now Playing publishes `SpeechRate.multiplier(forRate:)`
-    /// (see `NowPlayingManager.updatePlaybackInfo`).
-    func setSpeechRate(fromPlaybackRate playbackRate: Float) {
-        Defaults[.speechRate] = SpeechRate.clamped(SpeechRate.rate(forMultiplier: playbackRate))
-    }
-//    func changePlaybackPosition(_ event: MPChangePlaybackPositionCommandEvent) -> MPRemoteCommandHandlerStatus {
-//        print("changePlaybackPosition: \(event.positionTime)")
-//        return .success
-//    }
-}
-
 extension AppDelegate: EasyReaderDelegate {
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
-        if Defaults[.nowPlayingCenterIntegration] {
-            nowPlayingManager.updateInfo(easyReader.readable, state: state)
-        }
+        nowPlayingManager.update(readable: easyReader.readable, state: state)
         statusItem.menu?.update()
     }
 }

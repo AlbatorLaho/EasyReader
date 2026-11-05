@@ -12,26 +12,38 @@ import KeyboardShortcuts
 
 extension UserDefaults {
     /// Settings store. Tests run inside the Debug app (test host), so they get an in-memory store
-    /// instead of the Debug app's saved settings.
-    static let app: UserDefaults =
+    /// instead of the Debug app's saved settings. `UserDefaults` is documented thread-safe but not marked `Sendable`.
+    nonisolated(unsafe) static let app: UserDefaults =
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil ? .standard : InMemoryDefaults()
 }
 
 /// `UserDefaults` that never persists. Posts KVO on writes so `Defaults.updates`/`@Default` still observe changes.
+/// Locked because `UserDefaults` is thread-safe and callers may rely on that.
 private final class InMemoryDefaults: UserDefaults {
+    private let lock = NSLock()
     private var values: [String: Any] = [:]
 
-    override func object(forKey defaultName: String) -> Any? { values[defaultName] }
+    override func object(forKey defaultName: String) -> Any? {
+        lock.lock()
+        defer { lock.unlock() }
+        return values[defaultName]
+    }
 
     override func set(_ value: Any?, forKey defaultName: String) {
         willChangeValue(forKey: defaultName)
+        lock.lock()
         values[defaultName] = value
+        lock.unlock()
         didChangeValue(forKey: defaultName)
     }
 
     override func removeObject(forKey defaultName: String) { set(nil, forKey: defaultName) }
 
-    override func dictionaryRepresentation() -> [String: Any] { values }
+    override func dictionaryRepresentation() -> [String: Any] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
 }
 
 extension Defaults.Keys {
@@ -72,7 +84,7 @@ extension AVSpeechSynthesisVoice: Defaults.Serializable {
     public static let bridge = AVSpeechSynthesisVoiceBridge()
 }
 
-public struct AVSpeechSynthesisVoiceBridge: Defaults.Bridge {
+public struct AVSpeechSynthesisVoiceBridge: Defaults.Bridge, Sendable {
     public typealias Value = AVSpeechSynthesisVoice
     public typealias Serializable = String
     
@@ -90,7 +102,7 @@ extension AVSpeechBoundary: Defaults.Serializable {
     public static let bridge = AVSpeechBoundaryBridge()
 }
 
-public struct AVSpeechBoundaryBridge: Defaults.Bridge {
+public struct AVSpeechBoundaryBridge: Defaults.Bridge, Sendable {
     public typealias Value = AVSpeechBoundary
     public typealias Serializable = Int
     
