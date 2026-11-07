@@ -62,3 +62,17 @@ struct SelectionTests {
         #expect(Selection(0..<2).endIndex(in: string).utf16Offset(in: string) == 1)
     }
 }
+
+struct WebAreaLocateTests {
+    @Test(
+        arguments: [
+            ("bold", 10, Selection(8..<12)),  // two past: snaps back
+            ("bold", 8, Selection(8..<12)),  // exact
+            ("bold", 6, Selection(8..<12)),  // two before
+            ("nope", 8, Selection(8..<12)),  // not found: kept as measured
+            ("", 3, Selection(3..<3)),
+        ] as [(String, Int, Selection)])
+    func locatesNearestOccurrence(string: String, offset: Int, expected: Selection) {
+        #expect(WebAreaReadableElement.locate(string, near: offset, in: "Second  bold text", tolerance: 4) == expected)
+    }
+}

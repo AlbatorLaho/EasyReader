@@ -50,7 +50,7 @@ class ReadableElement: Readable {
 
     private static var values: [Role: ReadableElement.Type] = [
         .textArea: TextAreaReadableElement.self,
-//        .webArea: WebAreaReadableElement.self,
+        .webArea: WebAreaReadableElement.self,
     ]
 
     static subscript(role: Role) -> ReadableElement.Type? {
@@ -87,6 +87,9 @@ class ReadableElement: Readable {
     }
     
     func scroll(to selection: Selection, options: ScrollOptions) {}
+    // Declared here (not only in the protocol extension) so subclasses can override them.
+    func beginReading() {}
+    func endReading() {}
 }
 
 extension ReadableElement {

@@ -20,6 +20,16 @@ protocol Readable: AnyObject {
     var onInvalidate: (() -> Void)? { get set }
 
     func scroll(to selection: Selection, options: ScrollOptions);
+
+    /// Called before reading starts or resumes from stopped; may be called again while reading (must be idempotent).
+    func beginReading()
+    /// Called once reading stops, the readable is replaced, or the app quits. Undo what `beginReading` changed.
+    func endReading()
+}
+
+extension Readable {
+    func beginReading() {}
+    func endReading() {}
 }
 
 //protocol ReadableURL: Readable {

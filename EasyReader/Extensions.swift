@@ -4,6 +4,14 @@ extension Comparable {
     }
 }
 
+extension Collection where Element == UInt16 {
+    /// Whether `other` occurs at `offset` (false when it doesn't fit).
+    func matches<Other: Collection>(_ other: Other, at offset: Int) -> Bool where Other.Element == UInt16 {
+        guard offset >= 0, offset + other.count <= count else { return false }
+        return self[index(startIndex, offsetBy: offset)...].starts(with: other)
+    }
+}
+
 extension Task where Success == Never, Failure == Never {
     /// `sleep(for:)` needs macOS 13.
     static func sleep(seconds: Double) async throws {

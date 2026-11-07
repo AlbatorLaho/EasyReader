@@ -242,6 +242,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        easyReader?.prepareForTermination()
+    }
+
     @objc func toggleStartStopAction() {
         Log.app.debug("toggle start/stop (state \(easyReader.state))")
         switch easyReader.state {

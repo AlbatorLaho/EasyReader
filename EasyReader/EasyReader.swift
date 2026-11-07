@@ -22,6 +22,7 @@ final class EasyReader: NSObject {
         didSet {
             guard state != oldValue else { return }
             Log.reader.debug("state \(oldValue) → \(state)")
+            if state == .stopped { readable?.endReading() }
             delegate?.easyReader(self, didChangeState: state)
         }
     }
@@ -35,6 +36,7 @@ final class EasyReader: NSObject {
     var readable: Readable? {
         didSet {
             guard readable !== oldValue else { return }
+            oldValue?.endReading()
             oldValue?.onInvalidate = nil
             readable?.onInvalidate = { [weak self] in
                 Log.reader.debug("readable invalidated, stopping")
@@ -103,6 +105,13 @@ final class EasyReader: NSObject {
 
     @discardableResult
     func play(from unit: ResumeUnit) -> Bool {
+        readable?.beginReading()
+        let started = resume(from: unit)
+        if !started, state == .stopped { readable?.endReading() }
+        return started
+    }
+
+    private func resume(from unit: ResumeUnit) -> Bool {
         guard let selection = readable?.selection, lastSelection == selection else {
             Log.reader.debug("play(from: \(unit)): selection changed (\(String(describing: lastSelection)) → \(String(describing: readable?.selection))), reading selection")
             return ensureSelection() && readSelection()
@@ -112,6 +121,11 @@ final class EasyReader: NSObject {
             case .word: return readSelection(from: lastReadRange?.lowerBound)
             case .selection: return readSelection()
         }
+    }
+
+    /// Undoes changes the readable made to its app (see `Readable.endReading`) before the app quits.
+    func prepareForTermination() {
+        readable?.endReading()
     }
 
     @discardableResult
@@ -410,6 +424,13 @@ extension EasyReader {
     /// BFS over children and parents, staying inside the starting element's window
     /// (never climbing to the window's parent, the application) and visiting at most `limit` elements.
     private func findReadableElement(from element: UIElement, limit: Int = 1000) -> ReadableElement? {
+        // Focus is often deep inside a readable element (e.g. a link in a web page, whose BFS would fan out over the
+        // page before climbing to its web area), so check the ancestors right after the element itself (a focused
+        // text area in a web page is read, not the page).
+        if (try? element.readableElement()) == nil, let readable = readableAncestor(of: element) {
+            try? readable.handle.setAttribute(.focused, value: true)
+            return readable
+        }
         var queue: [UIElement] = [element]
         var visited: Set<UIElement> = [element]
 
@@ -440,6 +461,22 @@ extension EasyReader {
         }
 
         Log.accessibility.debug("no readable element after visiting \(visited.count) element(s)")
+        return nil
+    }
+
+    /// The nearest readable ancestor below the window (the starting element itself is left to the BFS).
+    private func readableAncestor(of element: UIElement) -> ReadableElement? {
+        var current = element
+        for _ in 0..<100 {
+            guard let parent: UIElement = try? current.attribute(.parent),
+                let role = try? parent.role(), role != .window, role != .application
+            else { return nil }
+            if let readable = try? parent.readableElement() {
+                Log.accessibility.debug("found \(type(of: readable)) as an ancestor of the focused element")
+                return readable
+            }
+            current = parent
+        }
         return nil
     }
 }
