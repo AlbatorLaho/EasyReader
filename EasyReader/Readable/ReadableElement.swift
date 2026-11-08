@@ -87,6 +87,7 @@ class ReadableElement: Readable {
     }
     
     func scroll(to selection: Selection, options: ScrollOptions) {}
+    func textBlock(containing offset: Int) -> Selection? { nil }
     // Declared here (not only in the protocol extension) so subclasses can override them.
     func beginReading() {}
     func endReading() {}

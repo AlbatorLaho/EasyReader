@@ -29,6 +29,7 @@ enum WebTestPage {
         Reading should continue sentence by sentence, with <a href="https://example.com">links</a>,
         <b>bold</b> and <i>italic</i> text read inline.</p>
         <p>Emoji take two UTF-16 code units 😀, so offsets must not drift 🚀. This sentence comes after them.</p>
+        <p style="width: 0">Narrow <a href="https://example.com">link</a> wraps here.</p>
         <h2>A text area inside the page</h2>
         <textarea>Text area sentence one. Text area sentence two.</textarea>
         <h2>Scrolling</h2>

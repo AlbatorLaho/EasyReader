@@ -171,7 +171,7 @@ extension IntegrationTests {
                 (10, -20, 0),
             ] as [(CGFloat, CGFloat, CGFloat)])
         func scrollValueIsClamped(offset: CGFloat, scrollableLength: CGFloat, expected: CGFloat) {
-            #expect(TextAreaReadableElement.scrollValue(offset: offset, scrollableLength: scrollableLength) == expected)
+            #expect(ScrollBarScroller.scrollValue(offset: offset, scrollableLength: scrollableLength) == expected)
         }
 
         /// `findReadableElement` descends via `.childrenInNavigationOrder`; AppKit supports it (other apps may not).

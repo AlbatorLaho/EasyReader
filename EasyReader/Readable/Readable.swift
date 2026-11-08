@@ -21,6 +21,10 @@ protocol Readable: AnyObject {
 
     func scroll(to selection: Selection, options: ScrollOptions);
 
+    /// The text block (paragraph, heading, list item…) holding the character at UTF-16 `offset` of `fullText`, for text
+    /// whose blocks aren't separated by line breaks (see `TextSelector.select(_:from:in:blocks:)`); nil to use line breaks.
+    func textBlock(containing offset: Int) -> Selection?
+
     /// Called before reading starts or resumes from stopped; may be called again while reading (must be idempotent).
     func beginReading()
     /// Called once reading stops, the readable is replaced, or the app quits. Undo what `beginReading` changed.
@@ -28,6 +32,7 @@ protocol Readable: AnyObject {
 }
 
 extension Readable {
+    func textBlock(containing offset: Int) -> Selection? { nil }
     func beginReading() {}
     func endReading() {}
 }

@@ -34,6 +34,14 @@ EasyReader provides additional functionality to the built-in text to speech engi
 ⚠️ Accessibility permission will have to be granted in order for EasyReader to work.
 (if you're updating EasyReader, you'll probably have to remove it from the Accessibility permissions, and then add it back again)
 
+### Chrome, Brave, Edge and other Chromium browsers
+
+Chromium browsers only let EasyReader select text in web pages with an experimental flag. Without it, EasyReader still reads web pages, but marks what it reads with a highlight drawn over the page instead of selecting it.
+
+1. Paste `chrome://flags/#enable-accessibility-text-operation` into the browser's address bar (or use **Copy Flag** in EasyReader's Reading settings)
+2. Set **Enable text editing through accessibility APIs** to **Enabled**
+3. Relaunch the browser
+
 ⚠️ I also have not setup signing/notarization, since I don't have an Apple developer account.
 
 ## License

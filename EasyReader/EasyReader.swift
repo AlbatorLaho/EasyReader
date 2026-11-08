@@ -49,6 +49,8 @@ final class EasyReader: NSObject {
     private var lastSelection: Selection?
     private var lastReadString: String?
     private var lastReadRange: NSRange?
+    /// Waits for a Chromium app to build its page content (`startAfterEnablingWebContent`).
+    private var pendingStart: Task<Void, Never>?
 
     override init() {
         super.init()
@@ -141,6 +143,8 @@ final class EasyReader: NSObject {
 
     @discardableResult
     func stop() -> Bool {
+        pendingStart?.cancel()
+        pendingStart = nil
         guard isSpeaking else {
             guard state == .paused else {
                 Log.reader.debug("stop: not speaking or paused")
@@ -229,9 +233,10 @@ final class EasyReader: NSObject {
     }
 
     private func nextSelection(_ direction: Selection.Direction) -> Selection? {
-        guard let fullText = readable?.fullText,
-              let selection = readable?.selection,
-              let nextSelection = textSelector?.select(direction, from: selection, in: fullText)
+        guard let readable,
+              let fullText = readable.fullText,
+              let selection = readable.selection,
+              let nextSelection = textSelector?.select(direction, from: selection, in: fullText, blocks: { readable.textBlock(containing: $0) })
         else {
             Log.reader.debug("nextSelection(\(direction)): no text, selection, or selector")
             return nil
@@ -415,10 +420,46 @@ extension EasyReader {
             return false
         }
         guard let readableElement = findReadableElement(from: focusedElement) else {
+            if let pid = try? element.pid(), let app = NSRunningApplication(processIdentifier: pid), WebAccessibility.isChromium(app) {
+                return startAfterEnablingWebContent(reading: element, fromFocused: fromFocused, pid: pid)
+            }
             Log.accessibility.error("Unable to find readable element.")
             return false
         }
         return start(reading: readableElement)
+    }
+
+    /// A Chromium app vends no page content until its AX mode is on (see `WebAccessibility`): turns it on, then retries
+    /// for a few seconds while Chromium builds its AX tree (it beeps if that fails).
+    private func startAfterEnablingWebContent(reading element: UIElement, fromFocused: Bool, pid: pid_t) -> Bool {
+        let flags = WebAccessibility.enable(pid: pid)
+        guard !flags.isEmpty else {
+            Log.accessibility.error("Unable to find readable element.")
+            return false
+        }
+        Log.accessibility.debug("turned on \(flags); waiting for page content")
+        pendingStart?.cancel()
+        pendingStart = Task { @MainActor [weak self] in
+            for _ in 0..<50 {
+                guard (try? await Task.sleep(nanoseconds: 100_000_000)) != nil, let self else { break }
+                let focused: UIElement? = fromFocused ? try? element.attribute(.focusedUIElement) : element
+                guard let focused, let readable = self.findReadableElement(from: focused) else { continue }
+                if let webArea = readable as? WebAreaReadableElement {
+                    webArea.adoptAppFlags(flags)
+                } else {
+                    WebAccessibility.restore(flags, pid: pid)
+                }
+                self.pendingStart = nil
+                if !self.start(reading: readable) { NSSound.beep() }
+                return
+            }
+            WebAccessibility.restore(flags, pid: pid)
+            if !Task.isCancelled {
+                Log.accessibility.error("Unable to find readable element.")
+                NSSound.beep()
+            }
+        }
+        return true
     }
 
     /// BFS over children and parents, staying inside the starting element's window

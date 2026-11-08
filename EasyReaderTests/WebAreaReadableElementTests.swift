@@ -211,6 +211,40 @@ extension IntegrationTests {
             #expect(after < before, "selection did not move up into view (\(before) → \(after))")
         }
 
+        /// WebKit exposes the page's scroll bar: smooth scrolling animates it, ending with the selection at the top
+        /// (plus padding) of the page's scroll area.
+        @Test func smoothScrollAnimatesScrollBar() async throws {
+            let readable = try await readable()
+            let text = try #require(readable.fullText)
+            let target = try selection(of: "Paragraph 30 ", in: text)
+            let scrollArea = try #require(try readable.handle.parent(with: .scrollArea))
+            let scrollBar: UIElement = try #require(try scrollArea.attribute(.verticalScrollBar))
+            func value() throws -> CGFloat { try #require(try scrollBar.attribute(.value)) }
+            #expect(try value() == 0)
+
+            readable.scroll(to: target, options: ScrollOptions(padding: 16, smooth: true, duration: 0.6, updateRate: 30))
+            await settle(0.3)
+            let midway = try value()
+            await settle(0.6)
+            let final = try value()
+            #expect(midway > 0 && midway < final, "not animated: \(midway) → \(final)")
+
+            let scrollFrame: CGRect = try #require(try scrollArea.attribute(.frame))
+            let marker = try #require(readable.marker(at: target.lowerBound, in: text))
+            var range: AnyObject?
+            var bounds: AnyObject?
+            try #require(
+                AXUIElementCopyParameterizedAttributeValue(
+                    readable.handle.element, "AXTextMarkerRangeForUnorderedTextMarkers" as CFString, [marker, marker] as CFArray, &range)
+                    == .success)
+            try #require(
+                AXUIElementCopyParameterizedAttributeValue(readable.handle.element, "AXBoundsForTextMarkerRange" as CFString, range!, &bounds)
+                    == .success)
+            var rect = CGRect.zero
+            AXValueGetValue(bounds as! AXValue, .cgRect, &rect)
+            #expect(abs(rect.minY - (scrollFrame.minY + 16)) <= 2, "selection at \(rect.minY), scroll area top \(scrollFrame.minY)")
+        }
+
         /// The app-wide AX flags (for Chromium's full AX tree) are on only while reading, and restored afterwards.
         @Test func togglesAppAccessibilityFlagsWhileReading() async throws {
             let page = try await readable()
