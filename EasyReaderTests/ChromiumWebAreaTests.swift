@@ -1,5 +1,4 @@
 import AVFoundation
-import AXSwift
 import AppKit
 import Defaults
 import Testing
@@ -60,22 +59,21 @@ enum ChromeForTesting {
     }
 
     @MainActor
-    static func find(role: String, in root: UIElement, where predicate: (UIElement) -> Bool = { _ in true }) -> UIElement? {
+    static func find(role: String, in root: AXElement, where predicate: (AXElement) -> Bool = { _ in true }) -> AXElement? {
         var queue = [root]
         var visited = 0
         while !queue.isEmpty, visited < 5000 {
             let element = queue.removeFirst()
             visited += 1
-            if (try? element.attribute(.role) as String?) == role, predicate(element) { return element }
-            queue += (try? element.arrayAttribute(.children) as [UIElement]?) ?? []
+            if (try? element.role())?.rawValue == role, predicate(element) { return element }
+            queue += (try? element.attribute(.children)) ?? []
         }
         return nil
     }
 
     @MainActor
-    static func window(of browser: Process) -> UIElement? {
-        guard let app = Application(forProcessID: browser.processIdentifier) else { return nil }
-        return (try? app.windows())?.first
+    static func window(of browser: Process) -> AXElement? {
+        (try? AXElement.application(pid: browser.processIdentifier).attribute(.windows))?.first
     }
 
     private struct Timeout: Error, CustomStringConvertible {
@@ -131,8 +129,8 @@ extension IntegrationTests {
             return reader
         }
 
-        private func find(role: String, in root: UIElement) -> UIElement? { ChromeForTesting.find(role: role, in: root) }
-        private func browserWindow() -> UIElement? { ChromeForTesting.window(of: browser) }
+        private func find(role: String, in root: AXElement) -> AXElement? { ChromeForTesting.find(role: role, in: root) }
+        private func browserWindow() -> AXElement? { ChromeForTesting.window(of: browser) }
         private func readable() async throws -> WebAreaReadableElement { try await ChromeForTesting.readable(in: browser) }
 
         private func selection(of string: String, in text: String) throws -> Selection {
@@ -267,7 +265,7 @@ extension IntegrationTests {
         /// A fresh Chromium vends no page content until its AX mode is on: the reader turns it on, waits for the page,
         /// reads it, and turns the mode off again when it stops.
         @Test func readerEnablesPageContentInFreshBrowser() async throws {
-            var window: UIElement?
+            var window: AXElement?
             for _ in 0..<100 where window == nil {
                 await settle()
                 window = browserWindow()
@@ -277,17 +275,17 @@ extension IntegrationTests {
                 await settle()
             }
             #expect(find(role: "AXWebArea", in: browserWindow) == nil, "page content already vended")
-            let app = try #require(Application(forProcessID: browser.processIdentifier))
+            let app = AXElement.application(pid: browser.processIdentifier)
             let reader = makeReader()
             let reading = recorder.expect(.reading)
             #expect(reader.start(reading: .element(browserWindow)))
             try await reading.wait(timeout: 15)
             #expect(reader.readable is WebAreaReadableElement)
-            #expect((try? app.attribute("AXEnhancedUserInterface") as Bool?) == true)
+            #expect((try? app.attribute(.enhancedUserInterface)) == true)
             let stopped = recorder.expect(.stopped)
             reader.stop()
             try await stopped.wait(timeout: 5)
-            #expect((try? app.attribute("AXEnhancedUserInterface") as Bool?) == false)
+            #expect((try? app.attribute(.enhancedUserInterface)) == false)
         }
     }
 
@@ -319,9 +317,7 @@ extension IntegrationTests {
         }
 
         private func browserSelectedText(_ readable: WebAreaReadableElement) -> String? {
-            var value: AnyObject?
-            AXUIElementCopyAttributeValue(readable.handle.element, "AXSelectedText" as CFString, &value)
-            return value as? String
+            try? readable.handle.attribute(.selectedText)
         }
 
         @Test(arguments: [

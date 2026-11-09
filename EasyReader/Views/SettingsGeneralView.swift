@@ -8,7 +8,6 @@
 import SwiftUI
 import Defaults
 import KeyboardShortcuts
-import AXSwift
 
 struct SettingsGeneralView: View {
     @Default(.nowPlayingCenterIntegration) private var nowPlayingCenterIntegration
@@ -103,7 +102,7 @@ struct SettingsGeneralView: View {
 /// Trust takes effect immediately (no relaunch needed); re-check when the system's Accessibility list
 /// changes and when the app becomes active, since the view otherwise never redraws.
 private struct AccessibilityPermissionButton: View {
-    @State private var isTrusted = UIElement.isProcessTrusted()
+    @State private var isTrusted = AXElement.isProcessTrusted()
     private static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
 
     var body: some View {
@@ -116,7 +115,7 @@ private struct AccessibilityPermissionButton: View {
                 }
             } else {
                 // The system prompt also adds the app to the Accessibility list.
-                isTrusted = UIElement.isProcessTrusted(withPrompt: true)
+                isTrusted = AXElement.isProcessTrusted(prompt: true)
             }
         } label: {
             if #available(macOS 12.0, *) {
@@ -143,6 +142,6 @@ private struct AccessibilityPermissionButton: View {
     }
 
     private func refresh() {
-        isTrusted = UIElement.isProcessTrusted()
+        isTrusted = AXElement.isProcessTrusted()
     }
 }

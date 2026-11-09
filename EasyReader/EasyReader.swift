@@ -7,7 +7,6 @@
 
 import Foundation
 import AVKit
-import AXSwift
 import Defaults
 
 @MainActor
@@ -372,7 +371,7 @@ extension EasyReader {
 
 extension EasyReader {
     enum ReadTarget {
-        case element(UIElement, fromFocused: Bool = false)
+        case element(AXElement, fromFocused: Bool = false)
         case app(NSRunningApplication?)
 
         static var frontmostApp: Self { .app(NSWorkspace.shared.frontmostApplication) }
@@ -403,19 +402,19 @@ extension EasyReader {
             case .element(let element, let fromFocused):
                 return start(reading: element, fromFocused: fromFocused)
             case .app(let app):
-                guard let app, let element = Application(app) else { return false }
-                return start(reading: element, fromFocused: true)
+                guard let app else { return false }
+                return start(reading: .application(pid: app.processIdentifier), fromFocused: true)
         }
     }
 
-    private func start(reading element: UIElement, fromFocused: Bool) -> Bool {
+    private func start(reading element: AXElement, fromFocused: Bool) -> Bool {
         if NSRunningApplication.current.processIdentifier != (try? element.pid()) {
-            guard UIElement.isProcessTrusted(withPrompt: true) else {
+            guard AXElement.isProcessTrusted(prompt: true) else {
                 Log.accessibility.error("No accessibility API permission.")
                 return false
             }
         }
-        guard let focusedElement: UIElement = (fromFocused ? try? element.attribute(.focusedUIElement) : element) else {
+        guard let focusedElement = (fromFocused ? try? element.attribute(.focusedUIElement) : element) else {
             Log.accessibility.error("Unable to get focused element.")
             return false
         }
@@ -431,7 +430,7 @@ extension EasyReader {
 
     /// A Chromium app vends no page content until its AX mode is on (see `WebAccessibility`): turns it on, then retries
     /// for a few seconds while Chromium builds its AX tree (it beeps if that fails).
-    private func startAfterEnablingWebContent(reading element: UIElement, fromFocused: Bool, pid: pid_t) -> Bool {
+    private func startAfterEnablingWebContent(reading element: AXElement, fromFocused: Bool, pid: pid_t) -> Bool {
         let flags = WebAccessibility.enable(pid: pid)
         guard !flags.isEmpty else {
             Log.accessibility.error("Unable to find readable element.")
@@ -442,7 +441,7 @@ extension EasyReader {
         pendingStart = Task { @MainActor [weak self] in
             for _ in 0..<50 {
                 guard (try? await Task.sleep(nanoseconds: 100_000_000)) != nil, let self else { break }
-                let focused: UIElement? = fromFocused ? try? element.attribute(.focusedUIElement) : element
+                let focused = fromFocused ? try? element.attribute(.focusedUIElement) : element
                 guard let focused, let readable = self.findReadableElement(from: focused) else { continue }
                 if let webArea = readable as? WebAreaReadableElement {
                     webArea.adoptAppFlags(flags)
@@ -464,38 +463,38 @@ extension EasyReader {
 
     /// BFS over children and parents, staying inside the starting element's window
     /// (never climbing to the window's parent, the application) and visiting at most `limit` elements.
-    private func findReadableElement(from element: UIElement, limit: Int = 1000) -> ReadableElement? {
+    private func findReadableElement(from element: AXElement, limit: Int = 1000) -> ReadableElement? {
         // Focus is often deep inside a readable element (e.g. a link in a web page, whose BFS would fan out over the
         // page before climbing to its web area), so check the ancestors right after the element itself (a focused
         // text area in a web page is read, not the page).
         if (try? element.readableElement()) == nil, let readable = readableAncestor(of: element) {
-            try? readable.handle.setAttribute(.focused, value: true)
+            try? readable.handle.set(.focused, to: true)
             return readable
         }
-        var queue: [UIElement] = [element]
-        var visited: Set<UIElement> = [element]
+        var queue = [element]
+        var visited: Set = [element]
 
         while !queue.isEmpty, visited.count <= limit {
             let current = queue.removeFirst()
 
             if let readable = try? current.readableElement() {
                 Log.accessibility.debug("found \(type(of: readable)) after visiting \(visited.count) element(s)")
-                try? current.setAttribute(.focused, value: true)
+                try? current.set(.focused, to: true)
                 return readable
             }
 
             let role = try? current.role()
             Log.accessibility.debug("visiting \(role?.rawValue ?? "unknown role")")
             // Not every app supports navigation order (AppKit does).
-            let children: [UIElement]? =
-                (try? current.arrayAttribute(.childrenInNavigationOrder)) ?? (try? current.arrayAttribute(.children))
+            let children =
+                (try? current.attribute(.childrenInNavigationOrder)) ?? (try? current.attribute(.children))
             for child in children ?? [] where !visited.contains(child) {
                 visited.insert(child)
                 queue.append(child)
             }
 
             guard role != .window, role != .application else { continue }
-            if let parent: UIElement = try? current.attribute(.parent), !visited.contains(parent) {
+            if let parent = try? current.attribute(.parent), !visited.contains(parent) {
                 visited.insert(parent)
                 queue.append(parent)
             }
@@ -506,10 +505,10 @@ extension EasyReader {
     }
 
     /// The nearest readable ancestor below the window (the starting element itself is left to the BFS).
-    private func readableAncestor(of element: UIElement) -> ReadableElement? {
+    private func readableAncestor(of element: AXElement) -> ReadableElement? {
         var current = element
-        for _ in 0..<100 {
-            guard let parent: UIElement = try? current.attribute(.parent),
+        for _ in 0..<AXElement.maxDepth {
+            guard let parent = try? current.attribute(.parent),
                 let role = try? parent.role(), role != .window, role != .application
             else { return nil }
             if let readable = try? parent.readableElement() {

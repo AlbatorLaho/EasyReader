@@ -2,15 +2,6 @@
   "originHash" : "7318e603d246b11b18ffc1831e8271cdd4f28c805e66cc3552a47786f5d44112",
   "pins" : [
     {
-      "identity" : "axswift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/tmandry/AXSwift",
-      "state" : {
-        "revision" : "81dcc36aced905d6464cc25e35f8d13184bbf21c",
-        "version" : "0.3.2"
-      }
-    },
-    {
       "identity" : "defaults",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sindresorhus/Defaults",

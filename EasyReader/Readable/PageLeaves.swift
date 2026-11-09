@@ -19,7 +19,7 @@ import Cocoa
 final class PageLeaves {
     struct Leaf {
         let index: Int
-        let element: AXUIElement
+        let element: AXElement
         /// The leaf's text in the page text (empty if it couldn't be located).
         let range: Selection
         /// Where `range` starts in the leaf's own text (`AXValue`, the offsets `AXBoundsForRange` takes): leading
@@ -30,9 +30,9 @@ final class PageLeaves {
     /// The page text the offsets refer to.
     let text: String
     private let utf16: [UInt16]
-    private let elements: [AXUIElement]
+    private let elements: [AXElement]
     /// Measures the offset of an element's first character in the page text the slow way (through text markers).
-    private let measure: (AXUIElement) -> Int?
+    private let measure: (AXElement) -> Int?
     /// Each leaf's text as it may appear in the page text (see `forms(of:)`).
     private var forms: [[Form]?]
     private var starts: [Int?]
@@ -44,22 +44,8 @@ final class PageLeaves {
 
     var count: Int { elements.count }
 
-    init?(webArea: AXUIElement, text: String, measure: @escaping (AXUIElement) -> Int?) {
-        let predicate: [String: Any] = [
-            "AXSearchKey": "AXStaticTextSearchKey", "AXDirection": "AXDirectionNext", "AXResultsLimit": 1_000_000,
-        ]
-        var value: AnyObject?
-        guard
-            AXUIElementCopyParameterizedAttributeValue(
-                webArea, "AXUIElementsForSearchPredicate" as CFString, predicate as CFDictionary, &value) == .success,
-            let results = value as? [AnyObject]
-        else { return nil }
-        // Newer Chromium (157) wraps each result in a dictionary; older versions return the elements themselves.
-        // (`as? [AXUIElement]` would accept the dictionaries too: CF types aren't checked when bridging.)
-        let elements = results.compactMap { result -> AXUIElement? in
-            let element = (result as? [String: AnyObject])?["AXSearchResultElement"] ?? result
-            return CFGetTypeID(element) == AXUIElementGetTypeID() ? (element as! AXUIElement) : nil
-        }
+    init?(webArea: AXElement, text: String, measure: @escaping (AXElement) -> Int?) {
+        let elements = ((try? webArea.attribute(.uiElementsForSearchPredicate, for: .staticText)) ?? []).compactMap(\.element)
         guard !elements.isEmpty else { return nil }
         self.text = text
         utf16 = Array(text.utf16)
@@ -103,28 +89,23 @@ final class PageLeaves {
     }
 
     /// The element of the last leaf looked up, to start from the same place in a new list after the page changed.
-    var cursorElement: AXUIElement? { cursor.map { elements[$0] } }
+    var cursorElement: AXElement? { cursor.map { elements[$0] } }
 
     /// Starts the next lookup at `element` (a leaf near the reading position), saving a search.
-    func moveCursor(to element: AXUIElement) {
+    func moveCursor(to element: AXElement) {
         if let index = index(of: element), start(of: index) != nil { cursor = index }
     }
 
-    func index(of element: AXUIElement) -> Int? {
-        if let cursor, CFEqual(elements[cursor], element) { return cursor }
-        return elements.firstIndex { CFEqual($0, element) }
+    func index(of element: AXElement) -> Int? {
+        if let cursor, elements[cursor] == element { return cursor }
+        return elements.firstIndex(of: element)
     }
 
     /// The first leaf (at least partly) inside `visible` (screen coordinates, top-left origin). Chromium reports leaves
     /// outside the viewport with zero height, clipped to its top or bottom edge, so this is a binary search.
     func firstVisible(in visible: CGRect) -> Leaf? {
         func frame(_ index: Int) -> CGRect? {
-            var value: AnyObject?
-            guard AXUIElementCopyAttributeValue(elements[index], "AXFrame" as CFString, &value) == .success,
-                let value, CFGetTypeID(value) == AXValueGetTypeID()
-            else { return nil }
-            var rect = CGRect.zero
-            return AXValueGetValue(value as! AXValue, .cgRect, &rect) ? rect : nil
+            try? elements[index].attribute(.frame)
         }
         func isAbove(_ index: Int) -> Bool {
             guard let frame = frame(index) else { return true }
@@ -158,9 +139,7 @@ final class PageLeaves {
     /// wraps at (a leaf " like " after a link at the end of a line reads "like " there).
     private func forms(of index: Int) -> [Form] {
         if let forms = forms[index] { return forms }
-        var value: AnyObject?
-        AXUIElementCopyAttributeValue(elements[index], kAXValueAttribute as CFString, &value)
-        let string = value as? String ?? ""
+        let string = (try? elements[index].attribute(.value)) ?? ""
         var result = [Form(text: Array(string.utf16), lead: 0)]
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty, trimmed != string, let range = string.range(of: trimmed) {

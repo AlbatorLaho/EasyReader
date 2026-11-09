@@ -1,5 +1,4 @@
 import AVFoundation
-import AXSwift
 import AppKit
 import Defaults
 import SwiftUI
@@ -56,9 +55,9 @@ extension IntegrationTests {
             return reader
         }
 
-        private func axWindow(for window: NSWindow) throws -> UIElement {
-            let app = try #require(Application(NSRunningApplication.current))
-            let windows = try #require(try app.windows())
+        private func axWindow(for window: NSWindow) throws -> AXElement {
+            let app = AXElement.application(pid: NSRunningApplication.current.processIdentifier)
+            let windows = try #require(try app.attribute(.windows))
             return try #require(
                 windows.first(where: { (try? $0.attribute(.title) as String?) == window.title }),
                 "test window not found in AX tree"
@@ -72,7 +71,7 @@ extension IntegrationTests {
                 if let readable = try element.readableElement() {
                     return try #require(readable as? TextAreaReadableElement)
                 }
-                queue += (try? element.arrayAttribute(.children) as [UIElement]?) ?? []
+                queue += (try? element.attribute(.children)) ?? []
             }
             throw TextAreaNotFound()
         }
@@ -82,6 +81,15 @@ extension IntegrationTests {
             #expect(readable.fullText == text)
             #expect(readable.appDomain == Bundle.main.bundleIdentifier)
             #expect(readable.title == window.title)
+        }
+
+        /// A key whose type doesn't match what the app vends throws (instead of crashing); a missing attribute is nil.
+        @Test func typedAttributesCheckValueTypes() throws {
+            let handle = try readable().handle
+            #expect(try handle.attribute(.frame) != nil)
+            #expect(throws: AXFailure.self) { try handle.attribute(AXAttribute<CGRect>(kAXValueAttribute)) }
+            #expect(try handle.attribute(AXAttribute<String>("AXNoSuchAttribute")) == nil)
+            #expect(try handle.attribute(.boundsForRange, for: CFRange(location: 0, length: 3))?.isEmpty == false)
         }
 
         @Test func settingSelectionUpdatesTextView() throws {
@@ -151,10 +159,10 @@ extension IntegrationTests {
             let target = Selection((fullText as NSString).range(of: "Sentence number 70."))
 
             let scrollArea = try #require(try readable.handle.parent(with: .scrollArea))
-            let scrollBar: UIElement = try #require(try scrollArea.attribute(.verticalScrollBar))
+            let scrollBar = try #require(try scrollArea.attribute(.verticalScrollBar))
             readable.selection = target
             await settle(0.3)
-            try scrollBar.setAttribute(.value, value: CGFloat(0))  // selecting may auto-scroll; reset
+            try scrollBar.set(.value, to: CGFloat(0))  // selecting may auto-scroll; reset
             await settle(0.3)
             readable.scroll(to: target, options: ScrollOptions(padding: 16, smooth: false, duration: 0, updateRate: 60))
             await settle(0.3)

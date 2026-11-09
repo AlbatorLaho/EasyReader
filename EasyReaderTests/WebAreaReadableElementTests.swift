@@ -1,5 +1,4 @@
 import AVFoundation
-import AXSwift
 import AppKit
 import Defaults
 import Testing
@@ -44,19 +43,18 @@ extension IntegrationTests {
             return reader
         }
 
-        private func browserWindow() -> UIElement? {
-            guard let app = Application(forProcessID: browser.processIdentifier) else { return nil }
-            return (try? app.windows())?.first
+        private func browserWindow() -> AXElement? {
+            (try? AXElement.application(pid: browser.processIdentifier).attribute(.windows))?.first
         }
 
-        private func find(role: String, in root: UIElement, where predicate: (UIElement) -> Bool = { _ in true }) -> UIElement? {
+        private func find(role: String, in root: AXElement, where predicate: (AXElement) -> Bool = { _ in true }) -> AXElement? {
             var queue = [root]
             var visited = 0
             while !queue.isEmpty, visited < 5000 {
                 let element = queue.removeFirst()
                 visited += 1
-                if (try? element.attribute(.role) as String?) == role, predicate(element) { return element }
-                queue += (try? element.arrayAttribute(.children) as [UIElement]?) ?? []
+                if (try? element.role())?.rawValue == role, predicate(element) { return element }
+                queue += (try? element.attribute(.children)) ?? []
             }
             return nil
         }
@@ -119,21 +117,14 @@ extension IntegrationTests {
         @Test(arguments: [100, 400, 1000])
         func readsSelectionMadeInPage(index: Int) async throws {
             let readable = try await readable()
-            let element = readable.handle.element
-            func value(_ attribute: String, _ parameter: AnyObject) throws -> AnyObject {
-                var value: AnyObject?
-                try #require(AXUIElementCopyParameterizedAttributeValue(element, attribute as CFString, parameter, &value) == .success)
-                return try #require(value)
-            }
-            let start = try value("AXTextMarkerForIndex", index as CFNumber)
-            let end = try value("AXTextMarkerForIndex", (index + 30) as CFNumber)
-            let range = try value("AXTextMarkerRangeForUnorderedTextMarkers", [start, end] as CFArray)
-            try readable.handle.setAttribute("AXSelectedTextMarkerRange", value: range)
+            let element = readable.handle
+            let start = try #require(try element.attribute(.textMarkerForIndex, for: index))
+            let end = try #require(try element.attribute(.textMarkerForIndex, for: index + 30))
+            let range = try #require(try element.attribute(.textMarkerRangeForUnorderedTextMarkers, for: [start, end]))
+            try element.set(.selectedTextMarkerRange, to: range)
             await settle()
-            var reported: AnyObject?
-            try #require(AXUIElementCopyAttributeValue(element, "AXSelectedTextMarkerRange" as CFString, &reported) == .success)
-            let reportedRange = try #require(reported)
-            let expected = try #require(try value("AXStringForTextMarkerRange", reportedRange) as? String)
+            let reportedRange = try #require(try element.attribute(.selectedTextMarkerRange))
+            let expected = try #require(try element.attribute(.stringForTextMarkerRange, for: reportedRange))
             let fresh = try #require(try readable.handle.readableElement() as? WebAreaReadableElement)
             #expect(fresh.selectedText == expected)
             #expect(!expected.isEmpty)
@@ -191,18 +182,10 @@ extension IntegrationTests {
             let last = try selection(of: "The end of the test page.", in: text)
             let marker = try #require(readable.marker(at: last.lowerBound, in: text))
             func top() -> CGFloat? {
-                var range: AnyObject?
-                var bounds: AnyObject?
-                guard
-                    AXUIElementCopyParameterizedAttributeValue(
-                        readable.handle.element, "AXTextMarkerRangeForUnorderedTextMarkers" as CFString, [marker, marker] as CFArray, &range)
-                        == .success, let range,
-                    AXUIElementCopyParameterizedAttributeValue(readable.handle.element, "AXBoundsForTextMarkerRange" as CFString, range, &bounds)
-                        == .success, let bounds
+                guard let range = try? readable.handle.attribute(.textMarkerRangeForUnorderedTextMarkers, for: [marker, marker]),
+                    let bounds = try? readable.handle.attribute(.boundsForTextMarkerRange, for: range)
                 else { return nil }
-                var rect = CGRect.zero
-                AXValueGetValue(bounds as! AXValue, .cgRect, &rect)
-                return rect.minY
+                return bounds.minY
             }
             let before = try #require(top())
             readable.scroll(to: last, options: ScrollOptions(padding: 16, smooth: false, duration: 0, updateRate: 60))
@@ -218,7 +201,7 @@ extension IntegrationTests {
             let text = try #require(readable.fullText)
             let target = try selection(of: "Paragraph 30 ", in: text)
             let scrollArea = try #require(try readable.handle.parent(with: .scrollArea))
-            let scrollBar: UIElement = try #require(try scrollArea.attribute(.verticalScrollBar))
+            let scrollBar = try #require(try scrollArea.attribute(.verticalScrollBar))
             func value() throws -> CGFloat { try #require(try scrollBar.attribute(.value)) }
             #expect(try value() == 0)
 
@@ -229,27 +212,18 @@ extension IntegrationTests {
             let final = try value()
             #expect(midway > 0 && midway < final, "not animated: \(midway) → \(final)")
 
-            let scrollFrame: CGRect = try #require(try scrollArea.attribute(.frame))
+            let scrollFrame = try #require(try scrollArea.attribute(.frame))
             let marker = try #require(readable.marker(at: target.lowerBound, in: text))
-            var range: AnyObject?
-            var bounds: AnyObject?
-            try #require(
-                AXUIElementCopyParameterizedAttributeValue(
-                    readable.handle.element, "AXTextMarkerRangeForUnorderedTextMarkers" as CFString, [marker, marker] as CFArray, &range)
-                    == .success)
-            try #require(
-                AXUIElementCopyParameterizedAttributeValue(readable.handle.element, "AXBoundsForTextMarkerRange" as CFString, range!, &bounds)
-                    == .success)
-            var rect = CGRect.zero
-            AXValueGetValue(bounds as! AXValue, .cgRect, &rect)
+            let range = try #require(try readable.handle.attribute(.textMarkerRangeForUnorderedTextMarkers, for: [marker, marker]))
+            let rect = try #require(try readable.handle.attribute(.boundsForTextMarkerRange, for: range))
             #expect(abs(rect.minY - (scrollFrame.minY + 16)) <= 2, "selection at \(rect.minY), scroll area top \(scrollFrame.minY)")
         }
 
         /// The app-wide AX flags (for Chromium's full AX tree) are on only while reading, and restored afterwards.
         @Test func togglesAppAccessibilityFlagsWhileReading() async throws {
             let page = try await readable()
-            let app = try #require(Application(forProcessID: browser.processIdentifier))
-            func enhanced() -> Bool? { try? app.attribute("AXEnhancedUserInterface") }
+            let app = AXElement.application(pid: browser.processIdentifier)
+            func enhanced() -> Bool? { try? app.attribute(.enhancedUserInterface) }
             try #require(enhanced() != true, "flag already on before reading")
             let text = try #require(page.fullText)
             page.selection = try selection(of: "Paragraph 1 of", in: text)

@@ -3,7 +3,6 @@
 //  EasyReader
 //
 
-import AXSwift
 import Cocoa
 
 /// Scrolls an `AXScrollArea` by setting its scroll bars' `AXValue` (0...1 of the scrollable length), animated when
@@ -11,18 +10,18 @@ import Cocoa
 /// (WebKit). Each set is applied asynchronously by the target app, so the animation is a series of sets, one per frame.
 @MainActor
 final class ScrollBarScroller {
-    let scrollArea: UIElement
+    let scrollArea: AXElement
     private var horizontalTask: Task<Void, Never>?
     private var verticalTask: Task<Void, Never>?
 
-    init(_ scrollArea: UIElement) {
+    init(_ scrollArea: AXElement) {
         self.scrollArea = scrollArea
     }
 
     var frame: CGRect? { try? scrollArea.attribute(.frame) }
     var hasVerticalScrollBar: Bool { verticalScrollBar != nil }
-    private var verticalScrollBar: UIElement? { try? scrollArea.attribute(.verticalScrollBar) }
-    private var horizontalScrollBar: UIElement? { try? scrollArea.attribute(.horizontalScrollBar) }
+    private var verticalScrollBar: AXElement? { try? scrollArea.attribute(.verticalScrollBar) }
+    private var horizontalScrollBar: AXElement? { try? scrollArea.attribute(.horizontalScrollBar) }
 
     /// Scrolls so that `bounds` (screen coordinates, like all AX frames) sits `options.padding` below the top (and at
     /// the left) of the scroll area, unless it's already visible. `contentFrame` is the scrollable content's frame.
@@ -65,9 +64,9 @@ final class ScrollBarScroller {
     }
 
     /// Sets `scrollBar` to `target`, at once or (smooth) animated over `options.duration`.
-    private func set(_ scrollBar: UIElement, to target: CGFloat, options: ScrollOptions) -> Task<Void, Never>? {
+    private func set(_ scrollBar: AXElement, to target: CGFloat, options: ScrollOptions) -> Task<Void, Never>? {
         guard options.smooth, let current: CGFloat = try? scrollBar.attribute(.value) else {
-            try? scrollBar.setAttribute(.value, value: target)
+            try? scrollBar.set(.value, to: target)
             return nil
         }
 
@@ -82,7 +81,7 @@ final class ScrollBarScroller {
                 guard (try? await Task.sleep(nanoseconds: frameNanoseconds)) != nil else { return }
                 let value = frame >= totalFrames ? target : current + (step * CGFloat(frame))
                 do {
-                    try scrollBar.setAttribute(.value, value: value)
+                    try scrollBar.set(.value, to: value)
                 } catch {
                     return  // element went away
                 }

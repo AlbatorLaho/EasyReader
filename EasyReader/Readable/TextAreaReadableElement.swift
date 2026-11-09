@@ -6,12 +6,6 @@
 //
 
 import Cocoa
-import AXSwift
-
-extension ReadableElement.Role {
-    static let textArea = Self(kAXTextAreaRole)
-//    static let textArea: Self = "AXTextArea"
-}
 
 final class TextAreaReadableElement: ReadableElement {
     private let scroller: ScrollBarScroller?
@@ -20,24 +14,24 @@ final class TextAreaReadableElement: ReadableElement {
     override var selectedText: String? { try? handle.attribute(.selectedText) }
     override var selection: Selection? {
         get {
-            guard let range: CFRange = try? handle.attribute(.selectedTextRange) else { return nil }
+            guard let range = try? handle.attribute(.selectedTextRange) else { return nil }
             return Selection(range)
         }
         set {
             guard let newSelection = newValue else { return }
-            try? handle.setAttribute(.selectedTextRange, value: CFRange(newSelection))
+            try? handle.set(.selectedTextRange, to: CFRange(newSelection))
         }
     }
 
-    required init(_ element: UIElement) {
+    required init(_ element: AXElement) {
         scroller = (try? element.parent(with: .scrollArea)).map(ScrollBarScroller.init)
         super.init(element)
     }
 
     override func scroll(to selection: Selection, options: ScrollOptions) {
         guard let scroller,
-              let selectionBounds: CGRect = try? handle.parameterizedAttribute(.boundsForRangeParameterized, param: CFRange(selection)),
-              let elementFrame: CGRect = try? handle.attribute(.frame),
+              let selectionBounds = try? handle.attribute(.boundsForRange, for: CFRange(selection)),
+              let elementFrame = try? handle.attribute(.frame),
               let scrollAreaFrame = scroller.frame
         else {
             Log.scroll.debug("scroll to \(selection): missing bounds, frame, or scroll area")
@@ -53,8 +47,7 @@ final class TextAreaReadableElement: ReadableElement {
     private func contentFrame(elementFrame: CGRect, scrollAreaFrame: CGRect) -> CGRect {
         guard elementFrame.height <= scrollAreaFrame.height || elementFrame.width <= scrollAreaFrame.width,
               let length = fullText?.utf16.count, length > 0,
-              let textBounds: CGRect = try? handle.parameterizedAttribute(
-                  .boundsForRangeParameterized, param: CFRange(location: 0, length: length)),
+              let textBounds = try? handle.attribute(.boundsForRange, for: CFRange(location: 0, length: length)),
               textBounds.size != .zero
         else { return elementFrame }
         let contentFrame = elementFrame.union(textBounds)

@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		E383FBD32CF539B500F32E57 /* Defaults in Frameworks */ = {isa = PBXBuildFile; productRef = E383FBD22CF539B500F32E57 /* Defaults */; };
-		E393FD272CD6FE7E00DA7CA3 /* AXSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E393FD262CD6FE7E00DA7CA3 /* AXSwift */; };
 		E3BE9A542D474DE80019EEC0 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = E3BE9A532D474DE80019EEC0 /* KeyboardShortcuts */; };
 /* End PBXBuildFile section */
 
@@ -67,7 +66,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				E383FBD32CF539B500F32E57 /* Defaults in Frameworks */,
-				E393FD272CD6FE7E00DA7CA3 /* AXSwift in Frameworks */,
 				E3BE9A542D474DE80019EEC0 /* KeyboardShortcuts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -143,7 +141,6 @@
 			);
 			name = EasyReader;
 			packageProductDependencies = (
-				E393FD262CD6FE7E00DA7CA3 /* AXSwift */,
 				E383FBD22CF539B500F32E57 /* Defaults */,
 				E3BE9A532D474DE80019EEC0 /* KeyboardShortcuts */,
 			);
@@ -179,7 +176,6 @@
 			);
 			mainGroup = E393FD082CD6E2D100DA7CA3;
 			packageReferences = (
-				E393FD252CD6FE7E00DA7CA3 /* XCRemoteSwiftPackageReference "AXSwift" */,
 				E383FBD12CF539B500F32E57 /* XCRemoteSwiftPackageReference "Defaults" */,
 				E3BE9A522D474DE80019EEC0 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 			);
@@ -489,14 +485,6 @@
 				minimumVersion = 9.0.0;
 			};
 		};
-		E393FD252CD6FE7E00DA7CA3 /* XCRemoteSwiftPackageReference "AXSwift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/tmandry/AXSwift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.3.2;
-			};
-		};
 		E3BE9A522D474DE80019EEC0 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
@@ -512,11 +500,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E383FBD12CF539B500F32E57 /* XCRemoteSwiftPackageReference "Defaults" */;
 			productName = Defaults;
-		};
-		E393FD262CD6FE7E00DA7CA3 /* AXSwift */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E393FD252CD6FE7E00DA7CA3 /* XCRemoteSwiftPackageReference "AXSwift" */;
-			productName = AXSwift;
 		};
 		E3BE9A532D474DE80019EEC0 /* KeyboardShortcuts */ = {
 			isa = XCSwiftPackageProductDependency;
