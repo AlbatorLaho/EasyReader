@@ -37,8 +37,6 @@ struct SettingsReadingView: View {
                 Label("Reading", systemImage: "doc.plaintext")
             }
 
-            ChromiumSelectionInfo()
-
             GroupBox {
                 Form {
                     SliderControls(value: $scrollPadding, in: 0...64, step: 8) {
@@ -98,30 +96,6 @@ struct SettingsReadingView: View {
             \t• Duration - how long (in seconds) smooth scrolling takes to finish
             \t• Increments - how many times per second, smooth scrolling will be updated
             """
-        }
-    }
-}
-
-/// Chromium browsers only let EasyReader select page text with an experimental flag (else it highlights with an overlay).
-private struct ChromiumSelectionInfo: View {
-    static let flag = "chrome://flags/#enable-accessibility-text-operation"
-
-    var body: some View {
-        HStack {
-            Label("Chrome, Brave, Edge: enable \"Text editing through accessibility APIs\"", systemImage: "info.circle")
-                .help(
-                    """
-                    Chromium browsers only let EasyReader select web page text after enabling the flag \
-                    "Enable text editing through accessibility APIs" (paste \(Self.flag) into the address bar, \
-                    set it to Enabled, and relaunch the browser). Without it, EasyReader highlights what it reads \
-                    with an overlay instead.
-                    """)
-            Spacer()
-            Button("Copy Flag") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(Self.flag, forType: .string)
-            }
-            .help("Copies \(Self.flag): paste it into the browser's address bar")
         }
     }
 }

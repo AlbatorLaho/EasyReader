@@ -38,7 +38,7 @@ EasyReader provides additional functionality to the built-in text to speech engi
 
 Chromium browsers only let EasyReader select text in web pages with an experimental flag. Without it, EasyReader still reads web pages, but marks what it reads with a highlight drawn over the page instead of selecting it.
 
-1. Paste `chrome://flags/#enable-accessibility-text-operation` into the browser's address bar (or use **Copy Flag** in EasyReader's Reading settings)
+1. Paste `chrome://flags/#enable-accessibility-text-operation` into the browser's address bar (click the flag at the bottom of EasyReader's General settings to copy it)
 2. Set **Enable text editing through accessibility APIs** to **Enabled**
 3. Relaunch the browser
 

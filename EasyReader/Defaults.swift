@@ -66,7 +66,6 @@ extension Defaults.Keys {
     static let scrollDuration = Key<Double>("ScrollDuration", default: 0.3, suite: .app)
     static let scrollUpdateRate = Key<Double>("ScrollUpdateRate", default: 60, suite: .app)
 
-//    static let useVoiceOverPronunciations = Key<Bool>("useVoiceOverPronunciations", default: false)
     static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [], suite: .app)
 }
 

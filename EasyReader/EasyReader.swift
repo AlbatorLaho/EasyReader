@@ -46,8 +46,12 @@ final class EasyReader: NSObject {
     }
     weak var delegate: EasyReaderDelegate?
     private var lastSelection: Selection?
-    private var lastReadString: String?
-    private var lastReadRange: NSRange?
+    /// Original (pre-pronunciation) selected text being read, and where in it the current utterance starts.
+    private var readText: String?
+    private var utteranceOffset = 0
+    private(set) var spokenText: SpokenText?
+    /// Offset in `readText` of the last word the synthesizer started (resume-from-word point).
+    private var lastReadOffset: Int?
     /// Waits for a Chromium app to build its page content (`startAfterEnablingWebContent`).
     private var pendingStart: Task<Void, Never>?
 
@@ -83,23 +87,6 @@ final class EasyReader: NSObject {
 //        if voice == nil, let voiceIdentifier = voiceOverPreferences["SCRCategories_SCRCategorySystemWide_SCRSpeechLanguages_default_SCRSpeechComponentSettings_SCRVoiceIdentifier"] as? String {
 //            voice = AVSpeechSynthesisVoice(identifier: voiceIdentifier)
 //        }
-////        for key in voiceOverPreferences.keys {
-//////            NOTE: can't get default pronunciations because they use SCRSubTextKey instead of SCRSubText
-////            guard key.starts(with: "custom.pronunciation"),
-////                  let pronunciation = voiceOverPreferences[key] as? [String: String],
-////                  let domainIdentifier = pronunciation["SCRDomainIdentifier"],
-////                  let searchText = pronunciation["SCRSearchText"],
-////                  let replaceText = pronunciation["SCRSubText"],
-////                  pronunciation["SCREnabled"] == "1"
-////            else { continue }
-////            pronunciations.append(Pronunciation(
-////                search: searchText,
-////                replace: replaceText,
-////                domain: domainIdentifier,
-////                ignoreCase: pronunciation["SCRIgnoreCase"] == "1"
-//////                enabled: pronunciation["SCREnabled"] == "1"
-////            ))
-////        }
 //    }
 
 
@@ -117,9 +104,10 @@ final class EasyReader: NSObject {
             Log.reader.debug("play(from: \(unit)): selection changed (\(String(describing: lastSelection)) → \(String(describing: readable?.selection))), reading selection")
             return ensureSelection() && readSelection()
         }
-        Log.reader.debug("play(from: \(unit)): resuming \(selection), last spoken range \(String(describing: lastReadRange))")
+        Log.reader.debug("play(from: \(unit)): resuming \(selection), last spoken offset \(String(describing: lastReadOffset))")
+        scroll(to: selection)
         switch unit {
-            case .word: return readSelection(from: lastReadRange?.lowerBound)
+            case .word: return readSelection(from: lastReadOffset)
             case .selection: return readSelection()
         }
     }
@@ -203,8 +191,11 @@ final class EasyReader: NSObject {
         })
     }
 
-    private func read(string: String) {
-        let utterance = AVSpeechUtterance(string: string)
+    private func read(_ spoken: SpokenText) {
+        let utterance =
+            spoken.hasPhonetics
+            ? AVSpeechUtterance(attributedString: spoken.attributedText)
+            : AVSpeechUtterance(string: spoken.text)
         utterance.voice = Defaults[.speechVoice]
         utterance.volume = Defaults[.speechVolume]
         utterance.rate = Defaults[.speechRate]
@@ -212,11 +203,11 @@ final class EasyReader: NSObject {
         utterance.preUtteranceDelay = Defaults[.speechDelayBefore]
         utterance.postUtteranceDelay = Defaults[.speechDelayAfter]
         Log.speech.debug(
-            "speak \(string.utf16.count) chars (voice \(utterance.voice?.identifier ?? "default"), rate \(utterance.rate)): \(string.prefix(80).debugDescription)"
+            "speak \(spoken.text.utf16.count) chars (voice \(utterance.voice?.identifier ?? "default"), rate \(utterance.rate)): \(spoken.text.prefix(80).debugDescription)"
         )
         lastSelection = readable?.selection
-        lastReadString = nil
-        lastReadRange = nil
+        spokenText = spoken
+        lastReadOffset = nil
         currentUtterance = utterance
         synthesizer.speak(utterance)
     }
@@ -268,11 +259,13 @@ final class EasyReader: NSObject {
             Log.reader.debug("ensureSelection: empty selection at \(selection.lowerBound), selecting next unit")
             return select(.forward)
         }
+        scroll(to: selection)
         return true
     }
 
-    private func readSelection(from index: Int? = nil) -> Bool {
-        guard var selectedText = readable?.selectedText else {
+    /// Reads the selection, from `offset` (in the original selected text) if it's still the text last read.
+    private func readSelection(from offset: Int? = nil) -> Bool {
+        guard let selectedText = readable?.selectedText else {
             Log.reader.debug("readSelection: no selected text")
             return false
         }
@@ -280,27 +273,24 @@ final class EasyReader: NSObject {
         if !pronunciations.isEmpty {
             Log.reader.debug("applying \(pronunciations.count) pronunciation(s) for \(readable?.appDomain ?? "any app")")
         }
-        for pronunciation in pronunciations {
-            selectedText = selectedText.replacingOccurrences(
-                of: pronunciation.search,
-                with: pronunciation.replace,
-                options: pronunciation.options
-            )
+        var start = 0
+        var text = selectedText
+        if let offset, selectedText == readText,
+            let index = Range(NSRange(location: offset, length: 0), in: selectedText)?.lowerBound
+        {
+            start = offset
+            text = String(selectedText[index...])
+            Log.reader.debug("resuming from offset \(offset)")
         }
-        if let index, let lastReadString, let lastReadStringRange = selectedText.range(of: lastReadString, options: [.anchored, .backwards]) {
-            let lastRange = NSRange(lastReadStringRange, in: selectedText)
-            let newRange = NSRange(index + lastRange.lowerBound..<lastRange.upperBound)
-            if let range = Range(newRange, in: selectedText) {
-                selectedText = String(selectedText[range])
-                Log.reader.debug("resuming from offset \(index)")
-            }
-        }
+        readText = selectedText
+        utteranceOffset = start
+        let spoken = SpokenText(text, applying: pronunciations)
         if isSpeaking {
             Log.reader.debug("interrupting current utterance (stopType was \(stopType))")
             stopType = .willContinue
             synthesizer.stopSpeaking(at: .immediate)
         }
-        read(string: selectedText)
+        read(spoken)
         return true
     }
 }
@@ -344,8 +334,8 @@ extension EasyReader: @preconcurrency AVSpeechSynthesizerDelegate {
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
-        lastReadString = utterance.speechString
-        lastReadRange = characterRange
+        guard utterance === currentUtterance, let spokenText else { return }
+        lastReadOffset = utteranceOffset + spokenText.originalOffset(forSpoken: characterRange.location)
     }
 }
 

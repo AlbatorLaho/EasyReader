@@ -177,6 +177,14 @@ extension IntegrationTests {
             #expect(readable.selection.flatMap(readable.text(of:)) == "First one here.")
         }
 
+        @Test func startingOnSelectionScrollsToIt() {
+            let text = "First one here. Second one here."
+            let second = Selection((text as NSString).range(of: "Second one here."))
+            let readable = MockReadable(text, selection: second)
+            #expect(reader.start(reading: readable))
+            #expect(readable.scrolls == [second])
+        }
+
         @Test func autoScrollingOffDoesNotScroll() {
             Defaults[.scrollSelectionIntoView] = false
             let readable = MockReadable("First one here. Second one here.")
@@ -197,6 +205,46 @@ extension IntegrationTests {
             Defaults[.pronunciations] = [any, mine, other]
             #expect(reader.pronunciations(with: "com.example.mine") == [any, mine])
             #expect(reader.pronunciations(with: nil) == [any])
+        }
+
+        @Test func speaksSelectionWithPronunciations() {
+            Defaults[.pronunciations] = [
+                Pronunciation(search: "GUI", replace: "gooey", ignoreCase: false),
+                Pronunciation(search: "tomato", replace: "təˈmɑːtəʊ", isPhonetic: true),
+            ]
+            let readable = MockReadable("A GUI GUIDE with a tomato. Next.")
+            #expect(reader.start(reading: readable))
+            let spoken = try? #require(reader.spokenText)
+            #expect(spoken?.original == "A GUI GUIDE with a tomato. ")
+            #expect(spoken?.text == "A gooey GUIDE with a tomato. ")
+            #expect(spoken?.hasPhonetics == true)
+        }
+
+        /// Resuming from a word maps the synthesizer's offset (in the replaced text) back to the original
+        /// text, then re-applies the pronunciations from there.
+        @Test func resumeFromWordWithLongerReplacement() async throws {
+            Defaults[.pronunciations] = [Pronunciation(search: "GUI", replace: "graphical user interface")]
+            let long = Array(repeating: "GUI", count: 200).joined(separator: " ")
+            let readable = MockReadable("\(long). Second sentence.")
+            let reading = recorder.expect(.reading)
+            #expect(reader.start(reading: readable))
+            try await reading.wait(timeout: 10)
+            // A long utterance's first `willSpeakRange` comes ~0.5–1.2 s after it starts (synthesis lookahead).
+            await settle(2)
+            let paused = recorder.expect(.paused)
+            #expect(reader.pause())
+            try await paused.wait(timeout: 10)
+            let resumed = recorder.expect(.reading)
+            #expect(reader.togglePlayPause())
+            try await resumed.wait(timeout: 10)
+            let spoken = try #require(reader.spokenText)
+            #expect(spoken.original.count < long.count, "resumed mid-sentence")
+            #expect("\(long). ".hasSuffix(spoken.original))
+            #expect(spoken.original.hasPrefix("GUI"))
+            #expect(spoken.text.hasPrefix("graphical user interface "))
+            let stopped = recorder.expect(.stopped)
+            #expect(reader.stop())
+            try await stopped.wait(timeout: 10)
         }
 
         /// The text got shorter while reading (selection now past the end): advancing finds nothing instead of trapping.

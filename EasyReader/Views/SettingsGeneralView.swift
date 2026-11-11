@@ -28,8 +28,14 @@ struct SettingsGeneralView: View {
                             KeyboardShortcuts.Recorder("Skip Backward:", name: .skipBackward)
                         }
                     } label: {
-                        Label("Not needed with \"Now Playing Center\"", systemImage: "info.circle")
-                            .help("When \"Now Playing Center\" is enabled, you can use the media keys to play/pause and skip backwards/forwards")
+                        HStack(spacing: 4) {
+                            Text("Not needed with \"Now Playing Center\"")
+                            InfoButton(
+                                "Media keys already play/pause and skip with Now Playing Center.",
+                                title: "Media Keys Cover These",
+                                "When \"Now Playing Center\" integration is enabled (below), the keyboard's media keys (▶︎❙❙, ◀︎◀︎, ▶︎▶︎) play/pause and skip backward/forward, so these shortcuts are optional."
+                            )
+                        }
                     }
                     .padding(.top)
                 }
@@ -37,11 +43,15 @@ struct SettingsGeneralView: View {
                 Label("Global Shortcuts", systemImage: "command")
             }
 
-            HStack {
+            HStack(spacing: 4) {
                 Toggle("\"Now Playing Center\" integration", systemImage: "play.circle", isOn: $nowPlayingCenterIntegration)
-                Image(systemName: "info.circle")
+                InfoButton(
+                    "Control reading with the media keys and see it in Now Playing.",
+                    title: "Now Playing Center",
+                    "Lets the keyboard's media keys (and headphone buttons) play/pause and skip while EasyReader reads.",
+                    "Also shows what's being read (the app and window) in Control Center's Now Playing, like music."
+                )
             }
-            .help("When enabled, allows use of media keys to control reading, and shows info about the current application and window that's being read from")
 //            Toggle("\"Now Playing Center\" integration", systemImage: "play.circle", isOn: $nowPlayingCenterIntegration)
 //            GroupBox {
 //                Form {
@@ -52,6 +62,8 @@ struct SettingsGeneralView: View {
 //            }
 
             Spacer()
+
+            ChromiumSelectionInfo()
 
             HStack {
                 AccessibilityPermissionButton()

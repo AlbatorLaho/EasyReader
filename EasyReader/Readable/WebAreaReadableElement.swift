@@ -662,16 +662,27 @@ enum WebAccessibility {
         }
     }
 
-    /// Chromium-based browsers and Electron apps, by their bundle: Chromium's framework has a `Helpers` folder, Electron's
-    /// is "Electron Framework".
+    /// Chromium-based browsers and Electron apps, by their bundle: Electron's framework is "Electron Framework";
+    /// Chromium's framework has `Helpers/app_mode_loader` (browsers' web-app shim) or `chrome_crashpad_handler`.
+    /// (Just having a `Helpers` folder isn't enough: WebKit's JavaScriptCore has one, e.g. in Orion.)
     nonisolated static func isChromium(_ app: NSRunningApplication) -> Bool {
-        guard let frameworks = app.bundleURL?.appendingPathComponent("Contents/Frameworks"),
-            let contents = try? FileManager.default.contentsOfDirectory(at: frameworks, includingPropertiesForKeys: nil)
-        else { return false }
-        return contents.contains { framework in
+        app.bundleURL.map { isChromium(bundleURL: $0) } ?? false
+    }
+
+    nonisolated static func isChromium(bundleURL: URL) -> Bool {
+        frameworks(of: bundleURL).contains { framework in
             framework.lastPathComponent == "Electron Framework.framework"
-                || (framework.pathExtension == "framework"
-                    && FileManager.default.fileExists(atPath: framework.appendingPathComponent("Versions/Current/Helpers").path))
+                || hasHelper("app_mode_loader", in: framework) || hasHelper("chrome_crashpad_handler", in: framework)
         }
+    }
+
+    private nonisolated static func frameworks(of bundleURL: URL) -> [URL] {
+        let folder = bundleURL.appendingPathComponent("Contents/Frameworks")
+        let contents = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        return contents.filter { $0.pathExtension == "framework" }
+    }
+
+    private nonisolated static func hasHelper(_ name: String, in framework: URL) -> Bool {
+        FileManager.default.fileExists(atPath: framework.appendingPathComponent("Versions/Current/Helpers/\(name)").path)
     }
 }
