@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 - 2026-11-10
+
+- Reads web pages in Safari and other WebKit apps, Chromium browsers and Firefox-based browsers (Zen)
+- Safari/WebKit pages are selected as they're read and smooth-scrolled like text areas
+- Chromium ignores selection changes on web pages, so the text being read is highlighted with an overlay; with `chrome://flags/#enable-accessibility-text-operation` enabled it's selected for real
+- Sentences and paragraphs stay inside the page's blocks (Chromium runs headings and paragraphs together)
+- Chromium and Electron apps get their accessibility support turned on when reading starts (and back off afterwards)
+- Starting from a link or another element inside a page reads the page
+- AXSwift replaced with EasyReader's own accessibility layer (no crashes on unexpected values)
+- New Pronunciations settings tab: replace words before they're spoken, optionally for one app only, with whole-word, ignore-case, regular expression (`$1` templates) and phonetic (IPA) options
+- Live preview with a Speak button; reorder rules by dragging, sort by clicking a column header
+- Import pronunciations from VoiceOver
+- Resuming from a word works with replaced text
+- Info buttons (ⓘ) open a popover with the full explanation
+- The Chromium flag note moved to General settings; click the flag to copy it
+- WebKit browsers like Orion are no longer mistaken for Chromium
+
 ## 0.2.0 - 2026-11-04
 
 - New app icon
