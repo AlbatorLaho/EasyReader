@@ -44,6 +44,8 @@ struct AXRole: RawRepresentable, Hashable {
     static let webArea = AXRole("AXWebArea")
     static let staticText = AXRole(kAXStaticTextRole)
     static let listMarker = AXRole("AXListMarker")
+    static let group = AXRole(kAXGroupRole)
+    static let heading = AXRole("AXHeading")
 }
 
 struct AXAction {
@@ -69,6 +71,8 @@ extension AXAttribute where Value == String {
     /// Text of text areas and leaves.
     static var value: Self { Self(kAXValueAttribute) }
     static var selectedText: Self { Self(kAXSelectedTextAttribute) }
+    static var subrole: Self { Self(kAXSubroleAttribute) }
+    static var identifier: Self { Self(kAXIdentifierAttribute) }
 }
 
 extension AXAttribute where Value == CGFloat {
@@ -105,6 +109,7 @@ extension AXAttribute where Value == [AXElement] {
     static var children: Self { Self(kAXChildrenAttribute) }
     static var childrenInNavigationOrder: Self { Self("AXChildrenInNavigationOrder") }
     static var windows: Self { Self(kAXWindowsAttribute) }
+    static var visibleChildren: Self { Self(kAXVisibleChildrenAttribute) }
 }
 
 extension AXAttribute where Value == AXTextMarker {
@@ -120,6 +125,16 @@ extension AXAttribute where Value == AXTextMarkerRange {
 
 extension AXParameterizedAttribute where Parameter == CFRange, Value == CGRect {
     static var boundsForRange: Self { Self(kAXBoundsForRangeParameterizedAttribute) }
+}
+
+extension AXParameterizedAttribute where Parameter == CFRange, Value == AXAttributedString {
+    /// Runs carry `AXFont` (a dictionary with `AXFontSize`, …), `AXLanguage`, ….
+    static var attributedStringForRange: Self { Self(kAXAttributedStringForRangeParameterizedAttribute) }
+}
+
+extension AXParameterizedAttribute where Parameter == CGPoint, Value == CFRange {
+    /// The character at a screen point (top-left origin).
+    static var rangeForPosition: Self { Self(kAXRangeForPositionParameterizedAttribute) }
 }
 
 extension AXParameterizedAttribute where Parameter == AXTextMarkerRange, Value == String {

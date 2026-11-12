@@ -51,7 +51,17 @@ class ReadableElement: Readable {
         .webArea: WebAreaReadableElement.self,
     ]
 
-    static subscript(role: AXRole) -> ReadableElement.Type? { values[role] }
+    /// Roles too generic to register (`AXGroup`), told apart by subrole.
+    private static let subroleValues: [AXRole: [String: ReadableElement.Type]] = [
+        .group: ["AXSharedDocumentContainer": PDFReadableElement.self]
+    ]
+
+    /// The readable type for an element with `role`; `subrole` is fetched only for roles registered by subrole.
+    static func type(for role: AXRole, subrole: () throws -> String?) rethrows -> ReadableElement.Type? {
+        if let type = values[role] { return type }
+        guard let types = subroleValues[role], let subrole = try subrole() else { return nil }
+        return types[subrole]
+    }
 
     required init(_ element: AXElement) {
         handle = element
@@ -91,15 +101,18 @@ class ReadableElement: Readable {
     
     func scroll(to selection: Selection, options: ScrollOptions) {}
     func textBlock(containing offset: Int) -> Selection? { nil }
+    func didReach(_ offset: Int) -> Selection? { nil }
     // Declared here (not only in the protocol extension) so subclasses can override them.
     func beginReading() {}
     func endReading() {}
 }
 
 extension AXElement {
-    /// The readable for this element, if its role has one.
+    /// The readable for this element, if its role (or for generic roles, subrole) has one.
     @MainActor func readableElement() throws -> ReadableElement? {
-        guard let role = try role(), let readableType = ReadableElement[role] else { return nil }
+        guard let role = try role(),
+            let readableType = try ReadableElement.type(for: role, subrole: { try attribute(.subrole) })
+        else { return nil }
         return readableType.init(self)
     }
 }

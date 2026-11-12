@@ -55,6 +55,11 @@ struct AXElement: Hashable, CustomStringConvertible {
         guard error == .success else { throw AXFailure.error(error, "set \(attribute.name)") }
     }
 
+    func isSettable<Value>(_ attribute: AXAttribute<Value>) -> Bool {
+        var settable = DarwinBoolean(false)
+        return AXUIElementIsAttributeSettable(raw, attribute.name as CFString, &settable) == .success && settable.boolValue
+    }
+
     func perform(_ action: AXAction) throws {
         let error = AXUIElementPerformAction(raw, action.name as CFString)
         guard error == .success else { throw AXFailure.error(error, action.name) }

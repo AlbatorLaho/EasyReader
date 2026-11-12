@@ -38,7 +38,11 @@ extension TextSelector {
             if !Self.isBlank(found, in: local) {
                 return Selection(range.lowerBound + found.lowerBound..<range.lowerBound + found.upperBound)
             }
-            position = direction == .forward ? range.upperBound : range.lowerBound
+            // Only whitespace up to the unit boundary (e.g. starting just before the space after a sentence): step over
+            // it and look on in the same block; past the block's end once nothing is left in it.
+            let next = range.lowerBound + (direction == .forward ? found.upperBound : found.lowerBound)
+            let movedOn = direction == .forward ? next > position && next < range.upperBound : next < position && next > range.lowerBound
+            position = movedOn ? next : (direction == .forward ? range.upperBound : range.lowerBound)
         }
         return select(direction, from: Selection(position..<position), in: string)
     }

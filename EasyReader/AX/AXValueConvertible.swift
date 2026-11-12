@@ -4,6 +4,7 @@
 //
 
 import ApplicationServices
+import Foundation
 
 /// A type an attribute value can be read as: `nil` when the value has another type.
 protocol AXDecodable {
@@ -24,6 +25,16 @@ extension String: AXValueConvertible {
     }
 
     var axValue: AnyObject { self as CFString }
+}
+
+/// An `NSAttributedString` value (a class can't conform to `AXDecodable` itself).
+struct AXAttributedString: AXDecodable {
+    let string: NSAttributedString
+
+    init?(axValue: AnyObject) {
+        guard let string = axValue as? NSAttributedString else { return nil }
+        self.string = string
+    }
 }
 
 extension Bool: AXValueConvertible {

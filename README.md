@@ -11,6 +11,7 @@ EasyReader provides additional functionality to the built-in text to speech engi
 * Modify selected text to change what will be read next
 * Can integrate with the "Now Playing Center" and media keys
 * Can auto scroll the selection into view while reading
+* Reads text views, web pages (Safari, Chromium browsers, Firefox) and PDFs in Preview
 
 ## Getting Started
 

@@ -335,7 +335,10 @@ extension EasyReader: @preconcurrency AVSpeechSynthesizerDelegate {
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
         guard utterance === currentUtterance, let spokenText else { return }
-        lastReadOffset = utteranceOffset + spokenText.originalOffset(forSpoken: characterRange.location)
+        let offset = utteranceOffset + spokenText.originalOffset(forSpoken: characterRange.location)
+        // A word-boundary stop reports the unspoken word it stops before, so resuming there skips nothing.
+        lastReadOffset = offset
+        if let piece = readable?.didReach(offset) { scroll(to: piece) }
     }
 }
 

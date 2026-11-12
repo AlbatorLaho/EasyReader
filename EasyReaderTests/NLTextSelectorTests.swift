@@ -127,6 +127,25 @@ struct BlockSelectionTests {
         #expect(read == ["Last block.", "Second one.", "First one.", "Heading", ""])
     }
 
+    /// Starting on the space after a sentence (a selection reported without its trailing space, e.g. by PDFKit): the
+    /// space alone is blank, but the rest of the block must not be skipped.
+    @Test func blankStepDoesNotSkipRestOfBlock() {
+        let selector = NLTextSelector(unit: .sentence)
+        let forward = selector.select(.forward, from: Selection(7..<17), in: string, blocks: block)
+        #expect(text(forward) == "Second one.")
+        let backward = selector.select(.backward, from: Selection(18..<29), in: string, blocks: block)
+        #expect(text(backward) == "First one.")
+    }
+
+    /// A block starting inside a grapheme cluster is read from the cluster's start, with offsets from there.
+    @Test func blockSplittingGraphemeKeepsOffsets() {
+        let string = "👍🏽 One. Two."
+        let count = string.utf16.count
+        let selector = NLTextSelector(unit: .sentence)
+        let found = selector.select(.forward, from: Selection(2..<2), in: string, blocks: { _ in Selection(2..<count) })
+        #expect((string as NSString).substring(with: NSRange(found)).trimmingCharacters(in: .whitespaces) == "👍🏽 One.")
+    }
+
     @Test func paragraphUnitIsTheBlock() {
         let selector = NLTextSelector(unit: .paragraph)
         let first = selector.select(.forward, from: Selection(), in: string, blocks: block)
