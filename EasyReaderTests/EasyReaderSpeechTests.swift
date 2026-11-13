@@ -48,6 +48,22 @@ extension IntegrationTests {
             #expect(read == ["One.", "Two.", "Three."])
         }
 
+        /// A selection made while a unit is read isn't read itself: reading goes on after it.
+        @Test func continuesAfterSelectionMadeWhileReading() async throws {
+            let text = "One sentence that takes a while to read out loud. Two. Three. Four."
+            let readable = MockReadable(text)
+            let reading = recorder.expect(.reading)
+            let stopped = recorder.expect(.stopped)
+            #expect(reader.start(reading: readable))
+            try await reading.wait(timeout: 15)
+            readable.selection = Selection((text as NSString).range(of: "Three."))
+            let readsBefore = readable.selectedTexts.count
+            try await stopped.wait(timeout: 15)
+            let read = readable.history.compactMap(readable.text(of:)).filter { !$0.isEmpty }
+            #expect(read == ["One sentence that takes a while to read out loud.", "Three.", "Four."])
+            #expect(!readable.selectedTexts[readsBefore...].contains("Three."), "the user's selection isn't spoken")
+        }
+
         @Test func pauseResumeStop() async throws {
             let readable = MockReadable(longText)
             let reading = recorder.expect(.reading)

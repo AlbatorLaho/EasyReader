@@ -113,6 +113,9 @@ extension AXElement {
         guard let role = try role(),
             let readableType = try ReadableElement.type(for: role, subrole: { try attribute(.subrole) })
         else { return nil }
+        if readableType == WebAreaReadableElement.self, CatalystWebAreaReadableElement.matches(self) {
+            return CatalystWebAreaReadableElement(self)
+        }
         return readableType.init(self)
     }
 }

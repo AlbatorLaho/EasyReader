@@ -141,6 +141,11 @@ extension AXParameterizedAttribute where Parameter == AXTextMarkerRange, Value =
     static var stringForTextMarkerRange: Self { Self("AXStringForTextMarkerRange") }
 }
 
+extension AXParameterizedAttribute where Parameter == AXTextMarkerRange, Value == AXAttributedString {
+    /// Catalyst web views have only this one (no `AXStringForTextMarkerRange`).
+    static var attributedStringForTextMarkerRange: Self { Self("AXAttributedStringForTextMarkerRange") }
+}
+
 extension AXParameterizedAttribute where Parameter == AXTextMarkerRange, Value == CGRect {
     static var boundsForTextMarkerRange: Self { Self("AXBoundsForTextMarkerRange") }
 }
@@ -153,6 +158,7 @@ extension AXParameterizedAttribute where Parameter == [AXTextMarker], Value == A
 extension AXParameterizedAttribute where Parameter == AXTextMarker, Value == AXTextMarker {
     static var nextTextMarkerForTextMarker: Self { Self("AXNextTextMarkerForTextMarker") }
     static var previousTextMarkerForTextMarker: Self { Self("AXPreviousTextMarkerForTextMarker") }
+    static var nextLineEndTextMarkerForTextMarker: Self { Self("AXNextLineEndTextMarkerForTextMarker") }
 }
 
 extension AXParameterizedAttribute where Parameter == AXTextMarker, Value == AXTextMarkerRange {

@@ -11,7 +11,7 @@ EasyReader provides additional functionality to the built-in text to speech engi
 * Modify selected text to change what will be read next
 * Can integrate with the "Now Playing Center" and media keys
 * Can auto scroll the selection into view while reading
-* Reads text views, web pages (Safari, Chromium browsers, Firefox) and PDFs in Preview
+* Reads text views, web pages (Safari, Chromium browsers, Firefox), PDFs in Preview and books in Apple Books
 
 ## Getting Started
 
@@ -42,6 +42,10 @@ Chromium browsers only let EasyReader select text in web pages with an experimen
 1. Paste `chrome://flags/#enable-accessibility-text-operation` into the browser's address bar (click the flag at the bottom of EasyReader's General settings to copy it)
 2. Set **Enable text editing through accessibility APIs** to **Enabled**
 3. Relaunch the browser
+
+### Apple Books
+
+EasyReader starts reading at the text you selected on the page you're on (Books doesn't tell other apps what's selected, so EasyReader copies it, then puts your clipboard back), or else at the top of the page. It turns pages and moves on to the next chapter by itself.
 
 ⚠️ I also have not setup signing/notarization, since I don't have an Apple developer account.
 

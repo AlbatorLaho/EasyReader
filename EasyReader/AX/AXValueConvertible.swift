@@ -168,6 +168,11 @@ struct AXTextMarkerRange: AXValueConvertible, Equatable {
 
     /// Only Firefox has `AXStartTextMarkerForTextMarkerRange`, so these use HIServices' own functions.
     var start: AXTextMarker? { TextMarkerSPI.start(of: raw).flatMap(AXTextMarker.init(axValue:)) }
+    /// A range made locally (no IPC), for apps without `AXTextMarkerRangeForUnorderedTextMarkers` (Catalyst).
+    init?(start: AXTextMarker, end: AXTextMarker) {
+        guard let raw = TextMarkerSPI.range(from: start.raw, to: end.raw) else { return nil }
+        self.raw = raw
+    }
     var end: AXTextMarker? { TextMarkerSPI.end(of: raw).flatMap(AXTextMarker.init(axValue:)) }
 
     static func == (lhs: Self, rhs: Self) -> Bool { CFEqual(lhs.raw, rhs.raw) }
@@ -225,9 +230,11 @@ struct AXAnyValue: AXDecodable {
 private enum TextMarkerSPI {
     private typealias CopyMarker = @convention(c) (CFTypeRef) -> Unmanaged<CFTypeRef>?
     private typealias GetTypeID = @convention(c) () -> CFTypeID
+    private typealias CreateRange = @convention(c) (CFAllocator?, CFTypeRef, CFTypeRef) -> Unmanaged<CFTypeRef>?
 
     private static let copyStart: CopyMarker? = load("AXTextMarkerRangeCopyStartMarker")
     private static let copyEnd: CopyMarker? = load("AXTextMarkerRangeCopyEndMarker")
+    private static let createRange: CreateRange? = load("AXTextMarkerRangeCreate")
     private static let markerTypeID = (load("AXTextMarkerGetTypeID") as GetTypeID?)?()
     private static let markerRangeTypeID = (load("AXTextMarkerRangeGetTypeID") as GetTypeID?)?()
 
@@ -246,4 +253,5 @@ private enum TextMarkerSPI {
 
     static func start(of range: AnyObject) -> AnyObject? { copyStart?(range)?.takeRetainedValue() }
     static func end(of range: AnyObject) -> AnyObject? { copyEnd?(range)?.takeRetainedValue() }
+    static func range(from start: AnyObject, to end: AnyObject) -> AnyObject? { createRange?(nil, start, end)?.takeRetainedValue() }
 }

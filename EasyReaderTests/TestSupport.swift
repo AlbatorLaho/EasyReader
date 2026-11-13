@@ -159,9 +159,12 @@ final class MockReadable: Readable {
     private(set) var scrolls: [Selection] = []
     /// EasyReader reads `selectedText` once per utterance it starts.
     private(set) var selectedTextReads = 0
+    /// What `selectedText` returned, in order.
+    private(set) var selectedTexts: [String] = []
     var selectedText: String? {
         selectedTextReads += 1
         guard let fullText, let selection, let range = Range(selection, in: fullText) else { return nil }
+        selectedTexts.append(String(fullText[range]))
         return String(fullText[range])
     }
 
