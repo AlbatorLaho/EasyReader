@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 - 2026-11-14
+
+- Reads PDFs in Preview: skips page headers, footers and footnotes, leaves out footnote marks, and runs sentences on across lines, columns, pages and hyphenated words; tagged PDFs too
+- Reads Apple Books, turning pages and following chapters as it reads
+- Optional (General settings): reads the selected text in apps EasyReader doesn't support
+- Settings open in front when chosen from the menu bar
+- New About EasyReader window with third-party licenses; README and settings text describe the current features
+
 ## 0.3.0 - 2026-11-10
 
 - Reads web pages in Safari and other WebKit apps, Chromium browsers and Firefox-based browsers (Zen)
