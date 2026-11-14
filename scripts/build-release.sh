@@ -20,7 +20,7 @@ xcodebuild archive -project EasyReader.xcodeproj -scheme EasyReader -configurati
 # "mac-application" = Organizer's "Copy App" (keeps our signature; "developer-id" would need an Apple account)
 plutil -convert xml1 -o build/ExportOptions.plist - <<< '{"method": "mac-application"}'
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$STAGING" -exportOptionsPlist build/ExportOptions.plist | pretty
-cp LICENSE README.md "$STAGING"
+cp LICENSE README.md THIRD_PARTY_NOTICES.md "$STAGING"
 [[ ! -f CHANGELOG.md ]] || cp CHANGELOG.md "$STAGING"
 hdiutil create -quiet -srcdir "$STAGING" -volname EasyReader "$DMG"
 

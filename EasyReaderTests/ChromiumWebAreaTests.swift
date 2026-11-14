@@ -5,8 +5,7 @@ import Testing
 
 @testable import EasyReader
 
-/// Chrome for Testing as installed by Playwright (`npx playwright install chromium`), newest first: a Chromium that
-/// isn't anyone's everyday browser, launched with a throwaway profile.
+/// Chrome for Testing from Playwright's cache (`npx playwright install chromium`), newest, with a throwaway profile.
 enum ChromeForTesting {
     static let app: URL? = {
         let cache = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Caches/ms-playwright")
@@ -23,8 +22,7 @@ enum ChromeForTesting {
 
     static var isAvailable: Bool { app != nil }
 
-    /// Opens `url` in a new Chrome for Testing instance with its own temporary profile, with Chromium `features` on
-    /// (`--enable-features`).
+    /// Opens `url` in a new instance with a temporary profile and `--enable-features=<features>`.
     static func launch(_ url: URL, features: [String] = []) throws -> (Process, profile: URL) {
         let profile = FileManager.default.temporaryDirectory.appendingPathComponent("EasyReaderChrome-\(UUID().uuidString)")
         let process = Process()
@@ -43,14 +41,14 @@ enum ChromeForTesting {
         return (process, profile)
     }
 
-    /// Writes the test page and opens it in a new Chrome for Testing, killed at teardown.
+    /// Opens `WebTestPage` in a new instance, killed at teardown.
     @MainActor
     static func launchTestPage(features: [String] = []) throws -> Process {
         let page = FileManager.default.temporaryDirectory.appendingPathComponent("EasyReaderChromiumTestPage.html")
         try WebTestPage.html.write(to: page, atomically: true, encoding: .utf8)
         let (browser, profile) = try launch(page, features: features)
         Teardown.add {
-            // Chrome closes its windows on SIGTERM but keeps running; its profile is throwaway anyway.
+            // SIGTERM only closes Chrome's windows
             kill(browser.processIdentifier, SIGKILL)
             for _ in 0..<50 where browser.isRunning { await settle() }
             try? FileManager.default.removeItem(at: profile)
@@ -81,7 +79,7 @@ enum ChromeForTesting {
         var description: String { "timed out waiting for \(what)" }
     }
 
-    /// The test page's web area, once loaded (turns on Chromium's AX mode, as `EasyReader` does).
+    /// The test page's web area, once loaded (turns on Chromium's AX mode like `EasyReader`).
     @MainActor
     static func readable(in browser: Process) async throws -> WebAreaReadableElement {
         for attempt in 0..<150 {
@@ -99,10 +97,7 @@ enum ChromeForTesting {
 }
 
 extension IntegrationTests {
-    /// `WebAreaReadableElement` against Chromium (Chrome for Testing from Playwright's cache), which differs from WebKit:
-    /// it ignores selection changes (highlighted by an overlay instead), has no line breaks between blocks in its page
-    /// text, and only scrolls and measures through its text leaves. Needs Accessibility permission for the test host,
-    /// and opens a Chrome window (in the background).
+    /// `WebAreaReadableElement` against Chromium: overlay instead of selection, no block separators, leaf-based layout.
     @MainActor
     @Suite(
         .enabled(if: AXIsProcessTrusted(), "needs Accessibility permission for the test host (Debug EasyReader)"),
@@ -129,8 +124,6 @@ extension IntegrationTests {
             return reader
         }
 
-        private func find(role: String, in root: AXElement) -> AXElement? { ChromeForTesting.find(role: role, in: root) }
-        private func browserWindow() -> AXElement? { ChromeForTesting.window(of: browser) }
         private func readable() async throws -> WebAreaReadableElement { try await ChromeForTesting.readable(in: browser) }
 
         private func selection(of string: String, in text: String) throws -> Selection {
@@ -143,7 +136,7 @@ extension IntegrationTests {
             (text as NSString).substring(with: NSRange(selection)).trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        /// The premise of the block support: Chromium runs blocks together ("pageThis page").
+        /// Why blocks are needed: Chromium runs them together.
         @Test func pageTextHasNoBlockSeparators() async throws {
             let text = try #require(try await readable().fullText)
             #expect(text.contains("EasyReader test pageThis page tests reading web content."))
@@ -204,8 +197,7 @@ extension IntegrationTests {
             #expect(readable.highlighted == nil)
         }
 
-        /// Chromium's page text drops the space a line wraps at, even when it starts the next leaf (" wraps here." after
-        /// a link at the end of a line): every line must still be highlighted.
+        /// Page text drops the space a line wraps at, also when it starts the next leaf (" wraps here." after a link).
         @Test func highlightsLeafAfterCollapsedSpace() async throws {
             let readable = try await readable()
             let text = try #require(readable.fullText)
@@ -262,19 +254,18 @@ extension IntegrationTests {
             #expect(page.highlighted == nil)
         }
 
-        /// A fresh Chromium vends no page content until its AX mode is on: the reader turns it on, waits for the page,
-        /// reads it, and turns the mode off again when it stops.
+        /// A fresh Chromium vends no page content until the reader turns its AX mode on (and off again on stop).
         @Test func readerEnablesPageContentInFreshBrowser() async throws {
             var window: AXElement?
             for _ in 0..<100 where window == nil {
                 await settle()
-                window = browserWindow()
+                window = ChromeForTesting.window(of: browser)
             }
             let browserWindow = try #require(window)
             for _ in 0..<30 where (try? browserWindow.attribute(.title) as String?)?.contains("EasyReader Test Page") != true {
                 await settle()
             }
-            #expect(find(role: "AXWebArea", in: browserWindow) == nil, "page content already vended")
+            #expect(ChromeForTesting.find(role: "AXWebArea", in: browserWindow) == nil, "page content already vended")
             let app = AXElement.application(pid: browser.processIdentifier)
             let reader = makeReader()
             let reading = recorder.expect(.reading)
@@ -289,8 +280,7 @@ extension IntegrationTests {
         }
     }
 
-    /// Chromium with chrome://flags/#enable-accessibility-text-operation: EasyReader sets the browser's real selection
-    /// through `AXTextOperation` (no overlay).
+    /// Chromium with chrome://flags/#enable-accessibility-text-operation: a real selection via `AXTextOperation`.
     @MainActor
     @Suite(
         .enabled(if: AXIsProcessTrusted(), "needs Accessibility permission for the test host (Debug EasyReader)"),
@@ -316,6 +306,19 @@ extension IntegrationTests {
             return Selection(range)
         }
 
+        private func makeReader() -> EasyReader {
+            Defaults[.speechVolume] = 0
+            Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
+            Defaults[.speechDelayBefore] = 0
+            Defaults[.speechDelayAfter] = 0
+            Defaults[.speechStopBoundary] = .immediate
+            let reader = EasyReader()
+            reader.delegate = recorder
+            reader.textSelector = NLTextSelector(unit: .sentence)
+            Teardown.add { reader.stop() }
+            return reader
+        }
+
         private func browserSelectedText(_ readable: WebAreaReadableElement) -> String? {
             try? readable.handle.attribute(.selectedText)
         }
@@ -333,7 +336,7 @@ extension IntegrationTests {
             let text = try #require(readable.fullText)
             let target = try selection(of: sentence, in: text)
             readable.selection = target
-            // The renderer applies it asynchronously.
+            // Applied asynchronously
             for _ in 0..<20 where browserSelectedText(readable) != sentence { await settle() }
             #expect(browserSelectedText(readable) == sentence)
             #expect(readable.highlighted == nil)
@@ -345,15 +348,7 @@ extension IntegrationTests {
             let text = try #require(page.fullText)
             let first = try selection(of: "This page tests reading web content.", in: text)
             page.selection = first
-            Defaults[.speechVolume] = 0
-            Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            Defaults[.speechDelayBefore] = 0
-            Defaults[.speechDelayAfter] = 0
-            Defaults[.speechStopBoundary] = .immediate
-            let reader = EasyReader()
-            reader.delegate = recorder
-            reader.textSelector = NLTextSelector(unit: .sentence)
-            Teardown.add { reader.stop() }
+            let reader = makeReader()
             let reading = recorder.expect(.reading)
             #expect(reader.start(reading: page))
             try await reading.wait(timeout: 10)

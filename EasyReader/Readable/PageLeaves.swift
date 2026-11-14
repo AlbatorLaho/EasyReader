@@ -1,48 +1,35 @@
-//
-//  PageLeaves.swift
-//  EasyReader
-//
-
 import Cocoa
 
-/// Chromium only: a web page's text leaves (`AXStaticText`) in document order, located in the page text.
-///
-/// Chromium converts offsets to markers anchored on the web area itself, so their bounds are the whole page and
-/// `AXUIElementForTextMarker` returns the web area: neither highlighting nor scrolling can use them. Leaf elements have
-/// both (`AXBoundsForRange` with offsets in the leaf, `AXScrollToVisible`).
-///
-/// The list comes in one call (a search predicate: ~50 ms for 12k leaves on a long Wikipedia page). A leaf's offset is
-/// found by matching its text in the page text right after (or before) a neighbor whose offset is known: one AX call per
-/// leaf, so only leaves near the reading position are fetched. Only the first offset is measured through text markers,
-/// which costs time proportional to the offset (~150 ms at the end of a long page).
+/// Chromium: the page's `AXStaticText` leaves in document order, each located lazily in the page text next to a
+/// neighbor (only the first is measured through markers, which is slow).
 @MainActor
 final class PageLeaves {
     struct Leaf {
         let index: Int
         let element: AXElement
-        /// The leaf's text in the page text (empty if it couldn't be located).
+        /// Empty if it couldn't be located.
         let range: Selection
-        /// Where `range` starts in the leaf's own text (`AXValue`, the offsets `AXBoundsForRange` takes): leading
-        /// whitespace the page text collapsed.
+        /// Where `range` starts in the leaf's `AXValue` (leading whitespace the page text collapsed).
         let valueOffset: Int
     }
 
-    /// The page text the offsets refer to.
     let text: String
     private let utf16: [UInt16]
     private let elements: [AXElement]
-    /// Measures the offset of an element's first character in the page text the slow way (through text markers).
+    /// The slow way, through text markers.
     private let measure: (AXElement) -> Int?
-    /// Each leaf's text as it may appear in the page text (see `forms(of:)`).
     private var forms: [[Form]?]
     private var starts: [Int?]
-    /// The last leaf looked up: the next lookup is usually close by.
+    /// The last leaf looked up: the next one is usually close by.
     private var cursor: Int?
 
     /// How far apart leaves may be in the page text (U+FFFC for images and controls in between).
     private static let maxGap = 512
+    /// Trimmed forms are short and common ("A", "("): only accept them this close to where the leaf is expected.
+    private static let maxTrimmedDistance = 8
 
     var count: Int { elements.count }
+    var cursorElement: AXElement? { cursor.map { elements[$0] } }
 
     init?(webArea: AXElement, text: String, measure: @escaping (AXElement) -> Int?) {
         let elements = ((try? webArea.attribute(.uiElementsForSearchPredicate, for: .staticText)) ?? []).compactMap(\.element)
@@ -60,10 +47,10 @@ final class PageLeaves {
         let form = form(of: index, at: start)
         return Leaf(
             index: index, element: elements[index], range: Selection(start..<start + (form?.text.count ?? 0)),
-            valueOffset: form?.lead ?? 0)
+            valueOffset: form?.valueOffset ?? 0)
     }
 
-    /// The leaf holding the character at `offset`, or the first one after it (`offset` in a gap between leaves).
+    /// The leaf holding `offset`, or the first one after it.
     func leaf(containing offset: Int) -> Leaf? {
         guard var index = cursor ?? seed(for: offset) else { return nil }
         if let start = start(of: index), abs(offset - start) > 20_000, let seeded = seed(for: offset) { index = seeded }
@@ -88,10 +75,6 @@ final class PageLeaves {
         return result
     }
 
-    /// The element of the last leaf looked up, to start from the same place in a new list after the page changed.
-    var cursorElement: AXElement? { cursor.map { elements[$0] } }
-
-    /// Starts the next lookup at `element` (a leaf near the reading position), saving a search.
     func moveCursor(to element: AXElement) {
         if let index = index(of: element), start(of: index) != nil { cursor = index }
     }
@@ -101,8 +84,7 @@ final class PageLeaves {
         return elements.firstIndex(of: element)
     }
 
-    /// The first leaf (at least partly) inside `visible` (screen coordinates, top-left origin). Chromium reports leaves
-    /// outside the viewport with zero height, clipped to its top or bottom edge, so this is a binary search.
+    // Chromium clips leaf frames to the viewport (zero height outside), so a binary search works.
     func firstVisible(in visible: CGRect) -> Leaf? {
         func frame(_ index: Int) -> CGRect? {
             try? elements[index].attribute(.frame)
@@ -117,7 +99,7 @@ final class PageLeaves {
             let middle = (low + high) / 2
             if isAbove(middle) { low = middle + 1 } else { high = middle }
         }
-        // Skip hidden leaves (zero height) right at the top.
+        // Skip hidden (zero-height) leaves right at the top.
         for index in low..<min(low + 20, count) {
             if let frame = frame(index), frame.height >= 1, visible.intersects(frame) {
                 cursor = index
@@ -129,27 +111,26 @@ final class PageLeaves {
 
     // MARK: Offsets
 
-    /// A leaf's text as it may appear in the page text (UTF-16), and where that starts in its `AXValue`.
+    /// A leaf's text as it may appear in the page text, and where that starts in its `AXValue`.
     private struct Form {
         let text: [UInt16]
-        let lead: Int
+        let valueOffset: Int
     }
 
-    /// The leaf's text, then (if different) without surrounding whitespace: Chromium's page text drops the space a line
-    /// wraps at (a leaf " like " after a link at the end of a line reads "like " there).
+    // Also trimmed: Chromium's page text drops the space a line wraps at.
     private func forms(of index: Int) -> [Form] {
         if let forms = forms[index] { return forms }
         let string = (try? elements[index].attribute(.value)) ?? ""
-        var result = [Form(text: Array(string.utf16), lead: 0)]
+        var result = [Form(text: Array(string.utf16), valueOffset: 0)]
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty, trimmed != string, let range = string.range(of: trimmed) {
-            result.append(Form(text: Array(trimmed.utf16), lead: string[..<range.lowerBound].utf16.count))
+            result.append(Form(text: Array(trimmed.utf16), valueOffset: string[..<range.lowerBound].utf16.count))
         }
         forms[index] = result
         return result
     }
 
-    /// The form of leaf `index` that appears in the page text at `offset`, if any (`exact`: only its full text).
+    /// `exact`: only the untrimmed form.
     private func form(of index: Int, at offset: Int, exact: Bool = false) -> Form? {
         forms(of: index).prefix(exact ? 1 : 2).first { form in
             utf16.matches(form.text, at: offset)
@@ -165,12 +146,9 @@ final class PageLeaves {
         form(of: index, at: offset, exact: exact) != nil
     }
 
-    /// Trimmed forms are short and common ("A", "("): only accept them this close to where the leaf is expected.
-    private static let maxTrimmedDistance = 8
-
     private func start(of index: Int) -> Int? {
         if let start = starts[index] { return start }
-        // Walk from the nearest leaf whose offset is known.
+        // Walk from the nearest leaf already located.
         let known = (1...300).lazy.flatMap { [index - $0, index + $0] }.first {
             self.elements.indices.contains($0) && self.starts[$0] != nil
         }
@@ -189,14 +167,12 @@ final class PageLeaves {
         return starts[index]
     }
 
-    /// The offset of leaf `index` measured through text markers, checked against its text.
     private func measuredStart(of index: Int) -> Int? {
         guard let measured = measure(elements[index]) else { return nil }
         if matches(index, at: measured) {
             starts[index] = measured
         } else {
-            // Markers at node boundaries can be off by a character or so (and Chromium measures its first leaf as
-            // the whole page).
+            // Markers at node boundaries can be off by a char or so
             let near = (1...64).lazy.flatMap { [measured - $0, measured + $0] }.first { self.matches(index, at: $0) }
             guard let found = near else { return nil }
             starts[index] = found
@@ -204,7 +180,7 @@ final class PageLeaves {
         return starts[index]
     }
 
-    /// Picks a leaf near `offset` by binary search on measured offsets (each costs time proportional to the offset).
+    /// A leaf near `offset`, by binary search on measured (slow) offsets.
     private func seed(for offset: Int) -> Int? {
         var low = 0
         var high = count - 1

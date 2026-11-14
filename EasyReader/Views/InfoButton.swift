@@ -1,12 +1,6 @@
-//
-//  InfoButton.swift
-//  EasyReader
-//
-
 import SwiftUI
 
-/// An ⓘ button: hover shows a one-line `summary` tooltip, a click shows the full `content` in a popover.
-/// Accent-colored (like a link) and filled while hovered, so it reads as clickable.
+/// ⓘ with a one-line `summary` tooltip; a click shows `content` in a popover.
 struct InfoButton<Content: View>: View {
     private let summary: String
     private let content: () -> Content
@@ -41,13 +35,11 @@ struct InfoButton<Content: View>: View {
 }
 
 extension InfoButton where Content == InfoText {
-    /// A popover with a `title` and `paragraphs` of text.
     init(_ summary: String, title: String, _ paragraphs: String...) {
         self.init(summary) { InfoText(title: title, paragraphs: paragraphs) }
     }
 }
 
-/// Standard popover text for `InfoButton`: a headline, then paragraphs.
 struct InfoText: View {
     let title: String
     let paragraphs: [String]

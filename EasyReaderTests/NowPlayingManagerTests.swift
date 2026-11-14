@@ -6,7 +6,6 @@ import Testing
 @testable import EasyReader
 
 extension IntegrationTests {
-    /// Writes `Defaults` and the process-wide command and info centers, so it runs serialized.
     @MainActor
     struct NowPlayingManagerTests {
         private let reader = EasyReader()

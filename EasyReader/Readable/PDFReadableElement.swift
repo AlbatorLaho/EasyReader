@@ -1,66 +1,36 @@
-//
-//  PDFReadableElement.swift
-//  EasyReader
-//
-
 import Cocoa
 
-/// A PDF shown by PDFKit's `PDFView` (Preview and other apps): an `AXGroup`/`AXSharedDocumentContainer` (the focused
-/// element) holding an `AXPage` per page, whose `AXGroup`s lead down to `AXStaticText` leaves.
-///
-/// - Text: the leaves in page order, without page headers and footers (`leaves(ofPage:)`). Line breaks inside a leaf
-///   become spaces, words hyphenated at a line end word joiners (same UTF-16 length, so offsets map straight back to
-///   the leaf). Leaves are grouped into text blocks (`textBlock(containing:)`, joined by line breaks), so units stay in
-///   a block (`layout()`):
-///   - A leaf ending mid-sentence continues in the next one in about the same font (next line, column or page; see
-///     `join(_:_:isWord:)`). Leaves in a smaller font in between (footnotes, captions) are put after the block.
-///   - Tagged PDFs split paragraphs at inline spans (footnote marks, styled runs), each a leaf that can't be selected.
-///     Such leaves under the same parent group (the nearest ancestor with several children) form one block too.
-///
-///   Units in selectable leaves (untagged PDFs: a paragraph, column, line or text run; also headings of tagged PDFs) are
-///   selected; one spanning leaves piece by piece as it's read. Tagged PDFs' other leaves can't be selected themselves,
-///   but their page's selectable leaves (`PageSelector`) select by offset in the whole page's text. Units on a page
-///   with neither are highlighted by a `HighlightOverlay`.
-///
-///   All pages are listed at once, but fetching all their text takes long (795 pages, 6000 leaves: 25 s), so only a
-///   window of pages is loaded: around where reading starts, then extended as reading nears either end of it.
-/// - Selection: set on the leaf (`AXSelectedTextRange`, exact; tagged PDFs: on the page's `PageSelector`). PDFKit ignores it on pages that aren't on screen, so the
-///   leaf is scrolled into view first. The user's selection: its text is the container's `AXSelectedText` (without
-///   trailing whitespace), its start the `AXSelectedTextRange` of the leaf holding it (other leaves report `NSNotFound`;
-///   the reported length is unreliable). PDFKit's AX doesn't see selections made with `PDFView.setCurrentSelection`.
-/// - Scrolling: the scroll area's scroll bar (`ScrollBarScroller`); the container's frame is document-sized.
+/// A PDF in PDFKit's `PDFView` (Preview): the `AXGroup` holding an `AXPage` per page, down to `AXStaticText` leaves.
+/// Text = leaves of a window of loaded pages, joined into blocks; headers, footers and footnotes left out.
 final class PDFReadableElement: ReadableElement {
     /// A leaf as laid out in `text`.
     private struct Leaf {
         let element: AXElement
         let page: Int
-        /// Index in `pageLeaves[page]` (identifies the leaf when the text is laid out again).
+        /// In `pageLeaves[page]`: identifies the leaf across layouts.
         let index: Int
-        /// Offset of the leaf's text in `text`.
         var offset: Int
         let length: Int
-        /// Offsets (in the leaf) of the line breaks that became spaces.
+        /// In-leaf offsets of the line breaks that became spaces.
         let lineBreaks: [Int]
         let isSettable: Bool
-        /// Whether a text block starts here (else the leaf continues the previous one, after a space).
         let startsBlock: Bool
 
         var end: Int { offset + length }
     }
 
-    /// A leaf as read from its page (page headers/footers and blank leaves left out).
+    /// A leaf as read from its page (headers/footers and blank leaves left out).
     private struct PageLeaf {
         let element: AXElement
-        /// The flattened text (line breaks → spaces, hyphenation → word joiners), as UTF-16.
+        /// Flattened: line breaks → spaces, hyphenation → word joiners.
         let units: [UInt16]
         let lineBreaks: [Int]
         let isSettable: Bool
-        /// The nearest ancestor with several children (a leaf's paragraph in tagged PDFs).
+        /// The nearest ancestor with several children (the paragraph in tagged PDFs).
         let group: AXElement?
         let info: LeafInfo
     }
 
-    /// What decides whether a leaf continues the previous one's text.
     struct LeafInfo {
         var text: String
         var fontSize: CGFloat?
@@ -70,54 +40,51 @@ final class PDFReadableElement: ReadableElement {
 
     /// How a leaf's text continues from the previous leaf's.
     enum Join: Equatable {
-        /// A new text block.
+        /// A new block.
         case none
         case space
-        /// A word hyphenated at the end of the previous leaf: word joiners in place of the separator and the hyphen
-        /// (unless `keepsHyphen`: not a word without it, e.g. "self-aware").
+        /// `keepsHyphen`: not a word without it ("self-aware").
         case hyphen(keepsHyphen: Bool)
     }
 
-    /// A unit's part in one leaf: what the overlay highlights (by leaf, as loading earlier pages shifts offsets).
+    /// A unit's part in one leaf.
     private struct Part {
-        /// Index in `leaves` (valid until the text is laid out again).
+        /// Index in `leaves`, valid until the next layout.
         let leaf: Int
         let element: AXElement
         let lineBreaks: [Int]
         let range: CFRange
     }
 
-    /// Every text leaf of a page in reading order (also the blank ones, headers, footers and footnotes left out of the
-    /// text): how a `PageSelector` finds where leaves start in the page's text.
+    /// Every text leaf of a page, also those left out of `text`: what a `PageSelector` locates.
     private struct PageText {
         let element: AXElement
         let value: String
         let isSettable: Bool
     }
 
-    /// Tagged PDFs: a selectable leaf of a page (PDFKit's text nodes: headings, list labels, some empty ones) whose
-    /// selected range isn't clamped to the leaf but goes on through the page's text (clamped to the page), and where
-    /// the page's leaves after it start, relative to it (measured by selecting to the page's end once).
+    /// Tagged PDFs: a leaf whose selected range runs on through the rest of the page's text.
     private struct PageSelector {
         let element: AXElement
+        /// Where the leaves after it start, relative to it.
         let starts: [AXElement: Int]
         /// The page's text from the selector's start.
         let text: NSString
     }
 
-    /// What one selection set selects: `range` in `element`'s selected text range, which should select `expected`.
+    /// One selection set: `range` on `element` should select `expected`.
     private struct Target {
         let element: AXElement
         let range: CFRange
         let expected: String
     }
 
-    /// A piece of a unit selected at once: its parts (consecutive, on one page, all selectable by one `Target`).
+    /// Consecutive parts of a unit selected by one `Target`.
     private struct Piece {
-        /// Where it starts in the unit.
+        /// Offset in the unit.
         let start: Int
         let parts: [Part]
-        /// Its range in `text`.
+        /// In `text`.
         let range: Selection
     }
 
@@ -125,28 +92,25 @@ final class PDFReadableElement: ReadableElement {
 
     private lazy var pages: [AXElement] = (try? handle.attribute(.children)) ?? []
     private let scroller: ScrollBarScroller?
-    /// Pages whose leaves are in `leaves` and `text`; nil until reading starts.
+    /// nil until reading starts.
     private var loadedPages: Range<Int>?
     private var pageLeaves: [Int: [PageLeaf]] = [:]
     private var pageTexts: [Int: [PageText]] = [:]
-    /// Measured page selectors (nil: the page has none that works); kept as long as the element.
+    /// `.some(nil)`: the page has none that works.
     private var pageSelectors: [Int: PageSelector?] = [:]
     private var leaves: [Leaf] = []
     private var text = ""
     private var textLength = 0
-    /// The selection EasyReader set or last took from the user (PDFKit can't select every leaf).
+    /// What we set or last took from the user (PDFKit can't select every leaf).
     private var tracked: Selection?
-    /// The container's selected text when the user's selection was taken, and right after the last selection set: while
-    /// it reports one of these (or the tracked unit's text), the user hasn't selected anything new.
+    /// Reports that aren't a new user selection: the one last taken and the one right after our last set.
     private var consumedReport: String?
     private var reportAfterSet: String?
-    /// The pieces of a unit selected piece by piece as it's read, and the one selected.
+    /// A unit spanning leaves, selected piece by piece as it's read.
     private var pieces: [Piece] = []
     private var selectedPiece = 0
-    /// Footnote marks found in each leaf (fetched when a unit in it is first read).
     private var markerCache: [AXElement: [NSRange]] = [:]
     private lazy var overlay = HighlightOverlay()
-    /// Whether the overlay is showing (the tracked unit can't be selected).
     private(set) var isHighlighting = false
 
     required init(_ element: AXElement) {
@@ -160,7 +124,7 @@ final class PDFReadableElement: ReadableElement {
         return text
     }
 
-    /// The tracked unit's text, with footnote marks (`markers(of:)`) replaced by word joiners so they aren't read.
+    /// Footnote marks become word joiners so they aren't read.
     override var selectedText: String? {
         prepare()
         guard let tracked else { return nil }
@@ -206,13 +170,13 @@ final class PDFReadableElement: ReadableElement {
         while first > 0, !leaves[first].startsBlock { first -= 1 }
         var last = first
         while last + 1 < leaves.count, !leaves[last + 1].startsBlock { last += 1 }
-        // The line break after a block belongs to it, so a unit ending at the block's end finds the next one from there.
+        // Include the line break after the block, so a unit ending at its end finds the next one from there
         return Selection(leaves[first].offset..<min(leaves[last].end + 1, textLength))
     }
 
     override func scroll(to selection: Selection, options: ScrollOptions) {
         guard let leaf = leaf(containing: selection.lowerBound) else { return }
-        // Characters on pages off screen have no bounds.
+        // Off-screen pages have no character bounds
         if !isOnScreen(leaf) { try? leaf.element.perform(.scrollToVisible) }
         guard let scroller,
             let bounds = parts(of: selection).lazy.compactMap({ Self.lineRects(of: $0).first }).first,
@@ -231,7 +195,7 @@ final class PDFReadableElement: ReadableElement {
 
     // MARK: Window of pages
 
-    /// Loads the page where reading starts and takes the user's selection, or else the top of the visible part.
+    /// Starts at the user's selection, else at the visible top.
     private func prepare() {
         guard loadedPages == nil else { return }
         let report = try? handle.attribute(.selectedText)
@@ -247,8 +211,8 @@ final class PDFReadableElement: ReadableElement {
         Log.accessibility.debug("pdf: starting at visible top \(String(describing: tracked)) of page \(page)")
     }
 
-    /// Keeps the pages next to the tracked unit's loaded (text running on from one page to the next is joined), and
-    /// further ones while nothing readable follows (or precedes) it.
+    /// Keeps the pages next to the tracked unit's loaded (to join text across pages), and more while nothing readable
+    /// follows or precedes it.
     private func extendAroundTracked() {
         guard let loaded = loadedPages else { return }
         let page = tracked.flatMap { leaf(containing: $0.lowerBound)?.page } ?? loaded.lowerBound
@@ -279,7 +243,7 @@ final class PDFReadableElement: ReadableElement {
         unit == 0x20 || unit == 0x0A || unit == 0x09 || unit == 0xFFFC || unit == 0xA0 || unit == wordJoiner
     }
 
-    /// Makes `page` loaded: extends the window when it's near, else starts a new window there (offsets start over).
+    /// Extends the window when `page` is near, else starts a new one there (offsets start over).
     private func ensureLoaded(page: Int) {
         if let loaded = loadedPages, loaded.lowerBound - 3 <= page, page < loaded.upperBound + 3 {
             setWindow(min(loaded.lowerBound, page)..<max(loaded.upperBound, page + 1))
@@ -296,7 +260,7 @@ final class PDFReadableElement: ReadableElement {
         setWindow(page..<page + 1)
     }
 
-    /// Loads `window`'s pages and lays out the text again; the tracked selection stays on the same text.
+    /// Re-lays out the text, keeping `tracked` on the same text.
     private func setWindow(_ window: Range<Int>) {
         guard window != loadedPages else { return }
         let anchors = tracked.map { (anchor(at: $0.lowerBound), anchor(at: $0.upperBound)) }
@@ -312,7 +276,6 @@ final class PDFReadableElement: ReadableElement {
         }
     }
 
-    /// Where `offset` is, by leaf (page and index in it) and offset in the leaf.
     private func anchor(at offset: Int) -> (page: Int, index: Int, delta: Int)? {
         guard let leaf = leaf(containing: offset) else { return nil }
         return (leaf.page, leaf.index, min(offset - leaf.offset, leaf.length))
@@ -324,9 +287,7 @@ final class PDFReadableElement: ReadableElement {
 
     // MARK: Text
 
-    /// Lays out the loaded pages' leaves as `text`: blocks joined by line breaks, leaves within a block by spaces (see
-    /// `join(_:_:isWord:)`). While a sentence runs on, leaves in a smaller font (footnotes, captions) are put after the
-    /// block, so it continues in the next column or page.
+    /// Blocks joined by line breaks; smaller leaves met while a sentence runs on (footnotes, captions) go after its block.
     private func layout() {
         var units: [UInt16] = []
         var laidOut: [Leaf] = []
@@ -343,25 +304,7 @@ final class PDFReadableElement: ReadableElement {
                     join = .space
                 }
             }
-            if !units.isEmpty {
-                switch join {
-                    case .none: units.append(0x0A)
-                    case .space:
-                        // No space before closing punctuation ("Wheel" "." → "Wheel⁠.").
-                        let startsWithPunctuation = leaf.units.first.flatMap(Unicode.Scalar.init).map {
-                            CharacterSet(charactersIn: ".,;:!?)]}”’").contains($0)
-                        }
-                        units.append(startsWithPunctuation == true ? Self.wordJoiner : 0x20)
-                    case .hyphen(let keepsHyphen):
-                        var end = units.count - 1
-                        while end >= 0, Self.isBlank(units[end]) {
-                            units[end] = Self.wordJoiner
-                            end -= 1
-                        }
-                        if !keepsHyphen, end >= 0, units[end] == 0x2D { units[end] = Self.wordJoiner }
-                        units.append(Self.wordJoiner)
-                }
-            }
+            if !units.isEmpty { Self.appendSeparator(join, before: leaf.units, to: &units) }
             laidOut.append(
                 Leaf(
                     element: leaf.element, page: page, index: index, offset: units.count, length: leaf.units.count,
@@ -397,14 +340,33 @@ final class PDFReadableElement: ReadableElement {
         text = String(decoding: units, as: UTF16.self)
     }
 
-    /// The page's leaves, depth first, without page headers and footers (a single short line in the top or bottom
-    /// margin: running titles, page numbers).
+    private nonisolated static func appendSeparator(_ join: Join, before next: [UInt16], to units: inout [UInt16]) {
+        switch join {
+            case .none: units.append(0x0A)
+            case .space:
+                // No space before closing punctuation ("Wheel" "." → "Wheel⁠.")
+                let startsWithPunctuation = next.first.flatMap(Unicode.Scalar.init).map {
+                    CharacterSet(charactersIn: ".,;:!?)]}”’").contains($0)
+                }
+                units.append(startsWithPunctuation == true ? wordJoiner : 0x20)
+            case .hyphen(let keepsHyphen):
+                var end = units.count - 1
+                while end >= 0, isBlank(units[end]) {
+                    units[end] = wordJoiner
+                    end -= 1
+                }
+                if !keepsHyphen, end >= 0, units[end] == 0x2D { units[end] = wordJoiner }
+                units.append(wordJoiner)
+        }
+    }
+
+    /// Depth first, without headers and footers (a single short line in the top or bottom margin).
     private func leaves(ofPage page: Int) -> ([PageLeaf], [PageText]) {
         guard pages.indices.contains(page) else { return ([], []) }
         let pageFrame = try? pages[page].attribute(.frame)
         var leaves: [PageLeaf] = []
         var texts: [PageText] = []
-        // Each element with the nearest ancestor that has several children, and whether its parent is a heading.
+        // (element, nearest ancestor with several children, parent is a heading)
         var stack: [(AXElement, AXElement?, Bool)] = [(pages[page], nil, false)]
         while let (element, group, inHeading) = stack.popLast() {
             let role = try? element.role()
@@ -445,9 +407,8 @@ final class PDFReadableElement: ReadableElement {
         return (leaves, texts)
     }
 
-    /// Where the page's footnotes start: the leaves at the end of the page (reading order) in a font clearly smaller
-    /// than the page's body text (the size most of its characters have), not in the upper half of the page (`isLow`;
-    /// nil when unknown). `leaves.count` if there are none.
+    /// Where the trailing leaves in a font smaller than the page's body text start, unless `isLow` says they're in the
+    /// upper half (nil: unknown). `leaves.count` if none.
     nonisolated static func footnoteStart(_ leaves: [(fontSize: CGFloat?, length: Int)], isLow: (Int) -> Bool?) -> Int {
         guard let body = dominantSize(leaves) else { return leaves.count }
         var start = leaves.count
@@ -466,8 +427,7 @@ final class PDFReadableElement: ReadableElement {
         return lengths.values.max { $0.length < $1.length }?.size
     }
 
-    /// The footnote marks in `leaf` (in-leaf ranges): short superscript runs. Only selectable leaves have font
-    /// information (in tagged PDFs, marks are leaves of their own).
+    /// In-leaf ranges of footnote marks; only selectable leaves have font info.
     private func markers(of leaf: Leaf) -> [NSRange] {
         if let cached = markerCache[leaf.element] { return cached }
         var runs: [(range: NSRange, fontSize: CGFloat?)] = []
@@ -486,8 +446,7 @@ final class PDFReadableElement: ReadableElement {
         return markers
     }
 
-    /// Footnote marks among a leaf's font runs: 1–3 letters, digits or `*†‡§¶` in a font under 75% of the leaf's body
-    /// text size (superscripts), without the whitespace around them.
+    /// Runs of 1–3 alphanumerics or `*†‡§¶` under 75% of the leaf's dominant font size, trimmed.
     nonisolated static func markerRanges(_ runs: [(range: NSRange, fontSize: CGFloat?)], in text: String) -> [NSRange] {
         guard let body = dominantSize(runs.map { ($0.fontSize, $0.range.length) }) else { return [] }
         let text = text as NSString
@@ -502,14 +461,13 @@ final class PDFReadableElement: ReadableElement {
         }
     }
 
-    /// Whether `frame` (of a leaf) lies in the top or bottom 8% of the page.
     nonisolated static func isInMargin(_ frame: CGRect, of pageFrame: CGRect) -> Bool {
         guard !frame.isEmpty, frame.minY.isFinite, !pageFrame.isEmpty else { return false }
         let margin = pageFrame.height * 0.08
         return frame.maxY <= pageFrame.minY + margin || frame.minY >= pageFrame.maxY - margin
     }
 
-    /// The leaf's font size: the larger of its middle and first characters' (one may be a superscript).
+    /// The larger of the middle and first characters' sizes (one may be a superscript).
     private static func fontSize(of element: AXElement, length: Int) -> CGFloat? {
         [length / 2, 0].compactMap { index -> CGFloat? in
             guard let string = try? element.attribute(.attributedStringForRange, for: CFRange(location: index, length: 1))?.string,
@@ -520,7 +478,7 @@ final class PDFReadableElement: ReadableElement {
         }.max()
     }
 
-    /// The size in an `AXFont` attribute; PDFKit vends it as a string ("10.296").
+    // PDFKit vends AXFontSize as a string ("10.296")
     nonisolated static func fontSize(in font: [String: Any]) -> CGFloat? {
         switch font["AXFontSize"] {
             case let size as NSNumber: return CGFloat(size.doubleValue)
@@ -533,8 +491,7 @@ final class PDFReadableElement: ReadableElement {
         NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0).location == NSNotFound
     }
 
-    /// `value` with its line breaks replaced by spaces (each is one UTF-16 unit, so offsets don't change), and their
-    /// offsets.
+    /// Line breaks → spaces (same UTF-16 length), with their offsets.
     nonisolated static func flattened(_ value: String) -> (String, [Int]) {
         var units = Array(value.utf16)
         var lineBreaks: [Int] = []
@@ -546,8 +503,7 @@ final class PDFReadableElement: ReadableElement {
         return (String(decoding: units, as: UTF16.self), lineBreaks)
     }
 
-    /// Joins words hyphenated at a line break (letter, hyphen, break, lowercase letter): the break and the hyphen become
-    /// word joiners (read as one word, same length), or only the break when the word isn't one without its hyphen.
+    /// Letter-hyphen-break-lowercase: the break (and the hyphen, if the joined word is one) become word joiners.
     nonisolated static func dehyphenate(_ units: inout [UInt16], lineBreaks: [Int], isWord: (String) -> Bool) {
         for lineBreak in lineBreaks where lineBreak >= 2 && lineBreak + 1 < units.count {
             guard units[lineBreak - 1] == 0x2D, isLetter(units[lineBreak - 2]), isLowercase(units[lineBreak + 1]) else {
@@ -563,10 +519,8 @@ final class PDFReadableElement: ReadableElement {
         }
     }
 
-    /// Whether `next` continues `previous`'s text (in the next line, column or page) and how.
-    ///
-    /// It does when `previous` ends mid-sentence (no closing `.`, `!`, `?`, `…` or `:`) and `next` is in about the same
-    /// font, unless `previous` looks like a heading: in an `AXHeading`, or one line in title case followed by a capital.
+    /// Continues when `previous` ends mid-sentence in about the same font, unless it's a heading (`AXHeading`, or one
+    /// title-case line before a capital).
     nonisolated static func join(_ previous: LeafInfo, _ next: LeafInfo, isWord: (String) -> Bool) -> Join {
         guard !previous.isHeading, endsMidSentence(previous.text),
             !isSmaller(next.fontSize, than: previous.fontSize), !isSmaller(previous.fontSize, than: next.fontSize),
@@ -582,8 +536,7 @@ final class PDFReadableElement: ReadableElement {
         return .space
     }
 
-    /// Whether a sentence is open at the end of `leaf`, so smaller text after it is put after the sentence's block: it
-    /// ends mid-sentence and isn't a heading (in an `AXHeading`, or one line in title case).
+    /// A sentence is open at the end of `leaf` (smaller text after it is deferred).
     nonisolated static func runsOn(_ leaf: LeafInfo) -> Bool {
         !leaf.isHeading && endsMidSentence(leaf.text) && !(leaf.isSingleLine && isTitleCase(leaf.text))
     }
@@ -595,13 +548,12 @@ final class PDFReadableElement: ReadableElement {
         return !".!?…:".unicodeScalars.contains(last)
     }
 
-    /// One line whose longer words (4+ letters) all start with a capital: "PRESENT CODE — ACTIVITY", "Quality of Life".
+    /// Words of 4+ letters all capitalized: "PRESENT CODE — ACTIVITY", "Quality of Life".
     nonisolated static func isTitleCase(_ text: String) -> Bool {
         let words = text.split { !$0.isLetter }.filter { $0.count >= 4 }
         return !words.isEmpty && words.allSatisfy { $0.first?.isUppercase == true }
     }
 
-    /// Whether `size` is clearly smaller than `other` (both known).
     nonisolated static func isSmaller(_ size: CGFloat?, than other: CGFloat?) -> Bool {
         guard let size, let other else { return false }
         return size < other * 0.9
@@ -615,7 +567,7 @@ final class PDFReadableElement: ReadableElement {
         Unicode.Scalar(unit).map { CharacterSet.lowercaseLetters.contains($0) } ?? false
     }
 
-    /// Text compared with PDFKit's reports, which keep line breaks and hyphens and drop trailing whitespace.
+    // PDFKit's reports keep line breaks and hyphens and drop trailing whitespace
     nonisolated static func comparable(_ string: String) -> String {
         String(String.UnicodeScalarView(string.unicodeScalars.filter { !ignoredInComparison.contains($0) }))
     }
@@ -646,10 +598,9 @@ final class PDFReadableElement: ReadableElement {
 
     // MARK: Leaves
 
-    /// The leaf holding UTF-16 `offset` of `text`, or the separator after it.
+    /// The leaf holding `offset`, or the separator after it.
     private func leafIndex(containing offset: Int) -> Int? {
         guard offset >= 0, offset <= textLength else { return nil }
-        // Last leaf starting at or before `offset`.
         var low = 0
         var high = leaves.count
         while low < high {
@@ -663,7 +614,7 @@ final class PDFReadableElement: ReadableElement {
         leafIndex(containing: offset).map { leaves[$0] }
     }
 
-    /// `selection`'s non-empty parts in the leaves it covers (or its empty start).
+    /// Non-empty parts (or the empty start).
     private func parts(of selection: Selection) -> [Part] {
         guard let first = leafIndex(containing: selection.lowerBound) else { return [] }
         var parts: [Part] = []
@@ -675,14 +626,13 @@ final class PDFReadableElement: ReadableElement {
             parts.append(
                 Part(leaf: index, element: leaf.element, lineBreaks: leaf.lineBreaks, range: CFRange(location: lower - leaf.offset, length: upper - lower)))
         }
-        // A part made only of the start (the unit begins at the separator before the next leaf) isn't worth keeping.
+        // Starts on the separator before the next leaf
         if parts.count > 1, parts[0].range.length == 0 { parts.removeFirst() }
         return parts
     }
 
-    /// Indices of the pages on screen, in order. PDFKit fails `AXVisibleChildren` until its page elements exist (the
-    /// first `AXChildren` makes them), so `pages` comes first; page frames are the fallback.
     private func visiblePages() -> [Int] {
+        // AXVisibleChildren fails until AXChildren was read
         let pages = pages
         if let visible = try? handle.attribute(.visibleChildren), !visible.isEmpty {
             return visible.compactMap { pages.firstIndex(of: $0) }
@@ -697,7 +647,7 @@ final class PDFReadableElement: ReadableElement {
         visiblePages().contains(leaf.page)
     }
 
-    /// The first character on screen on `page` (loaded), as an empty selection.
+    /// The first character on screen on `page`, as an empty selection.
     private func visibleTop(page: Int) -> Selection? {
         guard let scrollFrame = scroller?.frame else { return nil }
         for leaf in leaves where leaf.page == page {
@@ -713,7 +663,7 @@ final class PDFReadableElement: ReadableElement {
 
     // MARK: Selection
 
-    /// The container's selected text, if it's a selection the user made since the last one taken or set.
+    /// The container's selected text, if the user selected something new.
     private func newUserSelection() -> String? {
         guard let report = try? handle.attribute(.selectedText), !report.isEmpty,
             report != consumedReport, report != reportAfterSet, !isTrackedText(report)
@@ -726,8 +676,7 @@ final class PDFReadableElement: ReadableElement {
         return Self.comparable(report) == Self.comparable(string(in: tracked))
     }
 
-    /// Where the user's selection (its text `report`) is: in the leaf on a visible page that reports a selected range
-    /// (also leaves that can't be selected through AX), else where its text first occurs on the visible pages.
+    /// From the visible leaf reporting a selected range, else where `report` first occurs on the visible pages.
     private func locate(_ report: String) -> Selection? {
         let visible = visiblePages()
         for page in visible {
@@ -740,7 +689,7 @@ final class PDFReadableElement: ReadableElement {
                 return Selection(start..<Self.end(of: report, in: text, from: start))
             }
         }
-        // Our text differs where lines and leaves are joined: search for the report's first line.
+        // Our text differs where lines and leaves are joined: search for the first line
         let firstLine = report.prefix { !$0.isNewline && $0 != "-" }
         let needle = firstLine.isEmpty ? report : String(firstLine)
         guard let first = visible.first, let last = visible.last else { return nil }
@@ -754,9 +703,7 @@ final class PDFReadableElement: ReadableElement {
         return Selection(found.location..<Self.end(of: report, in: text, from: found.location))
     }
 
-    /// Selects `selection`. A unit spanning several leaves is selected piece by piece as it's read (`didReach(_:)`),
-    /// starting with the first: PDFKit selects within one leaf, or through a `PageSelector` within one page. Highlights
-    /// it instead when that isn't possible or the selection doesn't take.
+    /// Selects the first piece (the rest follow in `didReach(_:)`), else highlights.
     private func apply(_ selection: Selection) {
         pieces = []
         let parts = parts(of: selection).filter { part in
@@ -776,9 +723,7 @@ final class PDFReadableElement: ReadableElement {
         }
     }
 
-    /// `parts` grouped into pieces that can each be selected at once: a selectable leaf's part alone, consecutive parts
-    /// in leaves that can't be selected on the same page together (selected through the page's `PageSelector`). nil if
-    /// some part is on a page without a selectable leaf.
+    /// A selectable leaf's part alone; consecutive non-selectable ones on a page together. nil if a page can't select.
     private func pieces(of parts: [Part], in selection: Selection) -> [Piece]? {
         var pieces: [Piece] = []
         for part in parts {
@@ -813,7 +758,7 @@ final class PDFReadableElement: ReadableElement {
         return piece.range
     }
 
-    /// Selects `piece` (scrolling it into view if needed) and checks it selected the piece's text.
+    /// Checks the piece's text got selected.
     private func select(_ piece: Piece) -> Bool {
         let leaf = leaves[piece.parts[0].leaf]
         if !isOnScreen(leaf) { try? leaf.element.perform(.scrollToVisible) }
@@ -837,9 +782,7 @@ final class PDFReadableElement: ReadableElement {
         return true
     }
 
-    /// The selection to set for `piece`: its range in its leaf, or through its page's `PageSelector` (also selecting
-    /// what's between its parts in the page's text: separators, verse numbers; nil if that has letters, as when a
-    /// leaf was found in the wrong place).
+    /// Through a `PageSelector`, also selects what's between the parts; nil if that has letters (leaf misplaced).
     private func target(of piece: Piece) -> Target? {
         guard let first = piece.parts.first else { return nil }
         if leaves[first.leaf].isSettable {
@@ -864,9 +807,7 @@ final class PDFReadableElement: ReadableElement {
             expected: selector.text.substring(with: range))
     }
 
-    /// `page`'s `PageSelector`, measured the first time: its first selectable leaf that selects text to the page's end,
-    /// where the text selected (the page's text from there) has the following leaves. The page must be on screen
-    /// (PDFKit ignores selections elsewhere). Leaves the selection collapsed.
+    /// Measured once by selecting from a candidate to the page's end (on screen only), then collapsed.
     private func selector(ofPage page: Int) -> PageSelector? {
         if let measured = pageSelectors[page] { return measured }
         guard let texts = pageTexts[page] else { return nil }
@@ -891,9 +832,7 @@ final class PDFReadableElement: ReadableElement {
         return selector
     }
 
-    /// Where each of `values` (a page's leaves in reading order) starts in `text` (the page's text from the first
-    /// leaf's start), each searched for a little after the previous one (the page's text also has separators and list
-    /// labels); nil if not found there (or empty).
+    /// Each value searched for just after the previous one (page text also has separators and list labels).
     nonisolated static func starts(of values: [String], in text: String) -> [Int?] {
         let text = text as NSString
         var cursor = 0
@@ -916,17 +855,16 @@ final class PDFReadableElement: ReadableElement {
         }
         isHighlighting = true
         overlay.show { [weak self] in
-            guard let self, self.app?.isActive != false else { return nil }
+            guard let self, app?.isActive != false else { return nil }
             return parts.flatMap(Self.lineRects(of:))
         }
     }
 
-    /// Screen rects (top-left origin) of `selection`, one per line and leaf; what the overlay draws.
     func highlightRects(for selection: Selection) -> [CGRect] {
         parts(of: selection).flatMap(Self.lineRects(of:))
     }
 
-    /// Screen rects (top-left origin) of `part`, one per line; empty off screen.
+    /// One per line; empty off screen.
     private static func lineRects(of part: Part) -> [CGRect] {
         var lines: [CFRange] = []
         var start = part.range.location

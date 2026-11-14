@@ -3,7 +3,6 @@ import Testing
 
 @testable import EasyReader
 
-/// Decoding and encoding of AX values (no AX calls).
 struct AXValueTests {
     @Test func structsRoundTripThroughAXValue() throws {
         let rect = CGRect(x: 1, y: 2, width: 3, height: 4)

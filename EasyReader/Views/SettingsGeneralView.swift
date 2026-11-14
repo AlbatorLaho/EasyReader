@@ -1,10 +1,3 @@
-//
-//  SettingsGeneralView.swift
-//  EasyReader
-//
-//  Created by Ewalk on 2025-01-31.
-//
-
 import SwiftUI
 import Defaults
 import KeyboardShortcuts
@@ -52,14 +45,6 @@ struct SettingsGeneralView: View {
                     "Also shows what's being read (the app and window) in Control Center's Now Playing, like music."
                 )
             }
-//            Toggle("\"Now Playing Center\" integration", systemImage: "play.circle", isOn: $nowPlayingCenterIntegration)
-//            GroupBox {
-//                Form {
-//                }
-//                .disabled(!nowPlayingCenterIntegration)
-//            } label: {
-//                Toggle("\"Now Playing Center\" integration", systemImage: "play.circle", isOn: $nowPlayingCenterIntegration)
-//            }
 
             Spacer()
 
@@ -68,20 +53,11 @@ struct SettingsGeneralView: View {
             HStack {
                 AccessibilityPermissionButton()
                 Spacer()
-//                ResetDefaultsButton(for: "general", keys: [
-//                    .nowPlayingCenterIntegration,
-//                ])
-//                ResetDefaultsButton(for: "general") {
-//                    KeyboardShortcuts.resetAll()
-//                    Defaults.reset([
-//                        .nowPlayingCenterIntegration,
-//                    ])
-//                }
                 ResetDefaultsButton(for: "all") {
                     KeyboardShortcuts.resetAll()
                     Defaults.removeAll()
                 } label: {
-                    Label("Reset all settings...", systemImage: "exclamationmark.triangle.fill")
+                    Label("Reset all settings…", systemImage: "exclamationmark.triangle.fill")
                 }
             }
         }
@@ -89,30 +65,35 @@ struct SettingsGeneralView: View {
         TextPlayground("General Playground") {
             """
             Welcome to \(NSRunningApplication.current.localizedName!)!
-            A utility to assist the built-in MacOS screen reader.
-            
+            A text-to-speech menu bar app that selects each sentence as it reads.
+
             Key features:
             • selects text as it's reading
             • modify selection while reading, to change what will be read next
-            • can integrate with the "Now Playing Center" and media keys
+            • resumes from the word it was paused at
             • can scroll the selection into view while reading
-            
+            • can integrate with the "Now Playing Center" and media keys
+
+            Reads:
+            • text views (like this one)
+            • web pages
+            • PDFs
+            • books in Apple Books
+            • the selected text in unsupported apps (if turned on in Reading settings)
+
             Behavior:
-            • reading is modified by what the current selection is, i.e. reading continues from the end of the selection
-            • while reading, if you make no selection, reading will stop
-            • will attempt to start reading from the currently focused UI element (currently only TextArea is supported)
-            • starts reading from your current selection, or will make a selection if there is none
-            
+            • starts reading from your current selection, or from the cursor/top of the page if there is none
+            • reading continues from the end of the selection, until the end of the text
+            • if you select something else while reading, reading continues from there
+            • Start/Stop reads from the focused app, Play/Pause and skipping only work while reading (or paused)
+
             Caveats/Bugs:
             • some UI elements don't look/behave correctly prior to MacOS 13
-            • reading sometimes hangs, and (usually) requires restarting the app to fix
             """
         }
     }
 }
 
-/// Trust takes effect immediately (no relaunch needed); re-check when the system's Accessibility list
-/// changes and when the app becomes active, since the view otherwise never redraws.
 private struct AccessibilityPermissionButton: View {
     @State private var isTrusted = AXElement.isProcessTrusted()
     private static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
@@ -120,8 +101,7 @@ private struct AccessibilityPermissionButton: View {
     var body: some View {
         Button {
             if isTrusted {
-                // Undocumented URL (System Preferences' pane ID, still mapped by System Settings on macOS 13+);
-                // fall back to opening System Settings itself.
+                // Undocumented URL, still mapped by System Settings on macOS 13+.
                 if !NSWorkspace.shared.open(Self.settingsURL) {
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:")!)
                 }
@@ -142,7 +122,7 @@ private struct AccessibilityPermissionButton: View {
             Text(isTrusted ? "Accessibility Settings…" : "Request Accessibility Permission…")
         }
         .onReceive(DistributedNotificationCenter.default().publisher(for: Notification.Name("com.apple.accessibility.api"))) { _ in
-            // Posted as the change is being applied; the trust check can lag briefly.
+            // Posted before the trust check catches up.
             Task {
                 try? await Task.sleep(seconds: 0.5)
                 refresh()

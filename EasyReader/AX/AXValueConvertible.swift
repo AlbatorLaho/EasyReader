@@ -1,17 +1,10 @@
-//
-//  AXValueConvertible.swift
-//  EasyReader
-//
-
 import ApplicationServices
 import Foundation
 
-/// A type an attribute value can be read as: `nil` when the value has another type.
 protocol AXDecodable {
     init?(axValue: AnyObject)
 }
 
-/// A type that can be passed to the AX API (attribute value or parameter).
 protocol AXEncodable {
     var axValue: AnyObject { get }
 }
@@ -27,7 +20,7 @@ extension String: AXValueConvertible {
     var axValue: AnyObject { self as CFString }
 }
 
-/// An `NSAttributedString` value (a class can't conform to `AXDecodable` itself).
+/// Wrapper because a class can't conform to `AXDecodable` itself.
 struct AXAttributedString: AXDecodable {
     let string: NSAttributedString
 
@@ -102,7 +95,6 @@ extension Array: AXEncodable where Element: AXEncodable {
 
 // MARK: AXValue structs
 
-/// Structs the AX API wraps in an `AXValue`.
 protocol AXValueStruct: AXValueConvertible {
     static var axType: AXValueType { get }
     init()
@@ -141,7 +133,6 @@ extension CFRange: AXValueStruct {
 
 // MARK: Web
 
-/// A position in a web page's text (WebKit, Chromium, Firefox): an opaque CF type.
 struct AXTextMarker: AXValueConvertible, Equatable {
     let raw: AnyObject
 
@@ -155,7 +146,6 @@ struct AXTextMarker: AXValueConvertible, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool { CFEqual(lhs.raw, rhs.raw) }
 }
 
-/// A range between two text markers: an opaque CF type.
 struct AXTextMarkerRange: AXValueConvertible, Equatable {
     let raw: AnyObject
 
@@ -164,21 +154,21 @@ struct AXTextMarkerRange: AXValueConvertible, Equatable {
         raw = axValue
     }
 
-    var axValue: AnyObject { raw }
-
-    /// Only Firefox has `AXStartTextMarkerForTextMarkerRange`, so these use HIServices' own functions.
-    var start: AXTextMarker? { TextMarkerSPI.start(of: raw).flatMap(AXTextMarker.init(axValue:)) }
-    /// A range made locally (no IPC), for apps without `AXTextMarkerRangeForUnorderedTextMarkers` (Catalyst).
+    /// Made locally (no IPC), for apps without `AXTextMarkerRangeForUnorderedTextMarkers` (Catalyst).
     init?(start: AXTextMarker, end: AXTextMarker) {
         guard let raw = TextMarkerSPI.range(from: start.raw, to: end.raw) else { return nil }
         self.raw = raw
     }
+
+    var axValue: AnyObject { raw }
+
+    // Only Firefox has `AXStartTextMarkerForTextMarkerRange`, so these go through HIServices directly.
+    var start: AXTextMarker? { TextMarkerSPI.start(of: raw).flatMap(AXTextMarker.init(axValue:)) }
     var end: AXTextMarker? { TextMarkerSPI.end(of: raw).flatMap(AXTextMarker.init(axValue:)) }
 
     static func == (lhs: Self, rhs: Self) -> Bool { CFEqual(lhs.raw, rhs.raw) }
 }
 
-/// `AXUIElementsForSearchPredicate`'s parameter.
 struct AXSearchPredicate: AXEncodable {
     let searchKey: String
 
@@ -192,9 +182,7 @@ struct AXSearchPredicate: AXEncodable {
     }
 }
 
-/// One `AXUIElementsForSearchPredicate` result. Newer Chromium (157) wraps each element in a dictionary; older versions
-/// return the elements themselves. (`[AXUIElement]` casts would accept the dictionaries too: CF types aren't checked
-/// when bridging.)
+/// Chromium 157 wraps each result as `{AXSearchResultElement: element}`, older ones return bare elements (an `[AXUIElement]` cast lets dicts through).
 struct AXSearchResult: AXDecodable {
     /// `nil` for a result of another kind (skipped, not failing the whole list).
     let element: AXElement?
@@ -204,7 +192,6 @@ struct AXSearchResult: AXDecodable {
     }
 }
 
-/// `AXTextOperation`'s parameter (Chromium).
 struct AXTextOperation: AXEncodable {
     let type: String
     let ranges: [AXTextMarkerRange]
@@ -217,7 +204,7 @@ struct AXTextOperation: AXEncodable {
     }
 }
 
-/// A value of any type, for results nobody reads.
+/// For results nobody reads.
 struct AXAnyValue: AXDecodable {
     let raw: AnyObject
 
@@ -226,7 +213,7 @@ struct AXAnyValue: AXDecodable {
     }
 }
 
-/// HIServices functions for text markers. Not in the SDK headers, but exported (WebKit and assistive apps use them).
+/// HIServices text-marker functions: not in the SDK headers, but exported.
 private enum TextMarkerSPI {
     private typealias CopyMarker = @convention(c) (CFTypeRef) -> Unmanaged<CFTypeRef>?
     private typealias GetTypeID = @convention(c) () -> CFTypeID

@@ -6,8 +6,6 @@ import Testing
 @testable import EasyReader
 
 extension IntegrationTests {
-    /// Exercises `AppDelegate` wiring. Each test launches its own delegate (status item, settings loops)
-    /// rather than relying on the test host's, so the loops start fresh.
     @MainActor
     struct AppDelegateTests {
         private let recorder = StateRecorder()
@@ -33,7 +31,7 @@ extension IntegrationTests {
             return app
         }
 
-        /// Starts reading long text; the readable's `selectedTextReads` counts utterances started.
+        /// The readable's `selectedTextReads` counts utterances started.
         private func startReading(_ reader: EasyReader) async throws -> MockReadable {
             let readable = MockReadable(longText)
             let reading = recorder.expect(.reading)
@@ -42,8 +40,7 @@ extension IntegrationTests {
             return readable
         }
 
-        /// Settings… opens the settings window, and brings it back to the front when it's already open behind
-        /// another window.
+        /// Settings… opens the settings window, and brings it to the front when it's already open behind another window.
         @Test func settingsMenuBringsOpenSettingsWindowToFront() async throws {
             let app = await launch()
             Teardown.add { SettingsOpener.window?.close() }

@@ -6,8 +6,6 @@ import Testing
 @testable import EasyReader
 
 extension IntegrationTests {
-    /// Runs the real speech state machine silently (volume 0, max rate).
-    /// Settings writes go to an in-memory store under tests (`UserDefaults.app`), so they never touch a real install.
     @MainActor
     struct EasyReaderSpeechTests {
         private let reader = EasyReader()
@@ -185,7 +183,6 @@ extension IntegrationTests {
             #expect(reader.state == .stopped)
         }
 
-        /// Skipping backward from the first sentence re-reads it.
         @Test func skipBackwardAtStartKeepsReading() {
             let readable = MockReadable("First one here. Second one here.")
             #expect(reader.start(reading: readable))
@@ -216,8 +213,8 @@ extension IntegrationTests {
 
         @Test func pronunciationsFilteredByAppDomain() {
             let any = Pronunciation(search: "a", replace: "b", ignoreCase: true, enabled: true)
-            let mine = Pronunciation(search: "c", replace: "d", domain: "com.example.mine", ignoreCase: true, enabled: true)
-            let other = Pronunciation(search: "e", replace: "f", domain: "com.example.other", ignoreCase: true, enabled: true)
+            let mine = Pronunciation(search: "c", replace: "d", appDomain: "com.example.mine", ignoreCase: true, enabled: true)
+            let other = Pronunciation(search: "e", replace: "f", appDomain: "com.example.other", ignoreCase: true, enabled: true)
             Defaults[.pronunciations] = [any, mine, other]
             #expect(reader.pronunciations(with: "com.example.mine") == [any, mine])
             #expect(reader.pronunciations(with: nil) == [any])
@@ -236,8 +233,7 @@ extension IntegrationTests {
             #expect(spoken?.hasPhonetics == true)
         }
 
-        /// Resuming from a word maps the synthesizer's offset (in the replaced text) back to the original
-        /// text, then re-applies the pronunciations from there.
+        /// Resuming maps the synthesizer's offset in the replaced text back to the original, then re-applies the pronunciations.
         @Test func resumeFromWordWithLongerReplacement() async throws {
             Defaults[.pronunciations] = [Pronunciation(search: "GUI", replace: "graphical user interface")]
             let long = Array(repeating: "GUI", count: 200).joined(separator: " ")
@@ -245,8 +241,7 @@ extension IntegrationTests {
             let reading = recorder.expect(.reading)
             #expect(reader.start(reading: readable))
             try await reading.wait(timeout: 10)
-            // A long utterance's first `willSpeakRange` comes ~0.5–1.2 s after it starts (synthesis lookahead).
-            await settle(2)
+            await settle(2)  // a long utterance's first `willSpeakRange` lags ~0.5–1.2 s
             let paused = recorder.expect(.paused)
             #expect(reader.pause())
             try await paused.wait(timeout: 10)
@@ -270,8 +265,7 @@ extension IntegrationTests {
             #expect(!reader.skip(.forward))
         }
 
-        /// With the word boundary macOS reports the word it stops *before* as spoken and then `didFinish`,
-        /// so a pause anywhere in a one-word sentence must resume that sentence, not skip to the next.
+        /// With the word boundary macOS reports the word it stops *before* as spoken, then `didFinish`: must not skip ahead.
         @Test func pauseInLastWordResumesSameSentence() async throws {
             Defaults[.speechStopBoundary] = .word
             Defaults[.speechRate] = AVSpeechUtteranceDefaultSpeechRate

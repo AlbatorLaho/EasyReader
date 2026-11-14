@@ -1,12 +1,6 @@
-//
-//  AXAttribute.swift
-//  EasyReader
-//
-
 import ApplicationServices
 
-/// An attribute name together with the type of its value, e.g. `AXAttribute<CGRect>.frame`. Keys are declared in
-/// extensions constrained on the value type, so `element.attribute(.frame)` infers the result type.
+/// An attribute name typed by its value; keys live in constrained extensions so `element.attribute(.frame)` infers `CGRect`.
 struct AXAttribute<Value>: Hashable, CustomStringConvertible {
     let name: String
 
@@ -17,7 +11,6 @@ struct AXAttribute<Value>: Hashable, CustomStringConvertible {
     var description: String { name }
 }
 
-/// A parameterized attribute: the type of its parameter and of its value.
 struct AXParameterizedAttribute<Parameter, Value> {
     let name: String
 

@@ -1,10 +1,3 @@
-//
-//  TextAreaReadableElement.swift
-//  EasyReader
-//
-//  Created by Ewalk on 24/12/14.
-//
-
 import Cocoa
 
 final class TextAreaReadableElement: ReadableElement {
@@ -30,25 +23,28 @@ final class TextAreaReadableElement: ReadableElement {
 
     override func scroll(to selection: Selection, options: ScrollOptions) {
         guard let scroller,
-              let selectionBounds = try? handle.attribute(.boundsForRange, for: CFRange(selection)),
-              let elementFrame = try? handle.attribute(.frame),
-              let scrollAreaFrame = scroller.frame
+            let selectionBounds = try? handle.attribute(.boundsForRange, for: CFRange(selection)),
+            let elementFrame = try? handle.attribute(.frame),
+            let scrollAreaFrame = scroller.frame
         else {
             Log.scroll.debug("scroll to \(selection): missing bounds, frame, or scroll area")
             return
         }
-        let contentFrame = self.contentFrame(elementFrame: elementFrame, scrollAreaFrame: scrollAreaFrame)
-        scroller.scroll(to: selectionBounds, contentFrame: contentFrame, options: options)
+        scroller.scroll(
+            to: selectionBounds, contentFrame: contentFrame(elementFrame: elementFrame, scrollAreaFrame: scrollAreaFrame), options: options)
     }
 
-    /// The scrollable content's rect. AppKit's `NSTextView` reports its full (document-sized) frame, but some
-    /// text areas (e.g. SwiftUI's `TextEditor`) report only their visible part, which made every scroll go to
-    /// the top. Then fall back to the bounds of the whole text, which track the scroll position.
+    /// SwiftUI's TextEditor reports only its visible rect as its frame; an `NSTextView` is as tall as its text (wraps to the width).
+    nonisolated static func showsOnlyVisibleRect(elementFrame: CGRect, scrollAreaFrame: CGRect) -> Bool {
+        elementFrame.height <= scrollAreaFrame.height
+    }
+
+    // Only then: the whole text's bounds (fetches all of it) give the document's frame.
     private func contentFrame(elementFrame: CGRect, scrollAreaFrame: CGRect) -> CGRect {
-        guard elementFrame.height <= scrollAreaFrame.height || elementFrame.width <= scrollAreaFrame.width,
-              let length = fullText?.utf16.count, length > 0,
-              let textBounds = try? handle.attribute(.boundsForRange, for: CFRange(location: 0, length: length)),
-              textBounds.size != .zero
+        guard Self.showsOnlyVisibleRect(elementFrame: elementFrame, scrollAreaFrame: scrollAreaFrame),
+            let length = fullText?.utf16.count, length > 0,
+            let textBounds = try? handle.attribute(.boundsForRange, for: CFRange(location: 0, length: length)),
+            textBounds.size != .zero
         else { return elementFrame }
         let contentFrame = elementFrame.union(textBounds)
         Log.scroll.debug("element frame \(elementFrame) not document-sized; using text bounds → \(contentFrame)")

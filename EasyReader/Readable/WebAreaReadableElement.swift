@@ -1,44 +1,15 @@
-//
-//  WebAreaReadableElement.swift
-//  EasyReader
-//
-//  Created by Ewalk on 24/12/14.
-//
-
 import Cocoa
 
-/// A web page (Safari/WebKit incl. `WKWebView`, Chromium, Firefox), read through the AX text-marker API.
-///
-/// Web areas have no `AXValue`/`AXSelectedTextRange`; text positions are opaque text markers instead. The page text is
-/// the string between `AXStartTextMarker` and `AXEndTextMarker`, and a marker's offset is the UTF-16 length of the text
-/// before it (consistent with the full text by construction). `AXTextMarkerForIndex`/`AXIndexForTextMarker` use a
-/// different count (it drifts by dozens of characters on real pages), so they only seed the search for an offset's marker.
-///
-/// Not every browser lets AX clients change the page selection: Chromium reports the user's selection (only once its
-/// full AX mode is on, see `beginReading`) but only lets AX clients set it (`AXSelectedTextMarkerRange`) in editable
-/// text (by design: VoiceOver's selection changes interfered with its navigation). With the flag "Enable text editing
-/// through accessibility APIs" (chrome://flags/#enable-accessibility-text-operation, off by default) it selects page
-/// text through `AXTextOperation` instead; without it the selection is only tracked here: reading starts at the user's
-/// selection or caret, else at the top of the visible part of the page, and continues from there, highlighted by a
-/// `HighlightOverlay`. Safari/WebKit and Firefox support setting it.
-///
-/// Chromium also needs its page text leaves (`PageLeaves`) for highlighting, scrolling and finding the visible top, and
-/// reports its text blocks (paragraphs, headings…) to the reader, as its page text has no line breaks between them.
+/// A web page (Safari/WebKit, Chromium, Firefox), read through AX text markers.
 final class WebAreaReadableElement: ReadableElement {
-    /// The selection EasyReader set or last took from the browser. The browser's own report can't simply be read back:
-    /// Chromium ignores selection changes (it keeps reporting the user's selection), and right after a change Safari can
-    /// briefly report an in-between range.
+    // Browsers' selection reports can't be read back (Chromium ignores sets, Safari lags): track it ourselves.
     private var trackedSelection: Selection?
-    /// The page text `trackedSelection` refers to. Pages can change a little while reading (Wikipedia in Brave: a few
-    /// characters inserted before the selection), so the selection is moved to its text's new position then.
     private var trackedText: String?
-    /// What the browser reported when tracking began and right after the last selection change. While it reports one of
-    /// these or the tracked selection, nothing changed; anything else is a selection by the user. Compared by text near
-    /// the same offset, since the page text can shift.
+    // Reports that aren't a user selection: the one when tracking began and the one right after our last set.
     private var baseline: Report?
     private var reportAfterSet: Report?
 
-    private struct Report {
+    struct Report {
         let selection: Selection
         let string: String
 
@@ -47,40 +18,38 @@ final class WebAreaReadableElement: ReadableElement {
         }
     }
 
-    /// Page text, kept only for the current main-actor turn: EasyReader reads it several times per unit (30 ms each on
-    /// a long Chromium page), while the page may change between units.
+    // Only for the current main-actor turn: read several times per unit, but the page may change between units.
     private var cachedText: String?
 
     /// App-wide AX flags this readable turned on, restored by `endReading`.
     private var enabledAppFlags: [AXAttribute<Bool>] = []
-    /// Turns `enabledAppFlags` back on while reading if the app turned them off (see `watchAppFlags`).
     private var appFlagsWatch: Task<Void, Never>?
 
-    /// Chromium (incl. Electron and Brave): ignores selection changes on page text, and needs `PageLeaves`.
     private lazy var isChromium = handle.attributeNames.contains("ChromeAXNodeId")
-    /// The page's scroll area, when it exposes a vertical scroll bar (WebKit, not Chromium): see `scroll(to:options:)`.
+    // WebKit only: Chromium exposes no scroll bars.
     private lazy var pageScroller: ScrollBarScroller? = {
         guard let scrollArea = try? handle.parent(with: .scrollArea) else { return nil }
         let scroller = ScrollBarScroller(scrollArea)
         return scroller.hasVerticalScrollBar ? scroller : nil
     }()
-    /// Chromium with chrome://flags/#enable-accessibility-text-operation: selects page text through `AXTextOperation`.
+    /// Chromium with chrome://flags/#enable-accessibility-text-operation.
     private(set) lazy var canSelectByTextOperation =
         isChromium && handle.parameterizedAttributeNames.contains(AXParameterizedAttribute<AXTextOperation, AXAnyValue>.textOperation.name)
-    /// The last leaf marker made for `AXTextOperation`, to step from: the next unit usually starts where the last ended.
+    // To step from: the next unit usually starts where the last one ended.
     private var lastLeafMarker: (element: AXElement, local: Int, marker: AXTextMarker)?
     private(set) var pageLeaves: PageLeaves?
     private lazy var overlay = HighlightOverlay()
-    /// The last browser report, kept while the browser reports the same marker range for the same page text: measuring
-    /// it costs time proportional to its offset.
+    /// What the overlay highlights (Chromium), while the browser is frontmost.
+    private(set) var highlighted: Selection?
+    // Measuring a report costs O(offset): reuse it while range and text are unchanged.
     private var lastReport: (range: AXTextMarkerRange, text: String, report: Report)?
-    /// Chromium: the leaf holding the start of the browser's selection, where `PageLeaves` lookups start.
+    // Chromium: where `PageLeaves` lookups start.
     private var reportedLeaf: AXElement?
+    /// Chromium's text offset minus its `AXIndexForTextMarker` index, near the last paragraph found.
+    private var indexDrift = 0
 
-    /// Chromium (and Electron) build their full AX tree, incl. the page selection, only for assistive apps: Electron
-    /// listens to `AXManualAccessibility`, Chromium to `AXEnhancedUserInterface` (what VoiceOver sets; while on, some
-    /// apps skip window animations, which is why it's only on while reading). Other browsers ignore both.
-    /// Chromium keeps its full tree after the flag is turned off again.
+    // Chromium/Electron build their full AX tree only for assistive apps. The flags can affect window animations,
+    // hence only while reading.
     override func beginReading() {
         if enabledAppFlags.isEmpty, let pid = try? handle.pid(), pid != getpid() {
             enabledAppFlags = WebAccessibility.enable(pid: pid)
@@ -89,21 +58,19 @@ final class WebAreaReadableElement: ReadableElement {
         watchAppFlags()
     }
 
-    /// Takes over flags turned on to find this web area (see `WebAccessibility`), to restore them in `endReading`.
+    /// Takes over flags turned on to find this web area, to restore them in `endReading`.
     func adoptAppFlags(_ flags: [AXAttribute<Bool>]) {
         enabledAppFlags += flags.filter { !enabledAppFlags.contains($0) }
     }
 
-    /// Chromium (seen in Brave 157) turns `AXEnhancedUserInterface` off again shortly after it becomes the active app,
-    /// and with it drops the character layout behind `AXBoundsForRange` (zero-size rects): turn it back on, once a
-    /// second while reading. Its layout is back about 2 s later.
+    // Brave turns `AXEnhancedUserInterface` back off once it's active (dropping its character bounds)
     private func watchAppFlags() {
         guard appFlagsWatch == nil, !enabledAppFlags.isEmpty, let pid = try? handle.pid() else { return }
         appFlagsWatch = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard let self, !Task.isCancelled else { return }
-                let reenabled = WebAccessibility.enable(pid: pid, flags: self.enabledAppFlags)
+                let reenabled = WebAccessibility.enable(pid: pid, flags: enabledAppFlags)
                 if !reenabled.isEmpty { Log.accessibility.debug("web area: app turned off \(reenabled); turned back on") }
             }
         }
@@ -133,7 +100,7 @@ final class WebAreaReadableElement: ReadableElement {
 
     override var selectedText: String? {
         guard let text = fullText, let selection else { return nil }
-        return String(text[selection.startIndex(in: text)..<selection.endIndex(in: text)])
+        return substring(selection, of: text)
     }
 
     override var selection: Selection? {
@@ -142,8 +109,7 @@ final class WebAreaReadableElement: ReadableElement {
             let reported = report(in: text)
             if var tracked = trackedSelection {
                 if let trackedText, trackedText != text {
-                    let string = String(trackedText[tracked.startIndex(in: trackedText)..<tracked.endIndex(in: trackedText)])
-                    tracked = Self.locate(string, near: tracked.lowerBound, in: text, tolerance: 64)
+                    tracked = Self.locate(substring(tracked, of: trackedText), near: tracked.lowerBound, in: text, tolerance: 64)
                     Log.accessibility.debug("web area: page text changed; selection moved to \(tracked)")
                     track(tracked, in: text)
                 }
@@ -169,7 +135,7 @@ final class WebAreaReadableElement: ReadableElement {
                 if canSelectByTextOperation, select(newValue, in: text) {
                     highlight(nil)
                 } else {
-                    // Chromium ignores `AXSelectedTextMarkerRange` (see the class comment): highlight it instead.
+                    // Chromium ignores `AXSelectedTextMarkerRange` on page text
                     _ = leaves(for: text)
                     highlight(newValue.isEmpty ? nil : newValue)
                 }
@@ -194,20 +160,20 @@ final class WebAreaReadableElement: ReadableElement {
         trackedText = text
     }
 
-    /// Whether the browser's `reported` selection is still the one from when tracking began, or (an in-between state of)
-    /// the tracked one.
+    /// Whether `reported` isn't a selection by the user.
     private func isUnchanged(_ reported: Report, tracked: Selection, in text: String) -> Bool {
-        if let baseline, reported.matches(baseline) { return true }
-        if let reportAfterSet, reported.matches(reportAfterSet) { return true }
-        let trackedString = String(text[tracked.startIndex(in: text)..<tracked.endIndex(in: text)])
-        if reported.matches(Report(selection: tracked, string: trackedString)) { return true }
-        let other = reported.selection
-        return other.lowerBound < tracked.upperBound && tracked.lowerBound < other.upperBound
+        let known = [baseline, reportAfterSet].compactMap { $0 }
+        return Self.isUnchanged(reported, known: known, tracked: Report(selection: tracked, string: substring(tracked, of: text)))
     }
 
-    /// The page selection the browser reports, as offsets in `text`. Measured from its start and the selected string,
-    /// not each end: the text before a marker at a node boundary can differ from the full text by a character or two
-    /// (e.g. collapsed whitespace).
+    /// A known report or the tracked unit (same text within 64 chars), or overlapping the unit.
+    nonisolated static func isUnchanged(_ reported: Report, known: [Report], tracked: Report) -> Bool {
+        if known.contains(where: { reported.matches($0) }) || reported.matches(tracked) { return true }
+        let other = reported.selection
+        return other.lowerBound < tracked.selection.upperBound && tracked.selection.lowerBound < other.upperBound
+    }
+
+    // Located by start + selected string: offsets at node boundaries can be off by a collapsed space.
     private func report(in text: String) -> Report? {
         guard let range = try? handle.attribute(.selectedTextMarkerRange) else { return nil }
         if let lastReport, lastReport.text == text, lastReport.range == range { return lastReport.report }
@@ -222,10 +188,6 @@ final class WebAreaReadableElement: ReadableElement {
         return report
     }
 
-    /// Scrolls the selection into view, unless it's already visible. WebKit exposes the page's scroll bars and a
-    /// document-sized web area frame, so it scrolls like a text area (selection near the top, smooth if enabled).
-    /// Otherwise (Chromium, which has neither and ignores synthesized scroll-wheel events posted to it), the element
-    /// holding the selection start is scrolled into view with `AXScrollToVisible` (minimal, instant).
     override func scroll(to selection: Selection, options: ScrollOptions) {
         if isChromium {
             scrollLeaf(to: selection, options: options)
@@ -233,6 +195,7 @@ final class WebAreaReadableElement: ReadableElement {
         }
         guard let text = fullText, let start = marker(at: selection.lowerBound, in: text) else { return }
         let bounds = markerRange(for: selection, in: text).flatMap { try? handle.attribute(.boundsForTextMarkerRange, for: $0) }
+        // WebKit: scroll bars and a document-sized frame, so scroll like a text area
         if let bounds, bounds.size != .zero, let scroller = pageScroller, let scrollFrame = scroller.frame,
             let pageFrame = try? handle.attribute(.frame), pageFrame.height > scrollFrame.height
         {
@@ -260,11 +223,10 @@ final class WebAreaReadableElement: ReadableElement {
     private var startMarker: AXTextMarker? { try? handle.attribute(.startTextMarker) }
     private var endMarker: AXTextMarker? { try? handle.attribute(.endTextMarker) }
 
-    /// UTF-16 offset of `marker` in `text` (the page text): the length of the text before it.
+    /// The UTF-16 length of the page text before `marker`.
     func offset(of marker: AXTextMarker, in text: String) -> Int? {
         guard let start = startMarker, let before = string(from: start, to: marker) else { return nil }
-        // The range is unordered: for a marker before the document start (Safari's skip links) it's the text between
-        // them, not a prefix.
+        // Markers before the document start (Safari's skip links) give the text between them, not a prefix
         return text.utf16.starts(with: before.utf16) ? before.utf16.count : 0
     }
 
@@ -274,7 +236,7 @@ final class WebAreaReadableElement: ReadableElement {
         if target == 0 { return startMarker }
         if target == text.utf16.count { return endMarker }
 
-        // `AXTextMarkerForIndex` counts differently, but the drift changes slowly: correct the guess by the error.
+        // `AXTextMarkerForIndex` drifts from offsets, but slowly: correct the guess by the error
         var guess = target
         var best: (marker: AXTextMarker, offset: Int)?
         for _ in 0..<4 {
@@ -287,7 +249,7 @@ final class WebAreaReadableElement: ReadableElement {
         }
         guard let best else { return nil }
 
-        // Step character by character, measuring only the text stepped over.
+        // Measure only the text stepped over
         let forward = best.offset < target
         var current = best
         for _ in 0..<64 {
@@ -311,8 +273,7 @@ final class WebAreaReadableElement: ReadableElement {
         return end.flatMap { range(from: start, to: $0) }
     }
 
-    /// The selection of `string` at `offset` in `text`, or at the nearest occurrence within a few characters (marker
-    /// offsets at node boundaries can be off by a collapsed space or so).
+    /// `string` at `offset` in `text`, or at the nearest occurrence within `tolerance`.
     nonisolated static func locate(_ string: String, near offset: Int, in text: String, tolerance: Int = 16) -> Selection {
         let length = string.utf16.count
         let utf16 = text.utf16
@@ -333,8 +294,7 @@ final class WebAreaReadableElement: ReadableElement {
 
     // MARK: Visible area
 
-    /// The on-screen part of the page: browsers report either the whole document (Safari) or the viewport (Chromium)
-    /// as the web area's frame, so clip it by its scroll area and window.
+    // The web area's frame is the whole document (Safari) or the viewport (Chromium)
     private func visibleFrame() -> CGRect? {
         guard var frame = try? handle.attribute(.frame) else { return nil }
         if let scrollArea = try? handle.parent(with: .scrollArea), let scrollFrame = try? scrollArea.attribute(.frame) {
@@ -346,7 +306,7 @@ final class WebAreaReadableElement: ReadableElement {
         return frame.isNull || frame.isEmpty ? nil : frame
     }
 
-    /// Chromium has no `AXStartTextMarkerForBounds` (nor working position hit-testing): it finds its first visible leaf.
+    // Chromium has no `AXStartTextMarkerForBounds`
     private func visibleStartOffset(in text: String) -> Int? {
         if isChromium {
             guard let visible = visibleFrame(), let leaf = leaves(for: text)?.firstVisible(in: visible) else { return nil }
@@ -360,16 +320,14 @@ final class WebAreaReadableElement: ReadableElement {
 
     // MARK: Chromium leaves
 
-    /// Selects `selection` through `AXTextOperation`. Its markers must be anchored on leaves: ones from
-    /// `AXTextMarkerForIndex` (anchored on the web area) are accepted but select nothing. Fails for text outside any
-    /// leaf (list markers like Wikipedia's "a. " footnote letters).
+    // `AXTextOperation` selects nothing with web-area-anchored markers: they must be leaf-anchored
     private func select(_ selection: Selection, in text: String) -> Bool {
         guard let leaves = leaves(for: text) else { return false }
         var parts = leaves.leaves(in: selection)
         if selection.isEmpty, let leaf = leaves.leaf(containing: selection.lowerBound) {
             parts = [(leaf, selection)]
         }
-        // A DOM selection can't start or end in a list marker ("a. ", "• "): Chromium widens it to the whole list.
+        // A DOM selection ending in a list marker ("a. ", "• ") widens to the whole list
         while let first = parts.first, isListMarker(first.leaf.element) { parts.removeFirst() }
         while let last = parts.last, isListMarker(last.leaf.element) { parts.removeLast() }
         if parts.isEmpty, !selection.isEmpty, let last = lastLeafMarker {
@@ -384,11 +342,9 @@ final class WebAreaReadableElement: ReadableElement {
             Log.accessibility.debug("web area: no leaf markers for \(selection)")
             return false
         }
-        // Leaves whose marker range doesn't match their text (list markers) give ranges holding more than the unit:
-        // collapse the selection there and let the overlay show this unit.
-        let expected = String(text[selection.startIndex(in: text)..<selection.endIndex(in: text)])
+        // Selects more than the unit (list markers): collapse it and let the overlay show the unit
         if let selected = try? handle.attribute(.stringForTextMarkerRange, for: range),
-            !Self.covers(expected, selected)
+            !Self.covers(substring(selection, of: text), selected)
         {
             Log.accessibility.debug("web area: markers for \(selection) select other text")
             _ = textOperationSelect(self.range(from: start, to: start))
@@ -401,8 +357,7 @@ final class WebAreaReadableElement: ReadableElement {
         (try? element.role()) == .listMarker
     }
 
-    /// Whether `selected` is (most of) `expected`, ignoring surrounding whitespace: marker ranges can miss text outside
-    /// leaves (Wikipedia's "^" back links), never add any.
+    // Marker ranges can miss text outside leaves (Wikipedia's "^" back links), never add any
     nonisolated static func covers(_ expected: String, _ selected: String) -> Bool {
         let expected = expected.trimmingCharacters(in: .whitespacesAndNewlines)
         let selected = selected.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -423,8 +378,7 @@ final class WebAreaReadableElement: ReadableElement {
         }
     }
 
-    /// A leaf's own marker range and where its page text starts in that range's string: the range can hold whitespace
-    /// that the page text collapses (Gutenberg: a leading line break).
+    // `shift`: where `pageText` starts in the leaf's range string, which can hold collapsed whitespace (Gutenberg)
     private func markers(of leaf: AXElement, pageText: String) -> (start: AXTextMarker, end: AXTextMarker, length: Int, shift: Int)? {
         guard let leafRange = try? handle.attribute(.textMarkerRangeForUIElement, for: leaf),
             let start = leafRange.start, let end = leafRange.end,
@@ -434,16 +388,16 @@ final class WebAreaReadableElement: ReadableElement {
         return (start, end, string.utf16.count, location == NSNotFound ? 0 : location)
     }
 
-    /// A marker anchored on `leaf` at page text `offset`. Leaf markers can only be made by stepping from the leaf's
-    /// start or end, or the last one made (0.1 ms per step).
+    // Leaf-anchored markers can only be made by stepping from another one
     private func leafMarker(in leaf: PageLeaves.Leaf, at offset: Int, text: String) -> AXTextMarker? {
-        let pageText = String(text[leaf.range.startIndex(in: text)..<leaf.range.endIndex(in: text)])
-        guard let (leafStart, leafEnd, length, shift) = markers(of: leaf.element, pageText: pageText) else { return nil }
+        guard let (leafStart, leafEnd, length, shift) = markers(of: leaf.element, pageText: substring(leaf.range, of: text)) else {
+            return nil
+        }
         let local = min(max(offset - leaf.range.lowerBound + shift, 0), length)
         var anchors: [(local: Int, marker: AXTextMarker)] = [(0, leafStart), (length, leafEnd)]
         if let last = lastLeafMarker, last.element == leaf.element { anchors.append((last.local, last.marker)) }
         var (position, marker) = anchors.min { abs($0.local - local) < abs($1.local - local) }!
-        // Steps are characters, not UTF-16 units (emoji): measure and correct.
+        // Steps are characters, not UTF-16 units: measure and correct
         for _ in 0..<6 where position != local {
             let forward = position < local
             for _ in 0..<abs(local - position) {
@@ -461,14 +415,12 @@ final class WebAreaReadableElement: ReadableElement {
         return marker
     }
 
-    /// The offset of a marker anchored on a leaf (as in the browser's selection), measured from the leaf's start: much
-    /// faster than `offset(of:in:)` far down a page. Only while the leaves are known (set up when EasyReader selects).
+    // Measured from the leaf: much faster than `offset(of:in:)` far down a page
     private func leafOffset(of marker: AXTextMarker, in text: String) -> Int? {
         guard isChromium, let leaves = pageLeaves, leaves.text == text,
             let element = try? handle.attribute(.uiElementForTextMarker, for: marker),
             let index = leaves.index(of: element), let leaf = leaves.leaf(at: index), !leaf.range.isEmpty,
-            let leafMarkers = markers(
-                of: leaf.element, pageText: String(text[leaf.range.startIndex(in: text)..<leaf.range.endIndex(in: text)])),
+            let leafMarkers = markers(of: leaf.element, pageText: substring(leaf.range, of: text)),
             let before = string(from: leafMarkers.start, to: marker)
         else { return nil }
         return leaf.range.lowerBound + max(0, before.utf16.count - leafMarkers.shift)
@@ -478,22 +430,17 @@ final class WebAreaReadableElement: ReadableElement {
         if let pageLeaves, pageLeaves.text == text { return pageLeaves }
         let hint = pageLeaves?.cursorElement ?? reportedLeaf
         pageLeaves = PageLeaves(webArea: handle, text: text) { [weak self] element in
-            guard let self, let range = try? self.handle.attribute(.textMarkerRangeForUIElement, for: element),
+            guard let self, let range = try? handle.attribute(.textMarkerRangeForUIElement, for: element),
                 let start = range.start
             else { return nil }
-            return self.offset(of: start, in: text)
+            return offset(of: start, in: text)
         }
         if let hint { pageLeaves?.moveCursor(to: hint) }
         Log.accessibility.debug("web area: \(pageLeaves?.count ?? 0) page text leaves")
         return pageLeaves
     }
 
-    /// The paragraph (Chromium's: block boundaries) holding `offset`, as Chromium's page text has no line breaks
-    /// between blocks.
-    ///
-    /// Paragraph ranges are only right for markers anchored on the web area (from `AXTextMarkerForIndex`); for leaf
-    /// markers they end at the leaf. Chromium's index drifts slowly from text offsets (by hundreds on a long page) but
-    /// round-trips exactly, so the paragraph is found by its text near the index plus the drift learned last time.
+    // Needs web-area-anchored markers (leaf ones stop at the leaf); located by text near index + learned drift
     override func textBlock(containing offset: Int) -> Selection? {
         guard isChromium, let text = fullText else { return nil }
         var guess = offset - indexDrift
@@ -508,7 +455,7 @@ final class WebAreaReadableElement: ReadableElement {
             indexDrift = found - index
             let block = Selection(found..<found + string.utf16.count)
             if block.lowerBound <= offset, offset < block.upperBound { return block }
-            // A neighboring paragraph: correct the guess by the new drift, or step over it.
+            // Got a neighbor: correct the guess by the new drift, or step over it
             let corrected = offset - indexDrift
             guess = corrected != guess ? corrected : (offset < block.lowerBound ? index - 1 : index + string.utf16.count)
         }
@@ -516,10 +463,7 @@ final class WebAreaReadableElement: ReadableElement {
         return nil
     }
 
-    /// Chromium's text offset minus its `AXIndexForTextMarker` index, near the last paragraph found.
-    private var indexDrift = 0
-
-    /// The occurrence of `string` in `text` starting closest to UTF-16 offset `expected`, within a few thousand characters.
+    /// The occurrence of `string` in `text` starting closest to `expected`, within `distance`.
     nonisolated static func nearestOccurrence(of string: String, to expected: Int, in text: String, within distance: Int = 4000) -> Int? {
         let text = text as NSString
         let expected = min(max(expected, 0), text.length)
@@ -532,9 +476,6 @@ final class WebAreaReadableElement: ReadableElement {
         return candidates.min { abs($0 - expected) < abs($1 - expected) }
     }
 
-    /// What the overlay highlights (Chromium), while the browser is frontmost.
-    private(set) var highlighted: Selection?
-
     private func highlight(_ selection: Selection?) {
         highlighted = selection
         guard let selection else {
@@ -542,72 +483,29 @@ final class WebAreaReadableElement: ReadableElement {
             return
         }
         overlay.show { [weak self] in
-            guard let self, self.app?.isActive != false else { return nil }
-            return self.highlightRects(for: selection)
+            guard let self, app?.isActive != false else { return nil }
+            return highlightRects(for: selection)
         }
     }
 
-    /// Screen rects (top-left origin) of the visible part of `selection`, one per line and leaf. Uses the leaves from
-    /// when the selection was set if there are any: the overlay asks a few times a second, and fetching the page text
-    /// can take 100 ms.
+    /// Screen rects (top-left origin), one per line and leaf, of the visible part of `selection`.
+    // Reuses the leaves from the last set: the overlay polls 4×/s and fetching the page text can take 100 ms.
     func highlightRects(for selection: Selection) -> [CGRect]? {
         guard let leaves = pageLeaves ?? fullText.flatMap({ leaves(for: $0) }), let visible = visibleFrame() else { return nil }
         return leaves.leaves(in: selection).flatMap { leaf, part -> [CGRect] in
-            let shift = leaf.valueOffset - leaf.range.lowerBound
-            let local = Selection(part.lowerBound + shift..<part.upperBound + shift)
-            let lines = lineRects(of: leaf.element, local)
-            // Some leaves have no character bounds (or none yet: see `watchAppFlags`): use the whole leaf.
-            return lines.isEmpty ? frame(of: leaf.element).map { [$0] } ?? [] : lines
+            let lines = HighlightOverlay.lineRects(of: leaf.element, valueRange(of: part, in: leaf))
+            // Some leaves have no character bounds (or none yet: see `watchAppFlags`)
+            return lines.isEmpty ? (try? leaf.element.attribute(.frame)).map { [$0] } ?? [] : lines
         }
         .map { $0.intersection(visible) }
         .filter { !$0.isNull && $0.width >= 1 && $0.height >= 1 }
     }
 
-    private func frame(of element: AXElement) -> CGRect? {
-        try? element.attribute(.frame)
-    }
-
-    /// Bounds of `range` (UTF-16 offsets in the leaf's text), one rect per line: Chromium reports the union of all lines.
-    private func lineRects(of leaf: AXElement, _ range: Selection) -> [CGRect] {
-        func bounds(_ lower: Int, _ upper: Int) -> CGRect? {
-            guard let rect = try? leaf.attribute(.boundsForRange, for: CFRange(location: lower, length: upper - lower)),
-                // Zero-size at the web area's origin while Chromium has no character layout (see `watchAppFlags`).
-                rect.width >= 1 || rect.height >= 1
-            else { return nil }
-            return rect
-        }
-        var rects: [CGRect] = []
-        var lower = range.lowerBound
-        while lower < range.upperBound, rects.count < 50 {
-            guard let first = bounds(lower, lower + 1), let whole = bounds(lower, range.upperBound) else { break }
-            // On one line?
-            if whole.height < first.height * 1.5 {
-                rects.append(whole)
-                break
-            }
-            // Binary search for the first character below this line.
-            var low = lower + 1
-            var high = range.upperBound
-            while low < high {
-                let middle = (low + high) / 2
-                if let rect = bounds(middle, middle + 1), rect.height >= 1, rect.midY <= first.maxY {
-                    low = middle + 1
-                } else {
-                    high = middle
-                }
-            }
-            if let line = bounds(lower, low) { rects.append(line) }
-            lower = low
-        }
-        return rects
-    }
-
     private func scrollLeaf(to selection: Selection, options: ScrollOptions) {
         guard let text = fullText, let leaves = leaves(for: text), let (leaf, part) = leaves.leaves(in: selection).first else { return }
-        let shift = leaf.valueOffset - leaf.range.lowerBound
-        let local = Selection(part.lowerBound + shift..<part.upperBound + shift)
-        // Character bounds aren't clipped to the viewport, but leaf frames are (zero height outside it).
-        if let leafFrame = frame(of: leaf.element), leafFrame.height >= 1, let first = lineRects(of: leaf.element, local).first,
+        let local = valueRange(of: part, in: leaf)
+        // Leaf frames are clipped to the viewport (zero height outside), character bounds aren't
+        if let leafFrame = try? leaf.element.attribute(.frame), leafFrame.height >= 1, let first = HighlightOverlay.lineRects(of: leaf.element, local).first,
             let visible = visibleFrame()
         {
             let padding = min(CGFloat(options.padding), visible.height / 4)
@@ -624,6 +522,12 @@ final class WebAreaReadableElement: ReadableElement {
         }
     }
 
+    /// `part` (page text offsets) as offsets in the leaf's `AXValue`.
+    private func valueRange(of part: Selection, in leaf: PageLeaves.Leaf) -> Selection {
+        let shift = leaf.valueOffset - leaf.range.lowerBound
+        return Selection(part.lowerBound + shift..<part.upperBound + shift)
+    }
+
     // MARK: Markers
 
     private func range(from start: AXTextMarker, to end: AXTextMarker) -> AXTextMarkerRange? {
@@ -635,9 +539,7 @@ final class WebAreaReadableElement: ReadableElement {
     }
 }
 
-/// The app-wide AX flags that make Chromium (`AXEnhancedUserInterface`, what VoiceOver sets) and Electron
-/// (`AXManualAccessibility`) build their full AX tree. Until then a Chromium app vends no page content at all (no web
-/// area), so `EasyReader` turns them on when it finds nothing to read in one (`isChromium`).
+/// The app-wide AX flags that make Chromium and Electron build their full AX tree (no web area until then).
 @MainActor
 enum WebAccessibility {
     private static let flags: [AXAttribute<Bool>] = [.manualAccessibility, .enhancedUserInterface]
@@ -648,7 +550,7 @@ enum WebAccessibility {
         var enabled: [AXAttribute<Bool>] = []
         for flag in flags {
             if (try? app.attribute(flag)) == true { continue }
-            // Chromium reports failure for `AXEnhancedUserInterface` but applies it: check by reading it back.
+            // Chromium reports failure for `AXEnhancedUserInterface` but applies it
             try? app.set(flag, to: true)
             if (try? app.attribute(flag)) == true { enabled.append(flag) }
         }
@@ -662,9 +564,8 @@ enum WebAccessibility {
         }
     }
 
-    /// Chromium-based browsers and Electron apps, by their bundle: Electron's framework is "Electron Framework";
-    /// Chromium's framework has `Helpers/app_mode_loader` (browsers' web-app shim) or `chrome_crashpad_handler`.
-    /// (Just having a `Helpers` folder isn't enough: WebKit's JavaScriptCore has one, e.g. in Orion.)
+    /// Chromium-based browsers and Electron apps.
+    // Not just any `Helpers` folder: WebKit's JavaScriptCore has one too (Orion)
     nonisolated static func isChromium(_ app: NSRunningApplication) -> Bool {
         app.bundleURL.map { isChromium(bundleURL: $0) } ?? false
     }
@@ -685,4 +586,8 @@ enum WebAccessibility {
     private nonisolated static func hasHelper(_ name: String, in framework: URL) -> Bool {
         FileManager.default.fileExists(atPath: framework.appendingPathComponent("Versions/Current/Helpers/\(name)").path)
     }
+}
+
+private func substring(_ selection: Selection, of text: String) -> String {
+    String(text[selection.startIndex(in: text)..<selection.endIndex(in: text)])
 }

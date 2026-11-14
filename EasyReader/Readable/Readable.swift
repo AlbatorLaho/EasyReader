@@ -1,10 +1,3 @@
-//
-//  Readable.swift
-//  EasyReader
-//
-//  Created by Ewalk on 24/12/12.
-//
-
 import Cocoa
 
 @MainActor
@@ -16,22 +9,19 @@ protocol Readable: AnyObject {
     var fullText: String? { get }
     var selectedText: String? { get }
     var selection: Selection? { get set }
-    /// Called when the readable goes away (e.g. its text view leaves the window or the window closes).
     var onInvalidate: (() -> Void)? { get set }
 
-    func scroll(to selection: Selection, options: ScrollOptions);
+    func scroll(to selection: Selection, options: ScrollOptions)
 
-    /// The text block (paragraph, heading, list item…) holding the character at UTF-16 `offset` of `fullText`, for text
-    /// whose blocks aren't separated by line breaks (see `TextSelector.select(_:from:in:blocks:)`); nil to use line breaks.
+    /// The block (paragraph, heading…) holding `offset` of `fullText`, for text without line breaks between blocks; nil: split at line breaks.
     func textBlock(containing offset: Int) -> Selection?
 
-    /// Called as speech reaches UTF-16 `offset` of `selectedText`. A readable that can't select the whole unit at once
-    /// may move its selection to the piece being read; it returns that piece (in `fullText`) to scroll to, else nil.
+    /// Speech reached `offset` of `selectedText`; returns the piece (in `fullText`) now selected, if units are selected piece by piece.
     func didReach(_ offset: Int) -> Selection?
 
-    /// Called before reading starts or resumes from stopped; may be called again while reading (must be idempotent).
+    /// Must be idempotent: may be called again while reading.
     func beginReading()
-    /// Called once reading stops, the readable is replaced, or the app quits. Undo what `beginReading` changed.
+    /// Undoes what `beginReading` changed.
     func endReading()
 }
 
@@ -41,10 +31,6 @@ extension Readable {
     func beginReading() {}
     func endReading() {}
 }
-
-//protocol ReadableURL: Readable {
-//    init(_ url: URL);
-//}
 
 struct ScrollOptions {
     let padding: Int

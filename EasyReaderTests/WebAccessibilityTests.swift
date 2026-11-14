@@ -5,7 +5,7 @@ import Testing
 
 /// Chromium detection by bundle layout, on fake app bundles in a temp folder.
 struct WebAccessibilityTests {
-    /// Makes `<name>.app` with a framework holding `helpers` (files under `Versions/Current/Helpers`).
+    /// Makes `<name>.app` with a framework holding `helpers` in `Versions/Current/Helpers`.
     private func app(_ name: String, framework: String, helpers: [String]) throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("WebAccessibilityTests-\(UUID().uuidString)")
         let app = root.appendingPathComponent("\(name).app")

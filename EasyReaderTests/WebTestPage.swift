@@ -2,13 +2,7 @@ import AppKit
 import Foundation
 import WebKit
 
-/// A web page in another process, for `WebAreaReadableElementTests`: a `WKWebView` exposes the same `AXWebArea` as
-/// Safari. It can't live in the test host's own process: a web area's frame, parent and window are answered through the
-/// hosting app's main run loop, so reading a `WKWebView` in-process blocks ~1.5 s per such AX call (the caller holds the
-/// main thread) and then fails.
-///
-/// This file is compiled twice: into the test bundle (for `launch()`), and by `launch()` itself with `swiftc` into a
-/// standalone executable whose entry point calls `run()`, built once per test run from this source file (`#filePath`).
+/// A `WKWebView` test page in its own process (in-process AX on a web view blocks on our main run loop), built by `launch()` with `swiftc`.
 enum WebTestPage {
     static let title = "EasyReader Web Test Page"
 
@@ -39,7 +33,6 @@ enum WebTestPage {
         </html>
         """
 
-    /// Entry point of the fixture executable: one window showing `html`.
     @MainActor
     static func run() -> Never {
         let app = NSApplication.shared

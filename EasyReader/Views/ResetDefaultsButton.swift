@@ -1,10 +1,3 @@
-//
-//  ResetDefaultsButton.swift
-//  EasyReader
-//
-//  Created by Ewalk on 2025-02-05.
-//
-
 import SwiftUI
 import Defaults
 
@@ -21,7 +14,7 @@ struct ResetDefaultsButton<Label: View>: View {
     }
 
     init(for name: String, action: @escaping () -> Void) where Label == Text {
-        self.init(for: name, action: action, label: { Text("Reset \(name)...") })
+        self.init(for: name, action: action, label: { Text("Reset \(name)…") })
     }
 
     init(for name: String, keys: [Defaults.Keys]) where Label == Text {
@@ -47,7 +40,7 @@ struct ResetDefaultsButton<Label: View>: View {
                 Text(message)
             }
         } else {
-            Button() {
+            Button {
                 showAlert.toggle()
             } label: {
                 label()

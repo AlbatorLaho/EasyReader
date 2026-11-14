@@ -6,9 +6,7 @@ import Testing
 @testable import EasyReader
 
 extension IntegrationTests {
-    /// Drives `WebAreaReadableElement` against `WebTestPage` (a `WKWebView` with a test page in its own process), the
-    /// same cross-process AX path as Safari.
-    /// Reading another process needs Accessibility permission, which CI lacks, so these only run where it's granted.
+    /// `WebAreaReadableElement` against `WebTestPage`: the same cross-process AX path as Safari.
     @MainActor
     @Suite(.enabled(if: AXIsProcessTrusted(), "needs Accessibility permission for the test host (Debug EasyReader)"))
     struct WebAreaReadableElementTests {
@@ -29,7 +27,7 @@ extension IntegrationTests {
             }
         }
 
-        /// Silent reader (see EasyReaderSpeechTests).
+        /// Silent reader, as in EasyReaderSpeechTests.
         private func makeReader() -> EasyReader {
             Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
@@ -59,7 +57,6 @@ extension IntegrationTests {
             return nil
         }
 
-        /// The test page's web area, once loaded.
         private func readable() async throws -> WebAreaReadableElement {
             for _ in 0..<100 {
                 if let window = browserWindow(), let element = find(role: "AXWebArea", in: window),
@@ -112,8 +109,7 @@ extension IntegrationTests {
             #expect(fresh.selection == selection)
         }
 
-        /// A selection made in the page (here: from raw AX index markers, which don't line up with text offsets) is
-        /// converted from the markers the browser reports.
+        /// A selection made in the page (from raw AX index markers, which don't match text offsets) is read back.
         @Test(arguments: [100, 400, 1000])
         func readsSelectionMadeInPage(index: Int) async throws {
             let readable = try await readable()
@@ -194,8 +190,7 @@ extension IntegrationTests {
             #expect(after < before, "selection did not move up into view (\(before) → \(after))")
         }
 
-        /// WebKit exposes the page's scroll bar: smooth scrolling animates it, ending with the selection at the top
-        /// (plus padding) of the page's scroll area.
+        /// Smooth scrolling animates WebKit's scroll bar and ends with the selection at the scroll area's top + padding.
         @Test func smoothScrollAnimatesScrollBar() async throws {
             let readable = try await readable()
             let text = try #require(readable.fullText)

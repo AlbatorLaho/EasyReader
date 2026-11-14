@@ -102,8 +102,7 @@ import Testing
 }
 
 extension IntegrationTests {
-    /// Drives the real AX code path against a `PDFView` in the test host's own process (no Accessibility permission
-    /// needed). PDFKit exposes a paragraph of the generated PDF as one `AXStaticText` leaf, with a line break per line.
+    /// The real AX code against a `PDFView` in the host's own process: one `AXStaticText` leaf per paragraph.
     @MainActor
     struct PDFReadableElementTests {
         private let window: NSWindow
@@ -111,8 +110,7 @@ extension IntegrationTests {
         private let recorder = StateRecorder()
         static let pageCount = 30
 
-        /// Each page: a running title and page number (in the margins), two paragraphs, and on some pages more. The
-        /// second paragraph of page 2 runs on to page 3, with a footnote (smaller font) in between.
+        /// Two paragraphs per page (more on some); page 2's second runs on to page 3, past a footnote.
         static func paragraphs(page: Int) -> [String] {
             let opening = "Page \(page) opens here. This sentence on page \(page) is long enough to wrap across several lines of the narrow column."
             switch page {
@@ -181,7 +179,7 @@ extension IntegrationTests {
             return data as Data
         }
 
-        /// Silent reader (see EasyReaderSpeechTests).
+        /// Silent reader, as in EasyReaderSpeechTests.
         private func makeReader() -> EasyReader {
             Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate

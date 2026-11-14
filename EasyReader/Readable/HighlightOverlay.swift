@@ -1,15 +1,6 @@
-//
-//  HighlightOverlay.swift
-//  EasyReader
-//
-
 import Cocoa
 
-/// Highlights the unit being read in apps that don't let AX clients set their selection (Chromium page text): a
-/// click-through window drawn over the text.
-///
-/// While shown, it re-fetches the rects a few times a second (`rects` returns nil to hide), so it follows scrolling and
-/// hides while its app isn't frontmost.
+/// A click-through window highlighting text where the app won't let us select it. Re-polls the rects while shown.
 @MainActor
 final class HighlightOverlay {
     private var window: NSWindow?
@@ -17,7 +8,9 @@ final class HighlightOverlay {
     private var rects: (() -> [CGRect]?)?
     private var shown: [CGRect] = []
 
-    /// Highlights the rects (screen coordinates, top-left origin as in AX) `rects` returns, until `hide`.
+    var isVisible: Bool { window?.isVisible == true }
+
+    /// `rects`: screen coordinates, top-left origin as in AX; nil hides.
     func show(_ rects: @escaping () -> [CGRect]?) {
         self.rects = rects
         update()
@@ -26,7 +19,7 @@ final class HighlightOverlay {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 guard let self, !Task.isCancelled else { return }
-                self.update()
+                update()
             }
         }
     }
@@ -39,7 +32,41 @@ final class HighlightOverlay {
         window?.orderOut(nil)
     }
 
-    var isVisible: Bool { window?.isVisible == true }
+    /// Chromium gives a zero-size rect at the web area's origin while it has no character layout.
+    // A zero-width character (a collapsed space) still has its line's height
+    static func hasSize(_ rect: CGRect) -> Bool { rect.width >= 1 || rect.height >= 1 }
+
+    /// One rect per line of `range` in `leaf`: `AXBoundsForRange` gives the union of all lines.
+    static func lineRects(of leaf: AXElement, _ range: Selection) -> [CGRect] {
+        func bounds(_ lower: Int, _ upper: Int) -> CGRect? {
+            guard let rect = try? leaf.attribute(.boundsForRange, for: CFRange(location: lower, length: upper - lower)), hasSize(rect)
+            else { return nil }
+            return rect
+        }
+        var rects: [CGRect] = []
+        var lower = range.lowerBound
+        while lower < range.upperBound, rects.count < 50 {
+            guard let first = bounds(lower, lower + 1), let whole = bounds(lower, range.upperBound) else { break }
+            if whole.height < first.height * 1.5 {
+                rects.append(whole)
+                break
+            }
+            // Binary search for the first character on the next line.
+            var low = lower + 1
+            var high = range.upperBound
+            while low < high {
+                let middle = (low + high) / 2
+                if let rect = bounds(middle, middle + 1), rect.height >= 1, rect.midY <= first.maxY {
+                    low = middle + 1
+                } else {
+                    high = middle
+                }
+            }
+            if let line = bounds(lower, low) { rects.append(line) }
+            lower = low
+        }
+        return rects
+    }
 
     private func update() {
         guard let rects = rects?(), !rects.isEmpty, let screen = NSScreen.screens.first else {

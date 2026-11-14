@@ -1,20 +1,7 @@
-//
-//  Log.swift
-//  EasyReader
-//
-
 import Foundation
 import os
 
-/// App logging via unified logging (`Logger`).
-///
-/// - `debug` messages are compiled out of Release builds: they may include positions or text read
-///   from other apps, which shouldn't end up in a user's system log.
-/// - `error` messages are always logged; keep them free of other apps' content.
-///
-/// View in Xcode's console, or stream while running a Debug build:
-///
-///     log stream --level debug --predicate 'subsystem == "HawkRaven.EasyReader"'
+/// `debug` is compiled out of Release (it may contain other apps' text); `error` is always logged, so keep other apps' content out of it.
 struct Log: Sendable {
     private let logger: Logger
 
@@ -31,7 +18,6 @@ struct Log: Sendable {
     static let nowPlaying = Log(category: "NowPlaying")
     static let settings = Log(category: "Settings")
 
-    /// Debug builds only. The message is not evaluated in Release.
     func debug(_ message: @autoclosure () -> String) {
         #if DEBUG
             let message = message()

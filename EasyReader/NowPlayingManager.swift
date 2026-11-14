@@ -1,22 +1,11 @@
-//
-//  NowPlayingManager.swift
-//  EasyReader
-//
-//  Created by Ewalk on 2025-01-18.
-//
-
 import Cocoa
 import MediaPlayer
 import Defaults
 
-/// Media keys / Control Center (`MPRemoteCommandCenter`) and the Now Playing panel (`MPNowPlayingInfoCenter`)
-/// for an `EasyReader`.
-///
-/// Remote commands are registered only while the integration is enabled and the reader is reading or paused,
+/// Media keys and the Now Playing panel. Commands are registered only while enabled and not stopped,
 /// so media keys go to other apps once reading stops.
 @MainActor
 final class NowPlayingManager {
-    /// Remote commands this app supports. Any command not listed is never registered.
     enum Action: Equatable {
         case play
         case pause
@@ -24,7 +13,7 @@ final class NowPlayingManager {
         case togglePlayPause
         case nextTrack
         case previousTrack
-        /// Now Playing playback rate (the speed multiplier published in `nowPlayingInfo`).
+        /// Speed multiplier.
         case changePlaybackRate(Float)
     }
 
@@ -40,7 +29,6 @@ final class NowPlayingManager {
     private var readable: Readable?
     private var state: EasyReader.State = .stopped
 
-    /// The "Now Playing Center" integration setting. Turning it off unregisters commands and clears the panel.
     var isEnabled = false {
         didSet {
             guard isEnabled != oldValue else { return }
@@ -54,7 +42,6 @@ final class NowPlayingManager {
         }
     }
 
-    /// Whether remote command targets are currently registered.
     private(set) var areCommandsRegistered = false
 
     init(reader: EasyReader) {
@@ -73,7 +60,6 @@ final class NowPlayingManager {
         ]
     }
 
-    /// Call on every reader state change.
     func update(readable: Readable?, state: EasyReader.State) {
         self.readable = readable
         self.state = state
@@ -99,23 +85,17 @@ final class NowPlayingManager {
         return succeeded ? .success : .commandFailed
     }
 
-    /// Now Playing playback rate → `speechRate`; the inverse of what `playbackInfo` publishes.
     static func setSpeechRate(fromPlaybackRate playbackRate: Float) {
         Defaults[.speechRate] = SpeechRate.clamped(SpeechRate.rate(forMultiplier: playbackRate))
     }
 
     // MARK: - Commands
 
-    // TODO: keep commands registered (and the panel showing) after reading finishes on its own, so Play
-    // afterwards does what Start does (read the frontmost text area). Unclear how that fits Now Playing
-    // conventions: holding the media keys while idle steals them from other apps, and "finished" vs.
-    // "stopped by the user" would need telling apart (EasyReader only reports `.stopped`).
     private func apply() {
         setCommandsRegistered(state != .stopped)
         switch state {
             case .reading:
                 infoCenter.playbackState = .playing
-                // FIXME: seems to get reset on every skip via Now Playing (maybe because it's "next track")
                 if let readable {
                     infoCenter.nowPlayingInfo = Self.itemMetadata(readable).merging(Self.playbackInfo()) { $1 }
                 }
@@ -144,8 +124,7 @@ final class NowPlayingManager {
         }
     }
 
-    /// Built outside the main actor: a closure formed in main-actor code gets a runtime isolation check,
-    /// which would trap if MediaPlayer ever called it off the main thread. Hop to main explicitly instead.
+    // Nonisolated: a closure formed on the main actor would trap if MediaPlayer called it off main.
     private nonisolated static func addTarget(
         to command: MPRemoteCommand,
         handler: @escaping @MainActor (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus
@@ -179,8 +158,7 @@ final class NowPlayingManager {
         return info
     }
 
-    /// MediaPlayer may call the request handler off the main thread; a closure formed in main-actor code
-    /// would trap on its isolation check there, so build it outside the main actor.
+    // Nonisolated: MediaPlayer may call the handler off main.
     private nonisolated static func artwork(_ image: NSImage) -> MPMediaItemArtwork {
         MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }

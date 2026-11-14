@@ -1,40 +1,26 @@
-//
-//  ReadableElement.swift
-//  EasyReader
-//
-//  Created by Ewalk on 24/12/14.
-//
-
 import Cocoa
 
 @MainActor
 class ReadableElement: Readable {
-//    private let handle: UIElement
-//    private let app: NSRunningApplication?
     let handle: AXElement
     let app: NSRunningApplication?
-    
+
     var title: String? {
         let window = try? handle.attribute(.window)
-//        let window = try? handle.parent(with: .window)
         return try? window?.attribute(.title)
     }
     var groupTitle: String? {
-//        return app?.localizedName ?? (try? (try? handle.parent(with: .application))?.attribute(.title))
         if let name = app?.localizedName { return name }
-//        let window = try? handle.attribute(.window)
-//        let windowApp: UIElement? = try? window?.attribute(.parent)
-//        return try? windowApp?.attribute(.title)
         let application = try? handle.parent(with: .application)
         return try? application?.attribute(.title)
     }
     var appDomain: String? { app?.bundleIdentifier }
     var icon: NSImage? { app?.icon }
+    // Declared in the class too (with the methods below) so subclasses can override them.
     var fullText: String? { nil }
     var selectedText: String? { nil }
     var selection: Selection?
-    /// Destruction is observed only while a handler is set, so a readable nobody listens to
-    /// (e.g. one created and dropped during a search) holds no AX observer.
+    // Observe only while someone listens, so readables dropped during a search hold no AX observer.
     var onInvalidate: (() -> Void)? {
         didSet {
             if onInvalidate == nil {
@@ -51,12 +37,11 @@ class ReadableElement: Readable {
         .webArea: WebAreaReadableElement.self,
     ]
 
-    /// Roles too generic to register (`AXGroup`), told apart by subrole.
     private static let subroleValues: [AXRole: [String: ReadableElement.Type]] = [
         .group: ["AXSharedDocumentContainer": PDFReadableElement.self]
     ]
 
-    /// The readable type for an element with `role`; `subrole` is fetched only for roles registered by subrole.
+    /// `subrole` is fetched only for roles registered by subrole.
     static func type(for role: AXRole, subrole: () throws -> String?) rethrows -> ReadableElement.Type? {
         if let type = values[role] { return type }
         guard let types = subroleValues[role], let subrole = try subrole() else { return nil }
@@ -65,14 +50,17 @@ class ReadableElement: Readable {
 
     required init(_ element: AXElement) {
         handle = element
-        app = (try? handle.pid()).flatMap({ pid in
-            NSWorkspace.shared.runningApplications.first(where: { $0.processIdentifier == pid })
-        })
+        app = (try? handle.pid()).flatMap(NSRunningApplication.init(processIdentifier:))
         Log.accessibility.debug("\(Self.self) for \(app?.bundleIdentifier ?? "unknown app")")
     }
 
-    /// AppKit posts `AXUIElementDestroyed` for the element when it leaves its window (even if the view
-    /// lives on), and for the window when it closes (the element itself stays valid then), so watch both.
+    func scroll(to selection: Selection, options: ScrollOptions) {}
+    func textBlock(containing offset: Int) -> Selection? { nil }
+    func didReach(_ offset: Int) -> Selection? { nil }
+    func beginReading() {}
+    func endReading() {}
+
+    // AppKit posts the element's destruction when it leaves its window, but only the window's when the window closes.
     private func observeDestruction() {
         guard let pid = try? handle.pid() else { return }
         let observer: AXNotificationObserver
@@ -98,17 +86,9 @@ class ReadableElement: Readable {
         }
         if observed { self.observer = observer }
     }
-    
-    func scroll(to selection: Selection, options: ScrollOptions) {}
-    func textBlock(containing offset: Int) -> Selection? { nil }
-    func didReach(_ offset: Int) -> Selection? { nil }
-    // Declared here (not only in the protocol extension) so subclasses can override them.
-    func beginReading() {}
-    func endReading() {}
 }
 
 extension AXElement {
-    /// The readable for this element, if its role (or for generic roles, subrole) has one.
     @MainActor func readableElement() throws -> ReadableElement? {
         guard let role = try role(),
             let readableType = try ReadableElement.type(for: role, subrole: { try attribute(.subrole) })

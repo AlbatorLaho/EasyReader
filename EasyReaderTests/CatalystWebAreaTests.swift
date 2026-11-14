@@ -3,34 +3,33 @@ import Testing
 
 @testable import EasyReader
 
-/// `CatalystWebAreaReadableElement` itself needs Apple Books (Catalyst web views can't be hosted here); this covers
-/// locating a paragraph's on-page part in its text.
+/// Locating a paragraph's on-spread part (the element itself needs Apple Books).
 struct CatalystWebAreaTests {
-    @Test func wholeParagraph() {
-        #expect(CatalystWebAreaReadableElement.locate("One. Two.", in: "One. Two.", fromEnd: true) == 0..<9)
+    /// Only a sideways move is WebKit scrolling off the page grid; a turn settling can still change y and size.
+    @Test(
+        arguments: [
+            (CGRect(x: 0, y: 40, width: 1200, height: 800), nil),
+            (CGRect(x: 0.5, y: 0, width: 1200, height: 800), nil),
+            (CGRect(x: -1200, y: 0, width: 1200, height: 800), -1200),
+            (CGRect(x: 600, y: 0, width: 1200, height: 800), 600),
+        ] as [(CGRect, CGFloat?)])
+    func sidewaysShift(moved: CGRect, expected: CGFloat?) {
+        let frame = CGRect(x: 0, y: 0, width: 1200, height: 820)
+        #expect(CatalystWebAreaReadableElement.sidewaysShift(from: frame, to: moved) == expected)
     }
 
-    /// The last paragraph on a spread shows its head.
-    @Test func head() {
-        #expect(CatalystWebAreaReadableElement.locate("One. Tw", in: "One. Two. Three.", fromEnd: false) == 0..<7)
-    }
-
-    /// The first paragraph on a spread shows its tail, which Books reports without its last character.
-    @Test func tailGetsItsLastCharacterBack() {
-        #expect(CatalystWebAreaReadableElement.locate("ee. Four", in: "One. Three. Four.", fromEnd: true) == 8..<17)
-    }
-
-    @Test func tailIsTheLastOccurrence() {
-        #expect(CatalystWebAreaReadableElement.locate("go", in: "go on, go", fromEnd: true) == 7..<9)
-        #expect(CatalystWebAreaReadableElement.locate("go", in: "go on, go", fromEnd: false) == 0..<2)
-    }
-
-    @Test func utf16Offsets() {
-        #expect(CatalystWebAreaReadableElement.locate("‘My 😀 dad", in: "He said, ‘My 😀 dad’", fromEnd: false) == 9..<19)
-    }
-
-    @Test func notFound() {
-        #expect(CatalystWebAreaReadableElement.locate("other text", in: "One. Two.", fromEnd: true) == nil)
+    @Test(
+        arguments: [
+            ("One. Two.", "One. Two.", true, 0..<9),  // the whole paragraph
+            ("One. Tw", "One. Two. Three.", false, 0..<7),  // the last paragraph on a spread shows its head
+            ("ee. Four", "One. Three. Four.", true, 8..<17),  // a tail: Books reports it without its last character
+            ("go", "go on, go", true, 7..<9),  // a tail is the last occurrence
+            ("go", "go on, go", false, 0..<2),
+            ("‘My 😀 dad", "He said, ‘My 😀 dad’", false, 9..<19),  // UTF-16 offsets
+            ("other text", "One. Two.", true, nil),
+        ] as [(String, String, Bool, Range<Int>?)])
+    func locatesOnSpreadPart(value: String, paragraph: String, fromEnd: Bool, expected: Range<Int>?) {
+        #expect(CatalystWebAreaReadableElement.locate(value, in: paragraph, fromEnd: fromEnd) == expected)
     }
 }
 
@@ -64,5 +63,37 @@ struct CatalystCopiedSelectionTests {
     @Test func locateOffSpread() {
         let text = "One. Two. Three. Four." as NSString
         #expect(CatalystWebAreaReadableElement.locate(copied: "One.", in: text, on: 10..<22) == nil)
+    }
+}
+
+/// When reading moves on to the next chapter.
+struct CatalystChapterEndTests {
+    private let text = "One. Two.\n\n" as NSString
+
+    private func isEnd(_ unit: Range<Int>, spoken: String, reached: Int?) -> Bool {
+        CatalystWebAreaReadableElement.isChapterEnd(unit: Selection(unit), in: text, spoken: spoken as NSString, reached: reached)
+    }
+
+    @Test func lastWordOfLastUnit() {
+        #expect(isEnd(5..<9, spoken: "Two.", reached: 0))
+        #expect(!isEnd(0..<4, spoken: "One.", reached: 0))
+    }
+
+    @Test func notBeforeTheLastWord() {
+        let text = "One. Two three.\n" as NSString
+        let spoken = "Two three." as NSString
+        #expect(!CatalystWebAreaReadableElement.isChapterEnd(unit: Selection(5..<15), in: text, spoken: spoken, reached: 0))
+        #expect(CatalystWebAreaReadableElement.isChapterEnd(unit: Selection(5..<15), in: text, spoken: spoken, reached: 4))
+        #expect(!CatalystWebAreaReadableElement.isChapterEnd(unit: Selection(5..<15), in: text, spoken: spoken, reached: nil))
+    }
+
+    /// Speech reports no word in a unit without any (a scene break): it ends the chapter all the same.
+    @Test func unitWithoutWords() {
+        let text = "One.\n* * *" as NSString
+        #expect(CatalystWebAreaReadableElement.isChapterEnd(unit: Selection(5..<10), in: text, spoken: "* * *", reached: nil))
+    }
+
+    @Test func emptyUnit() {
+        #expect(!isEnd(9..<9, spoken: "", reached: nil))
     }
 }

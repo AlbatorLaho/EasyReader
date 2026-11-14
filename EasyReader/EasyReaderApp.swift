@@ -1,10 +1,3 @@
-//
-//  EasyReaderApp.swift
-//  EasyReader
-//
-//  Created by Ewalk on 24/11/2.
-//
-
 import SwiftUI
 import Defaults
 import KeyboardShortcuts
@@ -12,109 +5,28 @@ import KeyboardShortcuts
 @main
 struct EasyReaderApp: App {
     @NSApplicationDelegateAdaptor var appDelegate: AppDelegate
-//    @Environment(\.openSettings) private var openSettings
-//    @Environment(\.openWindow) private var openWindow
-    @Environment(\.scenePhase) private var scenePhase
-
-//    init() {
-//        NSApplication.shared.setActivationPolicy(.accessory)
-//        NSApplication.shared.setActivationPolicy(.prohibited)
-//    }
 
     var body: some Scene {
-#if DEBUG
-        WindowGroup {
-            ContentView()
-        }
-#endif
-//        if #available(macOS 13.0, *) {
-//            MenuBarExtra("EasyReader", systemImage: "waveform") {
-//                Group {
-//                    Button("Start", systemImage: "play.fill") {
-//                        guard let app = NSWorkspace.shared.frontmostApplication, appDelegate.easyReader.start(reading: app) else {
-//                            NSSound.beep()
-//                            return
-//                        }
-//                    }
-//                    Button("Stop", systemImage: "stop.fill") {
-//                        guard appDelegate.easyReader.stop() else {
-//                            NSSound.beep()
-//                            return
-//                        }
-//                    }
-//                    Button("Pause/Resume", systemImage: "playpause.fill") {
-//                        guard appDelegate.easyReader.togglePlayPause() else {
-//                            NSSound.beep()
-//                            return
-//                        }
-//                    }
-//                    Button("Skip Backward", systemImage: "gobackward") {
-//                        guard appDelegate.easyReader.skip(.backward) else {
-//                            NSSound.beep()
-//                            return
-//                        }
-//                    }
-//                    Button("Skip Forward", systemImage: "goforward") {
-//                        guard appDelegate.easyReader.skip(.forward) else {
-//                            NSSound.beep()
-//                            return
-//                        }
-//                    }
-//
-//                    Divider()
-//
-//                    if #available(macOS 14.0, *) {
-////                        FIXME: doesn't work when activation is prohibited
-//                        SettingsLink()
-//                            .keyboardShortcut(",")
-//                            .labelStyle(.titleOnly)
-////                            .labelStyle(.automatic)
-//                    }
-//                    Button("Quit") {
-//                        NSApplication.shared.terminate(nil)
-//                    }
-//                    .keyboardShortcut("q")
-//                }
-//                .labelStyle(.titleAndIcon)
-//            }
-//        }
+        #if DEBUG
+            WindowGroup {
+                ContentView()
+            }
+        #endif
         Settings {
             SettingsView()
-//                .textFieldStyle(.roundedBorder)
-//                .onExitCommand() {
-////                    TODO: close settings?
-//                    print("onExitCommand")
-//                }
-//                .onAppear() {
-//                    print("onAppear")
-//                    NSApplication.shared.setActivationPolicy(.regular)
-//                    if #available(macOS 14.0, *) {
-//                        NSApplication.shared.activate()
-//                    } else {
-//                        NSApplication.shared.activate(ignoringOtherApps: true)
-//                    }
-//                }
-//                .onDisappear() {
-//                    print("onDisappear")
-//                    NSApplication.shared.setActivationPolicy(.accessory)
-//                    NSApplication.shared.deactivate()
-//                }
         }
     }
 }
 
-/// Opens the settings window (the SwiftUI `Settings` scene) from AppKit, e.g. the status item's menu.
+/// Opens the SwiftUI `Settings` scene from AppKit.
 @MainActor
 final class SettingsOpener: NSObject {
-    /// The settings window, once it was opened.
     static var window: NSWindow? {
         NSApp.windows.first { $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" }
     }
 
-    /// Opens the settings window, or brings it to the front if it's already open. An accessory app opening a window
-    /// isn't activated (the window opens behind the frontmost app, or nothing happens if it's already open), so
-    /// activate first. Not the cooperative `activate()` (macOS 14+): it was declined in tests (no user event).
     @objc static func open() {
+        // An accessory app isn't activated by opening a window. Not `activate()`: it's declined without a user event.
         NSApp.activate(ignoringOtherApps: true)
         if #available(macOS 14.0, *) {
             Modern.openSettings()
@@ -126,7 +38,7 @@ final class SettingsOpener: NSObject {
         window?.makeKeyAndOrderFront(nil)
     }
 
-    /// `openSettings` (macOS 14+; the selectors above only log a warning there), read outside a view.
+    // The selectors above only log a warning on macOS 14+.
     @available(macOS 14.0, *)
     @MainActor private enum Modern {
         @Environment(\.openSettings) static var openSettings
@@ -139,20 +51,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var nowPlayingManager: NowPlayingManager!
     var statusItem: NSStatusItem!
 
-//    TODO: use .prohibited unless a window needs to be opened, then use .accessory or .regular (make sure the permisions dialog can be opened)
-    func applicationWillFinishLaunching(_ notification: Notification) {
-//#if !DEBUG
-//        NSApplication.shared.setActivationPolicy(.regular)
-//        NSApplication.shared.setActivationPolicy(.accessory)
-//        NSApplication.shared.setActivationPolicy(.prohibited)
-//#endif
-    }
-
     func applicationDidFinishLaunching(_ notification: Notification) {
-//        NSApplication.shared.setActivationPolicy(.accessory)
-#if DEBUG
-        NSApplication.shared.setActivationPolicy(.regular)
-#endif
+        #if DEBUG
+            NSApplication.shared.setActivationPolicy(.regular)
+        #endif
 
         easyReader = EasyReader()
         easyReader.delegate = self
@@ -191,15 +93,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return menuItem
             }(),
             .separator(),
+            NSMenuItem(title: "About EasyReader", action: #selector(aboutAction), keyEquivalent: ""),
             {
-                let menuItem = NSMenuItem(title: "Settings...", action: #selector(SettingsOpener.open), keyEquivalent: ",")
+                let menuItem = NSMenuItem(title: "Settings…", action: #selector(SettingsOpener.open), keyEquivalent: ",")
                 menuItem.target = SettingsOpener.self
                 if #unavailable(macOS 13.0) {
-                    menuItem.title = "Preferences..."
+                    menuItem.title = "Preferences…"
                 }
                 return menuItem
             }(),
-            NSMenuItem(title: "Quit", action: #selector(NSApplication.shared.terminate), keyEquivalent: "q"),
+            NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"),
         ]
 
         KeyboardShortcuts.onKeyDown(for: .increaseRate) {
@@ -216,12 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         Task {
-            for await _ in Defaults.updates([
-                .speechVoice,
-                .speechVolume,
-                .speechRate,
-                .speechPitch,
-            ], initial: false) {
+            for await _ in Defaults.updates([.speechVoice, .speechVolume, .speechRate, .speechPitch], initial: false) {
                 Log.settings.debug("speech settings changed (state \(easyReader.state))")
                 guard easyReader.state == .reading else { continue }
                 easyReader.play(from: .word)
@@ -249,41 +147,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.app.debug("toggle start/stop (state \(easyReader.state))")
         switch easyReader.state {
             case .stopped, .paused:
-                // Paused: resumes if the frontmost element is the one being read, else starts on it.
-                guard easyReader.start(reading: .frontmostApp) else {
-                    NSSound.beep()
-                    return
-                }
+                if !easyReader.start(reading: .frontmostApp) { NSSound.beep() }
             case .reading:
-                guard easyReader.stop() else {
-                    NSSound.beep()
-                    return
-                }
+                if !easyReader.stop() { NSSound.beep() }
         }
     }
 
     @objc func togglePlayPauseAction() {
         Log.app.debug("toggle play/pause (state \(easyReader.state))")
-        guard easyReader.togglePlayPause() else {
-            NSSound.beep()
-            return
-        }
+        if !easyReader.togglePlayPause() { NSSound.beep() }
     }
-    
+
     @objc func skipForwardAction() {
         Log.app.debug("skip forward")
-        guard easyReader.skip(.forward) else {
-            NSSound.beep()
-            return
-        }
+        if !easyReader.skip(.forward) { NSSound.beep() }
     }
 
     @objc func skipBackwardAction() {
         Log.app.debug("skip backward")
-        guard easyReader.skip(.backward) else {
-            NSSound.beep()
-            return
-        }
+        if !easyReader.skip(.backward) { NSSound.beep() }
+    }
+
+    @objc func aboutAction() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(nil)
     }
 }
 

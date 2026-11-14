@@ -1,10 +1,3 @@
-//
-//  SliderControls.swift
-//  EasyReader
-//
-//  Created by Ewalk on 2025-02-05.
-//
-
 import SwiftUI
 
 struct SliderControls<Label: View, ValueLabel: View, Value: BinaryFloatingPoint>: View where Value.Stride: BinaryFloatingPoint {
@@ -16,7 +9,11 @@ struct SliderControls<Label: View, ValueLabel: View, Value: BinaryFloatingPoint>
     private let step: Value.Stride
     private let formatter: NumberFormatter
 
-    init(value: Binding<Value>, in bounds: ClosedRange<Value>, step: Value.Stride = 1, min: NSNumber? = 0, max: NSNumber? = nil, format: NumberFormatter.Style = .decimal, @ViewBuilder label: @escaping () -> Label, @ViewBuilder minimumValueLabel: @escaping () -> ValueLabel, @ViewBuilder maximumValueLabel: @escaping () -> ValueLabel) {
+    init(
+        value: Binding<Value>, in bounds: ClosedRange<Value>, step: Value.Stride = 1, min: NSNumber? = 0, max: NSNumber? = nil,
+        format: NumberFormatter.Style = .decimal, @ViewBuilder label: @escaping () -> Label, @ViewBuilder minimumValueLabel: @escaping () -> ValueLabel,
+        @ViewBuilder maximumValueLabel: @escaping () -> ValueLabel
+    ) {
         self.label = label
         self.minimumValueLabel = minimumValueLabel
         self.maximumValueLabel = maximumValueLabel
@@ -29,7 +26,11 @@ struct SliderControls<Label: View, ValueLabel: View, Value: BinaryFloatingPoint>
         formatter.maximum = max
     }
 
-    init<V: BinaryInteger>(value: Binding<V>, in bounds: ClosedRange<V>, step: V.Stride = 1, min: NSNumber? = 0, max: NSNumber? = nil, format: NumberFormatter.Style = .none, @ViewBuilder label: @escaping () -> Label, @ViewBuilder minimumValueLabel: @escaping () -> ValueLabel, @ViewBuilder maximumValueLabel: @escaping () -> ValueLabel) where V.Stride: BinaryInteger, Value == Double {
+    init<V: BinaryInteger>(
+        value: Binding<V>, in bounds: ClosedRange<V>, step: V.Stride = 1, min: NSNumber? = 0, max: NSNumber? = nil, format: NumberFormatter.Style = .none,
+        @ViewBuilder label: @escaping () -> Label, @ViewBuilder minimumValueLabel: @escaping () -> ValueLabel,
+        @ViewBuilder maximumValueLabel: @escaping () -> ValueLabel
+    ) where V.Stride: BinaryInteger, Value == Double {
         self.init(
             value: Binding(
                 get: { Double(value.wrappedValue) },

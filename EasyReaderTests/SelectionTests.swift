@@ -48,7 +48,6 @@ struct SelectionTests {
         #expect(Range<String.Index>(Selection(0..<10), in: "abc") == nil)
     }
 
-    /// Offsets past the end clamp (used to trap once the index was used).
     @Test func outOfRangeOffsetIsClamped() {
         let string = "abc"
         #expect(Selection(0..<10).endIndex(in: string) == string.endIndex)

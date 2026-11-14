@@ -5,23 +5,17 @@ import Testing
 
 // MARK: - Integration suite
 
-/// Parent of every suite that touches shared global state: the settings store (`Defaults` / `UserDefaults.app`),
-/// the real `AVSpeechSynthesizer`, NSWindows and key-window focus, status items.
-/// Swift Testing runs tests in parallel (one process) by default; `.serialized` is inherited by the nested suites
-/// (declared in `extension IntegrationTests` in their own files) and their parameterized cases, so these run one at a time.
-/// Pure-logic suites stay top-level and parallel. `.teardown` runs each test's `Teardown.add` blocks.
+/// Parent of every suite touching shared state (Defaults, synthesizer, windows, status items): runs them one at a time.
 @MainActor
 @Suite(.serialized, .teardown)
 struct IntegrationTests {
-    /// Tests write `Defaults` freely; that is only safe while the store is in-memory (`Defaults.swift` detects the test run).
+    // Tests write `Defaults` freely: only safe while the store is in-memory.
     @Test func settingsStoreIsInMemory() {
         #expect(UserDefaults.app !== UserDefaults.standard)
     }
 }
 
-/// Per-test teardown, like XCTest's `addTeardownBlock`. Suites register cleanup in `init` (a struct has no `deinit`,
-/// and `deinit` can't be async); the `.teardown` trait runs the blocks newest-first after each test case,
-/// also when the test throws. It also checks that no two integration tests overlap.
+/// Per-test teardown, like XCTest's `addTeardownBlock`: blocks run newest-first after each test case, also after a throw.
 @MainActor
 enum Teardown {
     fileprivate static var blocks: [@MainActor () async -> Void] = []
@@ -43,7 +37,7 @@ enum Teardown {
 }
 
 struct TeardownTrait: SuiteTrait, TestTrait, TestScoping {
-    /// Recursive: the default `scopeProvider` then wraps every test case of every nested suite, not the suite once.
+    // Wraps every test case of every nested suite, not the suite once.
     var isRecursive: Bool { true }
 
     func provideScope(for test: Test, testCase: Test.Case?, performing function: @concurrent @Sendable () async throws -> Void) async throws {
@@ -65,13 +59,7 @@ extension Trait where Self == TeardownTrait {
 // MARK: - Known crashes
 
 extension Trait where Self == ConditionTrait {
-    /// Repros of known crashes take down the whole test process, so they only run on request:
-    ///
-    ///     TEST_RUNNER_EASYREADER_CRASH_REPROS=1 xcodebuild test ... '-only-testing:EasyReaderTests/SelectionTests/outOfRangeOffsetCrashes()'
-    ///
-    /// (`xcodebuild` strips the `TEST_RUNNER_` prefix and passes the rest to the test process.)
-    /// Run them one at a time with `-only-testing`; the first crash ends the run.
-    /// Once a bug is fixed, remove the trait so the test runs (and guards the fix) by default.
+    /// Known crashes take down the test process: run one with `TEST_RUNNER_EASYREADER_CRASH_REPROS=1 xcodebuild test ... -only-testing:…`.
     static var crashRepro: Self {
         .enabled(
             if: ProcessInfo.processInfo.environment["EASYREADER_CRASH_REPROS"] == "1",
@@ -88,15 +76,13 @@ struct StateTimeout: Error, CustomStringConvertible {
     var description: String { "timed out after \(timeout)s waiting for state \(state)" }
 }
 
-/// `EasyReaderDelegate` that records state changes, so tests can await one that happens later.
-/// Create the expectation with `expect(_:)` *before* the action that triggers it: fast transitions
-/// (e.g. reading → stopped on a short text) would be missed by polling or by subscribing afterwards.
+/// Records state changes. Call `expect(_:)` *before* the action: fast transitions would be missed afterwards.
 @MainActor
 final class StateRecorder: EasyReaderDelegate {
     @MainActor
     final class Expectation {
         let state: EasyReader.State
-        /// Position of the fulfilling event among all recorded events (for checking order).
+        /// Index of the fulfilling event among all recorded events.
         fileprivate(set) var order: Int?
         private var continuation: CheckedContinuation<Void, any Error>?
         private var timeoutTask: Task<Void, Never>?
@@ -110,7 +96,6 @@ final class StateRecorder: EasyReaderDelegate {
             timeoutTask?.cancel()
         }
 
-        /// Returns once the state was entered (since `expect`), or throws `StateTimeout`.
         func wait(timeout: TimeInterval) async throws {
             guard order == nil else { return }
             try await withCheckedThrowingContinuation { continuation in
@@ -143,7 +128,6 @@ final class StateRecorder: EasyReaderDelegate {
 
 // MARK: - Helpers
 
-/// In-memory readable that records what EasyReader does to it.
 @MainActor
 final class MockReadable: Readable {
     let title: String? = "Mock"
@@ -159,13 +143,13 @@ final class MockReadable: Readable {
     private(set) var scrolls: [Selection] = []
     /// EasyReader reads `selectedText` once per utterance it starts.
     private(set) var selectedTextReads = 0
-    /// What `selectedText` returned, in order.
     private(set) var selectedTexts: [String] = []
     var selectedText: String? {
         selectedTextReads += 1
         guard let fullText, let selection, let range = Range(selection, in: fullText) else { return nil }
-        selectedTexts.append(String(fullText[range]))
-        return String(fullText[range])
+        let text = String(fullText[range])
+        selectedTexts.append(text)
+        return text
     }
 
     init(_ text: String, selection: Selection = Selection(), appDomain: String? = nil) {
@@ -191,7 +175,7 @@ final class MockReadable: Readable {
 
 let longText = Array(repeating: "This is a fairly long sentence to keep speaking.", count: 20).joined(separator: " ")
 
-/// Lets AX, AppKit and speech callbacks settle: suspends the test so the host app's main run loop keeps running.
+/// Suspends the test so the main run loop keeps running (AX, AppKit and speech callbacks).
 func settle(_ seconds: TimeInterval = 0.1) async {
     try? await Task.sleep(seconds: seconds)
 }

@@ -7,7 +7,7 @@ import Testing
 struct PronunciationTests {
     @Test func codableRoundTrip() throws {
         let pronunciation = Pronunciation(
-            search: "GUI", replace: "gooey", domain: "com.apple.TextEdit", ignoreCase: false, wholeWord: false,
+            search: "GUI", replace: "gooey", appDomain: "com.apple.TextEdit", ignoreCase: false, wholeWord: false,
             isRegex: true, isPhonetic: true, enabled: false
         )
         let data = try JSONEncoder().encode(pronunciation)
@@ -18,7 +18,7 @@ struct PronunciationTests {
     @Test func decodesLegacyRule() throws {
         let json = #"{"id":"0F3B1C52-7A1E-4D43-9C1A-2B6F2C0E8D11","search":"GUI","replace":"gooey","ignoreCase":false,"enabled":true}"#
         let rule = try JSONDecoder().decode(Pronunciation.self, from: Data(json.utf8))
-        #expect(rule.search == "GUI" && rule.replace == "gooey" && rule.domain == nil)
+        #expect(rule.search == "GUI" && rule.replace == "gooey" && rule.appDomain == nil)
         #expect(!rule.ignoreCase && rule.enabled)
         #expect(!rule.wholeWord && !rule.isRegex && !rule.isPhonetic)
     }
@@ -98,7 +98,7 @@ struct PronunciationTests {
     /// For the same match, a rule limited to an app beats one for all apps, wherever it is in the list.
     @Test func appSpecificRuleWinsTies() {
         let all = Pronunciation(search: "tomato", replace: "tomayto")
-        let safari = Pronunciation(search: "tomato", replace: "tomahto", domain: "com.apple.Safari")
+        let safari = Pronunciation(search: "tomato", replace: "tomahto", appDomain: "com.apple.Safari")
         #expect(spoken("tomato", all, safari) == "tomahto")
         #expect(spoken("tomato", safari, all) == "tomahto")
         // Longer matches still win first.
@@ -173,7 +173,6 @@ struct PronunciationTests {
 
     /// Spoken offsets map back to the original: shifted after a replacement, its start inside one.
     @Test func originalOffsetMapping() {
-        // "I like GUI apps and qty." → "I like gooey apps and quantity."
         let rules = [Pronunciation(search: "GUI", replace: "gooey"), Pronunciation(search: "qty", replace: "quantity")]
         let result = SpokenText("I like GUI apps and qty.", applying: rules)
         #expect(result.text == "I like gooey apps and quantity.")
@@ -211,10 +210,10 @@ struct PronunciationTests {
         }
         #expect(rules.count == 2)
         let brb = rules[0]
-        #expect(brb.search == "brb" && brb.replace == "be right back" && brb.domain == "com.apple.TextEdit")
+        #expect(brb.search == "brb" && brb.replace == "be right back" && brb.appDomain == "com.apple.TextEdit")
         #expect(brb.ignoreCase && !brb.enabled && brb.wholeWord)
         let gui = rules[1]
-        #expect(gui.search == "GUI" && gui.replace == "gooey" && gui.domain == nil)
+        #expect(gui.search == "GUI" && gui.replace == "gooey" && gui.appDomain == nil)
         #expect(!gui.ignoreCase && gui.enabled)
     }
 
@@ -222,7 +221,7 @@ struct PronunciationTests {
         let a = Pronunciation(search: "GUI", replace: "gooey")
         var b = Pronunciation(search: "GUI", replace: "goo-ee")
         #expect(a.matchesRule(of: b))
-        b.domain = "com.example"
+        b.appDomain = "com.example"
         #expect(!a.matchesRule(of: b))
     }
 }

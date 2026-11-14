@@ -83,18 +83,16 @@ struct NLTextSelectorTests {
         #expect(text(of: back, in: string) == "😀 Hello there.")
     }
 
-    /// A selection starting inside the first character's UTF-16 surrogate pair rounds down to the start
-    /// (used to make `enumerateTagsReversed` call `index(before:)` on the start index and trap).
+    /// Starting inside the first character's surrogate pair rounds down to the start (`enumerateTagsReversed` used to trap).
     @Test func backwardFromInsideLeadingSurrogatePair() {
         let string = "😀 Hi."
         #expect(NLTextSelector(unit: .sentence).select(.backward, from: Selection(1..<3), in: string).isEmpty)
     }
 }
 
-/// `TextSelector.select(_:from:in:blocks:)`: units stay within blocks reported separately (Chromium page text has no
-/// line breaks between them).
+/// Units stay within blocks reported separately (Chromium page text has no breaks between them).
 struct BlockSelectionTests {
-    /// "Heading" + "First one. Second one." + U+FFFC (image) + "Last block." run together, blocks given separately.
+    // "Heading" + "First one. Second one." + U+FFFC (image) + "Last block.".
     private let string = "HeadingFirst one. Second one.\u{FFFC}Last block."
     private var blocks: [Selection] { [Selection(0..<7), Selection(7..<29), Selection(29..<30), Selection(30..<41)] }
 
@@ -127,8 +125,7 @@ struct BlockSelectionTests {
         #expect(read == ["Last block.", "Second one.", "First one.", "Heading", ""])
     }
 
-    /// Starting on the space after a sentence (a selection reported without its trailing space, e.g. by PDFKit): the
-    /// space alone is blank, but the rest of the block must not be skipped.
+    /// Starting on the space after a sentence (PDFKit reports selections without it) must not skip the rest of the block.
     @Test func blankStepDoesNotSkipRestOfBlock() {
         let selector = NLTextSelector(unit: .sentence)
         let forward = selector.select(.forward, from: Selection(7..<17), in: string, blocks: block)

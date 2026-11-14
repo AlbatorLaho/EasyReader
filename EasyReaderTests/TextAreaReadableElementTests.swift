@@ -7,8 +7,6 @@ import Testing
 @testable import EasyReader
 
 extension IntegrationTests {
-    /// Drives the real AX code path against a text view in the test host's own process.
-    /// Reading your own process's accessibility tree does not require Accessibility permission.
     @MainActor
     struct TextAreaReadableElementTests {
         private struct TextAreaNotFound: Error, CustomStringConvertible {
@@ -41,7 +39,6 @@ extension IntegrationTests {
             await settle()
         }
 
-        /// Silent reader (see EasyReaderSpeechTests).
         private func makeReader() -> EasyReader {
             Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
@@ -130,8 +127,7 @@ extension IntegrationTests {
             #expect(scrollView.contentView.bounds.origin.y > 0)
         }
 
-        /// SwiftUI's `TextEditor` (the Settings playgrounds) reports only its visible frame over AX, so scrolling
-        /// from the element frame alone always went to the top; the full text's bounds give the document size.
+        /// SwiftUI's `TextEditor` (Settings playgrounds) reports only its visible frame, so the full text's bounds give the document size.
         @Test func scrollsSwiftUITextEditor() async throws {
             struct Editor: View {
                 @State var text = (1...80).map { "Sentence number \($0)." }.joined(separator: " ")
@@ -203,7 +199,6 @@ extension IntegrationTests {
             #expect(!reader.start(reading: .element(start)))
         }
 
-        /// Reading stops once the text view leaves its window.
         @Test func stopsWhenTextViewIsRemoved() async throws {
             textView.string = Array(repeating: "word", count: 400).joined(separator: " ") + "."
             let reader = makeReader()
@@ -227,5 +222,19 @@ extension IntegrationTests {
             window.close()
             try await stopped.wait(timeout: 3)
         }
+    }
+}
+
+struct TextAreaContentFrameTests {
+    private let scrollArea = CGRect(x: 0, y: 0, width: 400, height: 300)
+
+    @Test(
+        arguments: [
+            (CGRect(x: 0, y: -500, width: 385, height: 2000), false),  // NSTextView: as tall as its text, as wide as the scroll area
+            (CGRect(x: 0, y: 0, width: 400, height: 300), true),  // TextEditor: its visible rect
+            (CGRect(x: 0, y: 0, width: 385, height: 120), true),  // short text that fits: cheap either way
+        ] as [(CGRect, Bool)])
+    func visibleRectOnlyByHeight(elementFrame: CGRect, expected: Bool) {
+        #expect(TextAreaReadableElement.showsOnlyVisibleRect(elementFrame: elementFrame, scrollAreaFrame: scrollArea) == expected)
     }
 }

@@ -1,15 +1,6 @@
-//
-//  AXElement.swift
-//  EasyReader
-//
-
 import ApplicationServices
 
-/// An accessibility element of some app, with typed attribute access: each `AXAttribute` key fixes its value type, and
-/// values are checked when decoded (a wrong type throws `AXFailure.typeMismatch` instead of crashing).
-///
-/// Reads return `nil` when the element has no such attribute or no value for it (`.attributeUnsupported`, `.noValue`)
-/// and throw an `AXFailure` for any other failure (invalid element, timeout…, or a value of the wrong type).
+/// Reads return `nil` for a missing attribute or value and throw `AXFailure` otherwise (also for a value of the wrong type).
 struct AXElement: Hashable, CustomStringConvertible {
     let raw: AXUIElement
 
@@ -21,7 +12,7 @@ struct AXElement: Hashable, CustomStringConvertible {
         AXElement(AXUIElementCreateApplication(pid))
     }
 
-    /// Whether this process may use the accessibility API; with `prompt`, asks the user (only while untrusted).
+    /// With `prompt`, asks the user (only while untrusted).
     static func isProcessTrusted(prompt: Bool = false) -> Bool {
         AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": prompt] as CFDictionary)
     }
@@ -65,7 +56,6 @@ struct AXElement: Hashable, CustomStringConvertible {
         guard error == .success else { throw AXFailure.error(error, action.name) }
     }
 
-    /// Names of the attributes the element supports (empty if it can't tell).
     var attributeNames: [String] {
         var names: CFArray?
         guard AXUIElementCopyAttributeNames(raw, &names) == .success else { return [] }
@@ -127,9 +117,7 @@ struct AXElement: Hashable, CustomStringConvertible {
 }
 
 enum AXFailure: Error, CustomStringConvertible {
-    /// The AX call (attribute, action) failed.
     case error(AXError, String)
-    /// An attribute's value wasn't of the type its key declares (the app vends something unexpected).
     case typeMismatch(String, expected: String, found: String)
 
     var description: String {

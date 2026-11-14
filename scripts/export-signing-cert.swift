@@ -86,8 +86,7 @@ var query: [String: Any] = [
     kSecReturnRef as String: true,
 ]
 if let keychainPath {
-    // SecKeychainOpen is deprecated, but the only way to scope a search to one keychain file.
-    // It doesn't check the file exists.
+    // Deprecated, but the only way to search one keychain file; doesn't check the file exists.
     var keychain: SecKeychain?
     guard FileManager.default.fileExists(atPath: keychainPath), SecKeychainOpen(keychainPath, &keychain) == errSecSuccess, let keychain else {
         fail("Can't open keychain \(keychainPath)")

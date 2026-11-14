@@ -5,8 +5,7 @@ import Testing
 @testable import EasyReader
 
 extension IntegrationTests {
-    /// A tagged PDF (printed by Chrome, `TaggedPDF.pdf`; source in the test): a heading, two paragraphs split into
-    /// leaves at inline spans (bold words, a footnote mark), none selectable, and a second page without a heading.
+    /// `TaggedPDF.pdf`, printed by Chrome from:
     ///
     /// ```html
     /// <style>body { font: 16px Georgia; width: 5in } .next { break-before: page }</style>

@@ -1,8 +1,3 @@
-//
-//  SettingsPronunciationsView.swift
-//  EasyReader
-//
-
 import AVFoundation
 import Defaults
 import SwiftUI
@@ -33,8 +28,8 @@ struct SettingsPronunciationsView: View {
                             TextField(rule.isPhonetic ? "IPA" : "Replacement", text: $rule.replace).textFieldStyle(.plain)
                         }
                         .width(min: 80, ideal: 200)
-                        BackportTableColumn("App", value: { $0.domain.map(AppMenu.name(of:)) ?? "" }) { $rule in
-                            AppMenu(bundleID: $rule.domain)
+                        BackportTableColumn("App", value: { $0.appDomain.map(AppMenu.name(of:)) ?? "" }) { $rule in
+                            AppMenu(bundleID: $rule.appDomain)
                         }
                         .width(min: 90, ideal: 140)
                     }
@@ -58,7 +53,7 @@ struct SettingsPronunciationsView: View {
             }
 
             GroupBox {
-                // Always shown (disabled without a selection) so selecting doesn't resize the layout.
+                // Always shown so selecting doesn't shift the layout.
                 RuleOptions(rule: binding(for: selection))
             } label: {
                 Label("Options", systemImage: "slider.horizontal.3")
@@ -83,10 +78,9 @@ struct SettingsPronunciationsView: View {
         }
     }
 
-    /// Rules that would apply in the selected rule's app (or rules for all apps when none is selected).
     private var previewRules: [Pronunciation] {
-        let domain = binding(for: selection)?.wrappedValue.domain
-        return pronunciations.filter { $0.enabled && ($0.domain == nil || $0.domain == domain) }
+        let domain = binding(for: selection)?.wrappedValue.appDomain
+        return pronunciations.filter { $0.enabled && ($0.appDomain == nil || $0.appDomain == domain) }
     }
 
     private var previewSpoken: SpokenText {
@@ -94,7 +88,7 @@ struct SettingsPronunciationsView: View {
     }
 
     private var previewTitle: String {
-        guard let domain = binding(for: selection)?.wrappedValue.domain else { return "Preview" }
+        guard let domain = binding(for: selection)?.wrappedValue.appDomain else { return "Preview" }
         return "Preview in \(AppMenu.name(of: domain))"
     }
 
@@ -158,7 +152,6 @@ struct SettingsPronunciationsView: View {
 }
 
 private struct RuleOptions: View {
-    /// `nil` when no rule is selected: controls show defaults, disabled.
     let rule: Binding<Pronunciation>?
 
     private static let placeholder = Pronunciation(search: "", replace: "")
@@ -182,7 +175,7 @@ private struct RuleOptions: View {
                     InfoButton("IPA spells out exactly how the matched text should sound.") { IPAInfo() }
                 }
             }
-            // One caption line in every state, so the box keeps its height.
+            // One line in every state, so the box keeps its height.
             Group {
                 if !isEnabled {
                     Text("Select a pronunciation to change its options.")
@@ -238,9 +231,11 @@ private struct IPAInfo: View {
     }
 }
 
-/// Picks the app a rule is limited to: all apps, a running app, or any app on disk.
 private struct AppMenu: View {
     @Binding var bundleID: String?
+
+    // LaunchServices lookups cost ~15 ms each, and every row's menu lists every app.
+    private static var names: [String: String] = [:]
 
     var body: some View {
         Menu {
@@ -267,9 +262,6 @@ private struct AppMenu: View {
         bundleID = id
     }
 
-    /// Display names by bundle ID: a LaunchServices lookup costs ~15 ms, and every row's menu lists every app.
-    private static var names: [String: String] = [:]
-
     static func name(of bundleID: String) -> String {
         if let name = names[bundleID] { return name }
         var name = bundleID
@@ -281,7 +273,7 @@ private struct AppMenu: View {
         return name
     }
 
-    /// Bundle IDs of running regular apps, by name.
+    /// Sorted by name.
     static func runningApps() -> [String] {
         let ids = NSWorkspace.shared.runningApplications
             .filter { $0.activationPolicy == .regular }

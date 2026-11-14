@@ -11,6 +11,7 @@ editor="${VISUAL:-${EDITOR:-}}"
 if [[ -z "$editor" ]] || ! command -v "${editor%% *}" > /dev/null; then echo "Set VISUAL or EDITOR to your editor" >&2; exit 1; fi
 if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then echo "Tag $tag already exists" >&2; exit 1; fi
 if [[ -n "$(git status --porcelain)" ]]; then echo "Commit or stash your changes first" >&2; exit 1; fi
+xcrun swift-format lint --strict -r --parallel EasyReader EasyReaderTests || { echo "Fix the lint warnings first (xcrun swift-format format -i -r EasyReader EasyReaderTests)" >&2; exit 1; }
 
 tracked=$(git ls-files CHANGELOG.md)
 restore() {

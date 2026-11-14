@@ -1,14 +1,8 @@
-//
-//  SpeechRateTests.swift
-//  EasyReaderTests
-//
-
 import AVFoundation
 import Testing
 
 @testable import EasyReader
 
-/// `|a - b| <= tolerance`, for `#expect` on rates and multipliers (Float math isn't exact).
 func isClose(_ a: Float, _ b: Float, tolerance: Float = 0.001) -> Bool {
     abs(a - b) <= tolerance
 }

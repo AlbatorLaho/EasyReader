@@ -1,10 +1,3 @@
-//
-//  NLTextSelector.swift
-//  EasyReader
-//
-//  Created by Ewalk on 24/12/19.
-//
-
 import NaturalLanguage
 
 final class NLTextSelector: TextSelector {
@@ -49,14 +42,17 @@ final class NLTextSelector: TextSelector {
 }
 
 extension NLTagger {
-    func enumerateTagsReversed(in range: Range<String.Index>, unit: NLTokenUnit, scheme: NLTagScheme, options: NLTagger.Options = [], using block: (NLTag?, Range<String.Index>) -> Bool) {
+    func enumerateTagsReversed(
+        in range: Range<String.Index>, unit: NLTokenUnit, scheme: NLTagScheme, options: NLTagger.Options = [],
+        using block: (NLTag?, Range<String.Index>) -> Bool
+    ) {
         guard let string else { return }
         var currentIndex = range.upperBound
         while currentIndex > range.lowerBound {
             let previousIndex = string.index(before: currentIndex)
             let tags = tags(in: previousIndex..<currentIndex, unit: unit, scheme: scheme, options: options)
             guard let (tag, tagRange) = tags.last, tagRange.lowerBound < currentIndex else {
-                // Never seen in practice; step back anyway so the loop always terminates.
+                // Never seen, but always step back so the loop ends
                 currentIndex = previousIndex
                 continue
             }

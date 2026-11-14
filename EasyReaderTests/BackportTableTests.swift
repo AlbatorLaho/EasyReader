@@ -5,7 +5,6 @@ import Testing
 @testable import EasyReader
 
 extension IntegrationTests {
-    /// Drives `BackportTable` in a real window: rows, two-way bindings, selection, clicks into cells.
     @MainActor
     struct BackportTableTests {
         struct Item: Identifiable, Equatable {
@@ -75,6 +74,22 @@ extension IntegrationTests {
             return try #require(Self.first(NSTextField.self, in: cell))
         }
 
+        private func mouseEvent(_ type: NSEvent.EventType, at windowLocation: NSPoint, timestamp: TimeInterval) -> NSEvent? {
+            NSEvent.mouseEvent(
+                with: type, location: windowLocation, modifierFlags: [], timestamp: timestamp,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+            )
+        }
+
+        private func click(_ view: NSView) throws {
+            let point = view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil)
+            let down = try #require(mouseEvent(.leftMouseDown, at: point, timestamp: ProcessInfo.processInfo.systemUptime))
+            let up = try #require(mouseEvent(.leftMouseUp, at: point, timestamp: ProcessInfo.processInfo.systemUptime))
+            // Posted, not sent, so `NSApp.currentEvent` is set (the table reads it).
+            NSApp.postEvent(down, atStart: false)
+            NSApp.postEvent(up, atStart: false)
+        }
+
         @Test func showsRowsAndColumns() throws {
             #expect(tableView.numberOfRows == 3)
             #expect(tableView.tableColumns.map(\.title) == ["Name", "On"])
@@ -130,11 +145,9 @@ extension IntegrationTests {
             #expect(tableView.selectedRow == -1)
         }
 
-        private var names: [String] { model.rows.map(\.name) }
-
         /// A header click sorts the rows themselves (Finder-like string order, stable), again to reverse.
         @Test func headerClickSortsRows() async throws {
-            // Two "alpha"s (told apart by `on`) check the sort is stable.
+            // Two "alpha"s, told apart by `on`, check the sort is stable.
             model.rows = [Item(name: "beta"), Item(name: "alpha", on: true), Item(name: "gamma 10"), Item(name: "gamma 9"), Item(name: "alpha")]
             func order() -> [String] { model.rows.map { $0.name + ($0.on ? "+" : "") } }
             await settle()
@@ -164,7 +177,12 @@ extension IntegrationTests {
         }
 
         /// Dragged rows go through `onMove` with `List.onMove` offsets; the selection follows its row.
-        @Test(arguments: [([0], 3, ["Beta", "Gamma", "Alpha"]), ([2], 0, ["Gamma", "Alpha", "Beta"]), ([1], 1, ["Alpha", "Beta", "Gamma"])] as [([Int], Int, [String])])
+        @Test(
+            arguments: [
+                ([0], 3, ["Beta", "Gamma", "Alpha"]),
+                ([2], 0, ["Gamma", "Alpha", "Beta"]),
+                ([1], 1, ["Alpha", "Beta", "Gamma"]),
+            ] as [([Int], Int, [String])])
         func dragReordersRows(rows: [Int], destination: Int, expected: [String]) async throws {
             let coordinator = try #require(tableView.dataSource as? BackportTable<Item>.Coordinator)
             #expect(coordinator.tableView(tableView, pasteboardWriterForRow: 0) != nil)
@@ -173,33 +191,13 @@ extension IntegrationTests {
             await settle()
             #expect(coordinator.move(IndexSet(rows), to: destination))
             await settle()
-            #expect(names == expected)
+            #expect(model.rows.map(\.name) == expected)
             #expect(try (0..<3).map { try textField(row: $0).stringValue } == expected)
             #expect(model.selection == selected)
             #expect(tableView.selectedRow == model.rows.firstIndex { $0.id == selected })
         }
 
-        private func click(_ view: NSView) throws {
-            try click(at: NSPoint(x: view.bounds.midX, y: view.bounds.midY), in: view)
-        }
-
-        private func click(at location: NSPoint, in view: NSView) throws {
-            let point = view.convert(location, to: nil)
-            func event(_ type: NSEvent.EventType) -> NSEvent? {
-                NSEvent.mouseEvent(
-                    with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
-                )
-            }
-            let down = try #require(event(.leftMouseDown))
-            let up = try #require(event(.leftMouseUp))
-            // Through the event queue like a real click (sets `NSApp.currentEvent`, which the table reads).
-            NSApp.postEvent(down, atStart: false)
-            NSApp.postEvent(up, atStart: false)
-        }
-
-        /// Like a standard table: a click on a text field in an unselected row selects the row without
-        /// editing; a click in the selected row edits.
+        /// Like a standard table: clicking a field in an unselected row only selects the row; in the selected row it edits.
         @Test func clickSelectsRowThenClickEdits() async throws {
             let field = try textField(row: 2)
             try click(field)
@@ -213,36 +211,25 @@ extension IntegrationTests {
             #expect(model.selection == model.rows[2].id)
         }
 
-        /// SwiftUI asks for every row's field to become first responder when it updates, also during a
-        /// click elsewhere: only the field under the click may select its row (was: row 0 got selected).
+        /// SwiftUI asks every row's field for first responder on each update, mid-click too: only the clicked one may select.
         @Test func onlyTheClickedFieldSelectsItsRow() throws {
             let table = try #require(tableView as? BackportTableView)
             let fields = try (0..<3).map(textField(row:))
             let row = tableView.rect(ofRow: 2)
-            // Beside the fields: left edge of row 2, outside the cell's inset.
-            let location = tableView.convert(NSPoint(x: tableView.rect(ofColumn: 0).minX + 1, y: row.midY), to: nil)
-            let click = try #require(
-                NSEvent.mouseEvent(
-                    with: .leftMouseDown, location: location, modifierFlags: [], timestamp: 1,
-                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
-                )
-            )
+            // Left edge of row 2, outside the cell's inset.
+            let besideFields = tableView.convert(NSPoint(x: tableView.rect(ofColumn: 0).minX + 1, y: row.midY), to: nil)
+            let click = try #require(mouseEvent(.leftMouseDown, at: besideFields, timestamp: 1))
             for field in fields {
                 #expect(table.allowsFirstResponder(field, during: click))
             }
             #expect(tableView.selectedRow == -1)
 
-            let onField = try #require(
-                NSEvent.mouseEvent(
-                    with: .leftMouseDown, location: fields[2].convert(NSPoint(x: fields[2].bounds.midX, y: fields[2].bounds.midY), to: nil),
-                    modifierFlags: [], timestamp: 2, windowNumber: window.windowNumber, context: nil, eventNumber: 0,
-                    clickCount: 1, pressure: 1
-                )
-            )
+            let fieldCenter = fields[2].convert(NSPoint(x: fields[2].bounds.midX, y: fields[2].bounds.midY), to: nil)
+            let onField = try #require(mouseEvent(.leftMouseDown, at: fieldCenter, timestamp: 2))
             #expect(table.allowsFirstResponder(fields[0], during: onField))
             #expect(!table.allowsFirstResponder(fields[2], during: onField))
             #expect(tableView.selectedRow == 2)
-            // Refused for the rest of that click, even now that the row is selected.
+            // Still refused for the rest of that click, though the row is now selected.
             #expect(!table.allowsFirstResponder(fields[2], during: onField))
         }
 

@@ -1,43 +1,18 @@
-//
-//  CatalystWebAreaReadableElement.swift
-//  EasyReader
-//
-
 import Cocoa
 
-/// A web area in a Mac Catalyst app: Apple Books' book view (paginated `WKWebView`s, one document and web area per
-/// chapter).
-///
-/// UIKit's AX bridge gives a web area itself no text, text markers or selection; its children are only the paragraphs
-/// (and headings) on the current spread, and each child's `AXValue` is only its part on that spread. Each child's
-/// `AXTextMarkerRangeForUIElement` still covers its whole paragraph, and markers step through the whole chapter (also
-/// past the spread, where `AXUIElementForTextMarker` gives elements that aren't children), with `AXIndexForTextMarker`
-/// = UTF-16 offset in the chapter. So `fullText` is the chapter, built leaf by leaf (~0.3 s for 50k characters; the
-/// document's own string differs from the indices around images), and offsets are AX indices.
-///
-/// Selection: a child's `AXSelectedTextRange` can be set (relative to its paragraph's start, even when that's on an
-/// earlier spread) but never reads back, nor does anything else report the user's selection. Selecting text that isn't
-/// on the spread makes WebKit scroll its column layout out of alignment with Books' pages (half pages, stale page
-/// number), so a unit is selected only after turning to its page (page keys posted to the app: works in the
-/// background; the AX scroll-by-page actions return success but do nothing), and only its part on the spread; the rest
-/// is selected as speech reaches it (`didReach(_:)`). Reading starts at the user's selection (copied: `copySelection`)
-/// when it's on the spread, else resumes the unit read last while it's still on screen, else at the top of the spread.
-///
-/// Chapters: a spread can show two chapters (the end of one on the left page, the start of the next on the right), each
-/// in its own web area; web areas of chapters turned away from stay valid (with stale children) but leave the window.
-/// So `handle` is the window, a chapter is identified by its web area, and the web areas shown are looked up on each
-/// read. After a chapter's last unit, reading goes on in the next web area on the spread, or turns the page to it.
+/// A Mac Catalyst web area: Apple Books' paginated chapters. `handle` is the window; a chapter is its web area, and
+/// offsets are its AX indices.
 final class CatalystWebAreaReadableElement: ReadableElement {
-    /// A text child of a web area: a paragraph or heading with (part of) its text on the current spread.
+    /// A paragraph or heading with (part of) its text on the spread.
     private struct Leaf: Equatable {
         let element: AXElement
-        /// The whole paragraph, in AX indices.
+        /// The whole paragraph.
         let range: Range<Int>
-        /// The part on the spread (`AXValue`).
+        /// Usually only the part on the spread.
         let value: String
     }
 
-    /// The web areas shown in the window, in order (left to right page), with their text children.
+    /// The web areas shown, left to right.
     private struct Spread: Equatable {
         struct Area: Equatable {
             let webArea: AXElement
@@ -58,7 +33,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         let visible: Range<Int>
     }
 
-    /// The chapter's part of the current spread.
+    /// The chapter's part of the spread.
     private struct Page {
         let paragraphs: [Paragraph]
         var visible: Range<Int> { paragraphs[0].visible.lowerBound..<paragraphs[paragraphs.count - 1].visible.upperBound }
@@ -72,40 +47,44 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         let base: Int
     }
 
-    /// Keys that turn a page (forward, back). Page Down/Up turn exactly one spread (snapping to the page grid, across
-    /// chapters) wherever the key focus is; the arrow keys only do while Books itself has it (once the user selected
-    /// text, they scroll the web view by 40 px instead), so they're the fallback for when the page keys do nothing.
+    /// A leaf's range and text, as found walking the document.
+    private struct Span {
+        let range: Range<Int>
+        let text: String
+    }
+
+    // Page Down/Up; arrows only turn while Books has key focus (else they scroll 40 px), so they're the fallback
     private static let pageKeys: (forward: CGKeyCode, back: CGKeyCode) = (121, 116)
     private static let arrowKeys: (forward: CGKeyCode, back: CGKeyCode) = (124, 123)
-    private static let copyKey: CGKeyCode = 8
+
+    /// How long `page(showing:)` may keep turning.
+    static let maxTurningTime: TimeInterval = 20
 
     private var chapter: Chapter?
-    /// The unit being read (offsets in the chapter text); what `selection` reports while it's on screen.
+    /// The unit being read; what `selection` reports while it's on screen.
     private var tracked: Selection?
     /// End of the part of `tracked` selected so far.
     private var pieceEnd: Int?
     /// Last offset in `selectedText` speech reached.
     private var lastReached: Int?
-    /// The unit after which no next chapter was found (end of the book), so it isn't looked for again.
-    private var lastChapterEnd: Selection?
+    /// The book's end: no next chapter after this unit of this chapter (web area).
+    private var lastChapterEnd: (webArea: AXElement, unit: Selection)?
     private var isReading = false
-    /// A mouse button went up in the app while reading (the user may have selected something): copied at the next
-    /// `selection` read.
     private var userMayHaveSelected = false
     // Removed only by `endReading`, which EasyReader always calls: a deinit can't (isolated deinits are off-limits).
     private var mouseMonitor: Any?
-    /// Set once the page keys didn't turn the page (see `pageKeys`).
     private var usesArrows = false
-    /// Set once a forward turn went back (right-to-left books): the keys are swapped.
+    /// Right-to-left books.
     private var isReversed = false
+    /// What `spread()` read this main-actor turn; dropped by a posted key.
+    private var cachedSpread: Spread?
 
-    /// `element` is a web area; reads go to whichever web areas its window shows. (Catalyst elements have no
-    /// `AXWindow`: found through parents.)
+    // Catalyst elements have no `AXWindow`
     required init(_ element: AXElement) {
         super.init((try? element.parent(with: .window)) ?? element)
     }
 
-    /// Whether `element` (an `AXWebArea`) is a Catalyst one: no page-wide text markers, but children with their own.
+    /// Whether the `AXWebArea` `element` has no page-wide text markers, but children with their own.
     static func matches(_ element: AXElement) -> Bool {
         guard (try? element.attribute(.startTextMarker)) == nil,
             let child = (try? element.attribute(.children))?.first
@@ -167,8 +146,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         mouseMonitor = nil
     }
 
-    /// Notes mouse-ups in the app (Books posts no `AXSelectedTextChanged`), so a selection made while reading is copied
-    /// once, instead of copying after every unit. Global monitors see other apps' events with the Accessibility grant.
+    // Books posts no `AXSelectedTextChanged`; this way the clipboard isn't touched per unit
     private func watchMouse() {
         guard mouseMonitor == nil, let pid = try? handle.pid() else { return }
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
@@ -181,13 +159,12 @@ final class CatalystWebAreaReadableElement: ReadableElement {
 
     // MARK: Spread
 
-    /// Reads the spread; loads the chapter on its first page when the current one isn't shown (or there's none yet),
-    /// which drops the unit being read.
+    /// Loads the spread's first chapter when the current one isn't shown, dropping the unit being read.
     private func refresh() -> (chapter: Chapter, page: Page?)? {
-        let spread = readSpread()
+        let spread = spread()
         if let chapter {
             if let page = page(of: chapter, in: spread) { return (chapter, page) }
-            // Shown, but its text doesn't fit (yet): keep it rather than reloading on every read.
+            // Shown, but its text doesn't fit (yet): keep it rather than reloading on every read
             if spread.areas.contains(where: { $0.webArea == chapter.webArea }) { return (chapter, nil) }
         }
         guard let area = spread.areas.first(where: { !$0.leaves.isEmpty }), let loaded = loadChapter(area) else {
@@ -200,11 +177,20 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         return (loaded, page(of: loaded, in: spread))
     }
 
+    /// The spread, read once per main-actor turn: nothing moves on screen until we post a key.
+    private func spread() -> Spread {
+        if let cachedSpread { return cachedSpread }
+        let read = readSpread()
+        cachedSpread = read
+        DispatchQueue.main.async { [weak self] in self?.cachedSpread = nil }
+        return read
+    }
+
+    /// Reads the spread afresh: while waiting for it to change.
     private func readSpread() -> Spread {
         Spread(areas: webAreas().map { Spread.Area(webArea: $0, leaves: readLeaves(of: $0), frame: try? $0.attribute(.frame)) })
     }
 
-    /// The web areas the window shows (breadth-first: a few groups down; not searching inside web areas), in order.
     private func webAreas() -> [AXElement] {
         var queue = [handle]
         var found: [AXElement] = []
@@ -221,17 +207,21 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         return found
     }
 
-    /// A web area's text children, with their paragraphs' ranges (AX indices).
     private func readLeaves(of webArea: AXElement) -> [Leaf] {
         let children = (try? webArea.attribute(.children)) ?? []
         return children.compactMap { child in
-            guard let markers = try? child.attribute(.textMarkerRangeForUIElement, for: child),
-                let start = markers.start, let end = markers.end,
-                let lower = try? child.attribute(.indexForTextMarker, for: start),
-                let upper = try? child.attribute(.indexForTextMarker, for: end), lower <= upper
-            else { return nil }
-            return Leaf(element: child, range: lower..<upper, value: (try? child.attribute(.value)) ?? "")
+            guard let range = indices(of: child)?.range else { return nil }
+            return Leaf(element: child, range: range, value: (try? child.attribute(.value)) ?? "")
         }
+    }
+
+    private func indices(of element: AXElement) -> (markers: AXTextMarkerRange, range: Range<Int>)? {
+        guard let markers = try? element.attribute(.textMarkerRangeForUIElement, for: element),
+            let start = markers.start, let end = markers.end,
+            let lower = try? element.attribute(.indexForTextMarker, for: start),
+            let upper = try? element.attribute(.indexForTextMarker, for: end), lower <= upper
+        else { return nil }
+        return (markers, lower..<upper)
     }
 
     /// `chapter`'s part of `spread`; nil if it isn't shown or its text doesn't fit the chapter's.
@@ -246,8 +236,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
                 paragraphs.append(Paragraph(element: leaf.element, range: range, visible: range))
                 continue
             }
-            // Split across spreads. Its `AXValue` is usually its part on this one, but not always (seen: a head
-            // without its first line, running on to the paragraph's end), so its lines on screen are measured.
+            // Split across spreads: `AXValue` isn't always the part on this one, so measure its lines on screen
             if screen == nil { screen = try? handle.attribute(.frame) }
             let visible: Range<Int>
             if let screen, let lines = visibleLines(of: leaf, in: screen) {
@@ -262,8 +251,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         return paragraphs.isEmpty ? nil : Page(paragraphs: paragraphs)
     }
 
-    /// The part of `leaf`'s paragraph (AX indices) whose lines are inside `screen` (the window), stepping line by line
-    /// from its start (~1 ms per line).
+    /// The part of `leaf`'s paragraph whose lines are inside `screen` (~1 ms per line).
     private func visibleLines(of leaf: Leaf, in screen: CGRect) -> Range<Int>? {
         guard let markers = try? leaf.element.attribute(.textMarkerRangeForUIElement, for: leaf.element),
             var lineStart = markers.start
@@ -289,9 +277,8 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         return visible
     }
 
-    /// Where `value` (the part of a paragraph on the spread) is in `paragraph` (its whole text): its tail on the spread
-    /// it continues onto (the first paragraph: `fromEnd`), its head on the one it continues from, or all of it. Books
-    /// leaves out the last character of a tail, so a tail ending one short of the paragraph's end gets it back.
+    /// Where `value` (a paragraph's part on the spread) is in the whole `paragraph`; `fromEnd` for its tail.
+    // Books drops the last character of a tail
     nonisolated static func locate(_ value: String, in paragraph: String, fromEnd: Bool) -> Range<Int>? {
         let paragraph = paragraph as NSString
         let found = paragraph.range(of: value, options: fromEnd ? .backwards : [])
@@ -309,13 +296,10 @@ final class CatalystWebAreaReadableElement: ReadableElement {
 
     // MARK: Chapter text
 
-    /// The chapter shown in `area`, walking leaf to leaf from its first text child to both ends of the document. Each
-    /// leaf's text is put at its AX index (gaps between leaves, i.e. paragraph breaks, as line breaks).
+    /// Each leaf's text at its AX index, gaps (paragraph breaks) as line breaks.
     private func loadChapter(_ area: Spread.Area) -> Chapter? {
         guard let leaf = area.leaves.first?.element, let first = span(of: leaf) else { return nil }
-        // Inline runs (italics…) are elements of their own inside their paragraph, and the walk can meet one before its
-        // paragraph (one starting with an italic word): in order of start, longest first, each adding what's past the
-        // text so far.
+        // The walk can meet an inline run (italics) before its paragraph: sort by start, longest first
         let spans = (walk(from: leaf, forward: false) + [first] + walk(from: leaf, forward: true)).sorted {
             ($0.range.lowerBound, -$0.range.count) < ($1.range.lowerBound, -$1.range.count)
         }
@@ -336,20 +320,10 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         return Chapter(webArea: area.webArea, text: text, nsText: text as NSString, base: base)
     }
 
-    /// A leaf's range (AX indices) and text, as found walking the document.
-    private struct Span {
-        let range: Range<Int>
-        let text: String
-    }
-
     private func span(of leaf: AXElement) -> Span? {
-        guard let markers = try? leaf.attribute(.textMarkerRangeForUIElement, for: leaf),
-            let start = markers.start, let end = markers.end,
-            let lower = try? leaf.attribute(.indexForTextMarker, for: start),
-            let upper = try? leaf.attribute(.indexForTextMarker, for: end), lower <= upper
-        else { return nil }
+        guard let (markers, range) = indices(of: leaf) else { return nil }
         let text = (try? leaf.attribute(.attributedStringForTextMarkerRange, for: markers))?.string.string ?? ""
-        return Span(range: lower..<upper, text: text)
+        return Span(range: range, text: text)
     }
 
     /// The leaves after (or before) `leaf` in its document, nearest first.
@@ -375,8 +349,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
 
     // MARK: Selecting
 
-    /// Selects the part of `tracked` from `offset` that's on the spread showing `offset` (turning to it first);
-    /// returns that part.
+    /// Turns to `offset` and selects the part of `tracked` from there that's on the spread.
     @discardableResult
     private func selectPiece(from offset: Int) -> Selection? {
         guard let tracked, let page = page(showing: offset) else {
@@ -384,19 +357,19 @@ final class CatalystWebAreaReadableElement: ReadableElement {
             return nil
         }
         guard offset < page.visible.upperBound || offset >= tracked.upperBound else {
-            // Couldn't turn to it: don't try again on every word (`didReach`).
+            // Couldn't turn to it: don't try again on every word
             Log.accessibility.debug("catalyst: couldn't turn to \(offset)")
             pieceEnd = tracked.upperBound
             return nil
         }
-        // From the paragraph holding `offset`, or the next one when it's in the line breaks between them.
-        let clamped = min(max(offset, page.visible.lowerBound), page.visible.upperBound)
+        // The paragraph holding `offset`, or the next one when it's in the line breaks between them
+        let clamped = offset.clamped(to: page.visible.lowerBound...page.visible.upperBound)
         let paragraph = page.paragraphs.first(where: { clamped < $0.range.upperBound }) ?? page.paragraphs[page.paragraphs.count - 1]
-        let start = min(max(clamped, paragraph.range.lowerBound), paragraph.range.upperBound)
+        let start = clamped.clamped(to: paragraph.range.lowerBound...paragraph.range.upperBound)
         let end = max(start, min(tracked.upperBound, page.visible.upperBound, paragraph.range.upperBound))
         pieceEnd = end
         let range = CFRange(location: start - paragraph.range.lowerBound, length: end - start)
-        // WebKit scrolls a selection in a paragraph that starts on an earlier page back toward its start.
+        // WebKit scrolls toward the start of a paragraph that began on an earlier spread
         let continued = paragraph.range.lowerBound < paragraph.visible.lowerBound
         let webArea = continued ? chapter?.webArea : nil
         let frame = try? webArea?.attribute(.frame)
@@ -409,25 +382,29 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         return Selection(start..<end)
     }
 
-    /// Undoes WebKit scrolling `webArea` off Books' page grid (its frame moved from `frame`, where it was on the page):
-    /// an arrow key turns to the nearest page in its direction, back to where it was.
+    /// Undoes WebKit scrolling `webArea` off Books' page grid: a turn key snaps it back to `frame`.
     private func realign(_ webArea: AXElement, to frame: CGRect) {
-        var moved: CGRect?
+        var shift: CGFloat?
         for _ in 0..<6 {
-            moved = try? webArea.attribute(.frame)
-            if moved != frame { break }
+            shift = (try? webArea.attribute(.frame)).flatMap { Self.sidewaysShift(from: frame, to: $0) }
+            if shift != nil { break }
             Thread.sleep(forTimeInterval: 0.03)
         }
-        guard let moved, moved != frame, let pid = try? handle.pid() else { return }
-        // Scrolled back (content moved right): turn forward to get back.
-        let forward = moved.minX > frame.minX
-        Log.accessibility.debug("catalyst: selecting scrolled the page by \(moved.minX - frame.minX), turning back")
-        postKey(key(forward: forward), to: pid)
+        guard let shift, let pid = try? handle.pid() else { return }
+        // Content moved right: scrolled back
+        Log.accessibility.debug("catalyst: selecting scrolled the page by \(shift), turning back")
+        postKey(key(forward: shift > 0), to: pid)
         for _ in 0..<40 {
             Thread.sleep(forTimeInterval: 0.05)
-            if (try? webArea.attribute(.frame)) == frame { return }
+            if let now = try? webArea.attribute(.frame), Self.sidewaysShift(from: frame, to: now) == nil { return }
         }
         Log.accessibility.debug("catalyst: page didn't realign")
+    }
+
+    /// How far the columns moved sideways; nil within a point (a turn settling can still change y and size).
+    nonisolated static func sidewaysShift(from frame: CGRect, to moved: CGRect) -> CGFloat? {
+        let shift = moved.minX - frame.minX
+        return abs(shift) > 1 ? shift : nil
     }
 
     private func key(forward: Bool) -> CGKeyCode {
@@ -435,30 +412,28 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         return forward != isReversed ? keys.forward : keys.back
     }
 
-    private func postKey(_ key: CGKeyCode, flags: CGEventFlags = [], to pid: pid_t) {
-        for down in [true, false] {
-            let event = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: down)
-            event?.flags = flags
-            event?.postToPid(pid)
-        }
+    private func postKey(_ key: CGKeyCode, to pid: pid_t) {
+        cachedSpread = nil
+        CGEvent.postKeystroke(key, to: pid)
     }
 
-    /// The chapter's part of the spread showing chapter offset `offset`, turning pages to it.
     private func page(showing offset: Int) -> Page? {
         guard let chapter else { return nil }
-        var spread = readSpread()
+        var spread = spread()
         guard var page = page(of: chapter, in: spread) else { return nil }
         var lastDirection: Bool?
-        for _ in 0..<200 {
+        // Each turn blocks main ~0.5 s
+        let deadline = Date().addingTimeInterval(Self.maxTurningTime)
+        for _ in 0..<200 where Date() < deadline {
             let visible = page.visible
             if visible.contains(offset) { return page }
             let forward = offset >= visible.upperBound
-            // Turned past it (it's between what two spreads report): take this one.
+            // Turned past it (it's between what two spreads report)
             if let lastDirection, lastDirection != forward { return page }
             lastDirection = forward
             guard let turned = turnPage(forward: forward, from: spread) else { return page }
             guard let next = self.page(of: chapter, in: turned) else {
-                // Out of the chapter: offsets are only valid in this one.
+                // Out of the chapter: offsets are only valid in this one
                 _ = turnPage(forward: !forward, from: turned)
                 return page
             }
@@ -472,10 +447,9 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         return page
     }
 
-    /// Posts a page key to the app and waits for the spread's text to change and the spread to settle (the same twice
-    /// in a row, frames included, or for a while when it has no text: between chapters there's briefly no web area); nil
-    /// if it doesn't change. The text changes ~50 ms before the turn's animation (~0.5 s) ends, and selecting during it
-    /// leaves the pages out of alignment. When the page keys don't move anything, switches to the arrow keys.
+    /// Nil if the page didn't turn.
+    // Done once text changed and frames read equal twice (text updates before the animation ends; selecting
+    // mid-animation misaligns). Empty for a while between chapters.
     private func turnPage(forward: Bool, from spread: Spread) -> Spread? {
         guard let pid = try? handle.pid() else { return nil }
         postKey(key(forward: forward), to: pid)
@@ -502,53 +476,28 @@ final class CatalystWebAreaReadableElement: ReadableElement {
 
     // MARK: User selection
 
-    /// Starts from the user's selection when it's on the spread. Books doesn't report it, but copies it (also in the
-    /// background), so it's copied with a posted ⌘C and the clipboard restored. Not taken when it's (part of) the unit
-    /// being read, i.e. our own selection.
+    /// Starts from the user's selection when it's on the spread, unless it's within the unit being read (ours).
     private func adoptUserSelection() {
-        guard let shown = refresh(), let page = shown.page, let copied = copySelection(),
+        guard let shown = refresh(), let page = shown.page, let pid = try? handle.pid(),
+            let copied = CopiedSelection.copy(from: pid).map(Self.excerpt(fromCopied:)),
             let found = Self.locate(copied: copied, in: shown.chapter.nsText, on: page.visible)
         else { return }
         if let tracked, tracked.lowerBound <= found.lowerBound, found.upperBound <= tracked.upperBound { return }
         Log.accessibility.debug("catalyst: user selection \(found)")
         tracked = Selection(found)
-        // Already selected (by the user) on this spread; the rest is selected as speech reaches it.
+        // The user already selected it on this spread
         pieceEnd = min(found.upperBound, page.visible.upperBound)
         lastReached = nil
     }
 
-    /// The app's selection as copied (⌘C), leaving the clipboard as it was; nil if nothing was copied.
-    private func copySelection() -> String? {
-        guard let pid = try? handle.pid() else { return nil }
-        let pasteboard = NSPasteboard.general
-        let saved = (pasteboard.pasteboardItems ?? []).map { item in
-            item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
-        }
-        let count = pasteboard.changeCount
-        postKey(Self.copyKey, flags: .maskCommand, to: pid)
-        for _ in 0..<15 where pasteboard.changeCount == count {
-            Thread.sleep(forTimeInterval: 0.02)
-        }
-        guard pasteboard.changeCount != count else { return nil }
-        let copied = pasteboard.string(forType: .string)
-        pasteboard.clearContents()
-        pasteboard.writeObjects(
-            saved.map { pairs in
-                let item = NSPasteboardItem()
-                for (type, data) in pairs { item.setData(data, forType: type) }
-                return item
-            })
-        return copied.map(Self.excerpt(fromCopied:))
-    }
-
-    /// The selected text in what Books copies: `“text”`, a blank line and a citation ("Excerpt From", title, author…).
+    /// The text in Books' copy: `“text”`, a blank line and a citation ("Excerpt From"…).
     nonisolated static func excerpt(fromCopied copied: String) -> String {
         guard copied.hasPrefix("“"), let end = copied.range(of: "”\n\n", options: .backwards) else { return copied }
         return String(copied[copied.index(after: copied.startIndex)..<end.lowerBound])
     }
 
-    /// Where `copied` (a selection's text) is in `text`, starting on the spread showing `visible`. Matched by its first
-    /// and last lines, as the copy's line breaks between paragraphs needn't be the text's.
+    /// Where `copied` is in `text`, starting on the spread showing `visible`.
+    // By first and last line: the copy's paragraph breaks needn't be the text's
     nonisolated static func locate(copied: String, in text: NSString, on visible: Range<Int>) -> Range<Int>? {
         let lines = copied.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -567,23 +516,30 @@ final class CatalystWebAreaReadableElement: ReadableElement {
 
     // MARK: Next chapter
 
-    /// Whether speech reached the last word of the chapter's last unit.
     private func isAtChapterEnd(_ chapter: Chapter) -> Bool {
-        guard let tracked, !tracked.isEmpty, tracked != lastChapterEnd, tracked.upperBound <= chapter.nsText.length,
-            let lastReached, let spoken = selectedText.map({ $0 as NSString }), lastReached <= spoken.length
+        guard let tracked, let spoken = selectedText,
+            lastChapterEnd.map({ $0.webArea == chapter.webArea && $0.unit == tracked }) != true
         else { return false }
+        return Self.isChapterEnd(unit: tracked, in: chapter.nsText, spoken: spoken as NSString, reached: lastReached)
+    }
+
+    /// Whether speech reached the last word of `unit`, the chapter's last; `reached` (nil: speech reported no word yet)
+    /// is an offset in `spoken`.
+    nonisolated static func isChapterEnd(unit: Selection, in text: NSString, spoken: NSString, reached: Int?) -> Bool {
+        guard !unit.isEmpty, unit.upperBound <= text.length else { return false }
         let blank = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{FFFC}"))
-        let rest = chapter.nsText.substring(from: tracked.upperBound)
-        guard rest.trimmingCharacters(in: blank).isEmpty else { return false }
-        let unread = spoken.substring(from: lastReached).trimmingCharacters(in: blank)
+        guard text.substring(from: unit.upperBound).trimmingCharacters(in: blank).isEmpty else { return false }
+        // No words (punctuation, U+FFFC): speech reports none
+        guard let reached else { return spoken.rangeOfCharacter(from: .alphanumerics).location == NSNotFound }
+        guard reached <= spoken.length else { return false }
+        let unread = spoken.substring(from: reached).trimmingCharacters(in: blank)
         return unread.rangeOfCharacter(from: blank) == nil
     }
 
-    /// Loads the chapter after the current one: the next web area on the spread, or the first other one after turning
-    /// the page. Its `tracked` is empty at its start, so reading goes on from there.
+    /// The next web area on the spread, else the first other one after turning the page; reading goes on at its start.
     private func advanceChapter() -> Chapter? {
         guard let current = chapter else { return nil }
-        var spread = readSpread()
+        var spread = spread()
         let index = spread.areas.firstIndex(where: { $0.webArea == current.webArea })
         var candidates = index.map { Array(spread.areas[($0 + 1)...]) } ?? []
         for _ in 0..<20 {
@@ -601,7 +557,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
             candidates = turned.areas
         }
         Log.accessibility.debug("catalyst: no next chapter")
-        lastChapterEnd = tracked
+        lastChapterEnd = tracked.map { (current.webArea, $0) }
         return nil
     }
 }

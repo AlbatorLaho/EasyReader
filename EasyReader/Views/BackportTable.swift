@@ -1,24 +1,7 @@
-//
-//  BackportTable.swift
-//  EasyReader
-//
-
 import AppKit
 import SwiftUI
 
-/// A table shaped like SwiftUI's `Table` (rows, single selection, a builder of columns), backed by an
-/// `NSTableView` because `Table` needs macOS 12. Cells host SwiftUI views and edit their row through a
-/// `Binding<Row>`, so moving to `Table` later should mostly be a rename.
-///
-///     BackportTable($people, selection: $selected) {
-///         BackportTableColumn("Name", value: \.name) { $person in TextField("Name", text: $person.name) }
-///             .width(min: 80, ideal: 120)
-///     }
-///     .onMove { people.move(fromOffsets: $0, toOffset: $1) }
-///
-/// Columns with a `value` sort by a header click: it sorts `rows` itself (stable; click again to
-/// reverse). The header arrow stays only while `rows` is still in that order (e.g. not after a move).
-/// With `onMove`, rows can be dragged to reorder (`Table` has no direct equivalent before macOS 14).
+/// SwiftUI `Table` look-alike over `NSTableView` (`Table` needs macOS 12), so moving to `Table` later is mostly a rename.
 struct BackportTable<Row: Identifiable>: NSViewRepresentable {
     @Binding var rows: [Row]
     @Binding var selection: Row.ID?
@@ -36,8 +19,7 @@ struct BackportTable<Row: Identifiable>: NSViewRepresentable {
         self.columns = columns()
     }
 
-    /// Lets rows be dragged to reorder; `perform` gets the dragged offsets and the destination offset
-    /// (in the order before the move), like `List.onMove`.
+    /// Offsets like `List.onMove`.
     func onMove(perform: @escaping (IndexSet, Int) -> Void) -> Self {
         var table = self
         table.onMove = perform
@@ -94,9 +76,7 @@ struct BackportTable<Row: Identifiable>: NSViewRepresentable {
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         private var parent: BackportTable
         private var ids: [Row.ID]
-        /// Rows as last shown, to skip refreshing cells when only something else (e.g. selection) changed.
         private var shownRows: [Row]
-        /// Set while we change the table's selection ourselves, so it isn't echoed back into the binding.
         private var isSyncingSelection = false
 
         init(_ parent: BackportTable) {
@@ -118,12 +98,10 @@ struct BackportTable<Row: Identifiable>: NSViewRepresentable {
                 tableView.reloadData()
                 isSyncingSelection = false
             } else if !Self.areEqual(shownRows, parent.rows) {
-                // Same rows, new values: refresh visible cells in place (keeps an active text field editing).
-                let visible = tableView.rows(in: tableView.visibleRect)
-                for row in visible.location..<visible.upperBound {
+                // Refresh in place so an active text field keeps editing; also rows prepared off screen.
+                tableView.enumerateAvailableRowViews { rowView, row in
                     for column in parent.columns.indices {
-                        let cell = tableView.view(atColumn: column, row: row, makeIfNecessary: false) as? HostingCell
-                        cell?.host.rootView = content(column: column, row: row)
+                        (rowView.view(atColumn: column) as? HostingCell)?.host.rootView = content(column: column, row: row)
                     }
                 }
             }
@@ -136,7 +114,6 @@ struct BackportTable<Row: Identifiable>: NSViewRepresentable {
 
         // MARK: Sorting
 
-        /// `areInIncreasingOrder` for a header sort descriptor (key = column index), reversed when descending.
         private func comparator(for sort: NSSortDescriptor) -> ((Row, Row) -> Bool)? {
             guard let key = sort.key, let column = Int(key), parent.columns.indices.contains(column),
                 let less = parent.columns[column].areInIncreasingOrder
@@ -173,7 +150,6 @@ struct BackportTable<Row: Identifiable>: NSViewRepresentable {
             proposedDropOperation dropOperation: NSTableView.DropOperation
         ) -> NSDragOperation {
             guard parent.onMove != nil, info.draggingSource as? NSTableView === tableView else { return [] }
-            // Between rows only (insertion line), never onto one.
             if dropOperation == .on { tableView.setDropRow(row, dropOperation: .above) }
             return .move
         }
@@ -186,7 +162,6 @@ struct BackportTable<Row: Identifiable>: NSViewRepresentable {
             return move(IndexSet(rows ?? []), to: row)
         }
 
-        /// Moves `rows` to before `destination` (offsets before the move) through `onMove`.
         @discardableResult
         func move(_ rows: IndexSet, to destination: Int) -> Bool {
             guard let onMove = parent.onMove, !rows.isEmpty,
@@ -196,8 +171,7 @@ struct BackportTable<Row: Identifiable>: NSViewRepresentable {
             return true
         }
 
-        /// Whether two row arrays are equal, when `Row` is `Equatable` (else always `false`: refresh).
-        /// Cells reading state other than their row update only through their own SwiftUI observation.
+        /// Always `false` unless `Row` is `Equatable`.
         private static func areEqual(_ old: [Row], _ new: [Row]) -> Bool {
             func equals<T: Equatable>(_ old: T) -> Bool { (new as Any as? T) == old }
             guard let old = old as Any as? any Equatable else { return false }
@@ -223,8 +197,8 @@ struct BackportTable<Row: Identifiable>: NSViewRepresentable {
             let binding = Binding<Row>(
                 get: { [weak self] in self?.parent.rows.first { $0.id == id } ?? fallback },
                 set: { [weak self] newValue in
-                    guard let self, let index = self.parent.rows.firstIndex(where: { $0.id == id }) else { return }
-                    self.parent.rows[index] = newValue
+                    guard let self, let index = parent.rows.firstIndex(where: { $0.id == id }) else { return }
+                    parent.rows[index] = newValue
                 }
             )
             return parent.columns[column].content(binding)
@@ -254,11 +228,9 @@ struct BackportTable<Row: Identifiable>: NSViewRepresentable {
     }
 }
 
-/// A column of `BackportTable`, like SwiftUI's `TableColumn`.
 struct BackportTableColumn<Row> {
     let title: String
     let content: (Binding<Row>) -> AnyView
-    /// Sort order for a header click (`nil`: not sortable).
     let areInIncreasingOrder: ((Row, Row) -> Bool)?
     fileprivate(set) var minWidth: CGFloat?
     fileprivate(set) var idealWidth: CGFloat?
@@ -268,14 +240,13 @@ struct BackportTableColumn<Row> {
         self.init(title, areInIncreasingOrder: nil, content: content)
     }
 
-    /// A column sortable by `value`, like `TableColumn(_:value:content:)`.
     init<Value: Comparable, Content: View>(
         _ title: String, value: @escaping (Row) -> Value, @ViewBuilder content: @escaping (Binding<Row>) -> Content
     ) {
         self.init(title, areInIncreasingOrder: { value($0) < value($1) }, content: content)
     }
 
-    /// A column sortable by a string `value`, compared like Finder names (case-insensitive, numbers by value).
+    /// Compares like Finder names.
     init<Content: View>(
         _ title: String, value: @escaping (Row) -> String, @ViewBuilder content: @escaping (Binding<Row>) -> Content
     ) {
@@ -290,7 +261,6 @@ struct BackportTableColumn<Row> {
     ) {
         self.title = title
         self.areInIncreasingOrder = areInIncreasingOrder
-        // Leading-aligned, like `Table` cells.
         self.content = { AnyView(content($0).frame(maxWidth: .infinity, alignment: .leading)) }
     }
 
@@ -316,17 +286,12 @@ enum BackportTableColumnBuilder<Row> {
     static func buildEither(second columns: [BackportTableColumn<Row>]) -> [BackportTableColumn<Row>] { columns }
 }
 
-/// Standard table click behavior for hosted SwiftUI controls: a click on a text field in an unselected
-/// row selects the row without editing; once the row is selected, a click edits the field. Other
-/// controls (checkboxes, menus) respond to the first click without selecting the row.
-///
-/// SwiftUI handles the click itself and asks for first responder with no event, so the click is read
-/// from `NSApp.currentEvent`. It also checks every row's field whenever it updates (also mid-click), so
-/// only the field under the click counts; the click is then refused for its whole duration.
+/// A click on a text field in an unselected row only selects the row, like a standard table.
 final class BackportTableView: NSTableView {
     private var refusedClick: TimeInterval?
 
     override func validateProposedFirstResponder(_ responder: NSResponder, for event: NSEvent?) -> Bool {
+        // SwiftUI asks without an event.
         allowsFirstResponder(responder, during: NSApp.currentEvent)
     }
 
@@ -335,6 +300,7 @@ final class BackportTableView: NSTableView {
             let view = responder as? NSView, view is NSTextField || view is NSText
         else { return true }
         if refusedClick == click.timestamp { return false }
+        // SwiftUI checks every row's field on each update, so only the one under the click counts.
         guard view.bounds.contains(view.convert(click.locationInWindow, from: nil)) else { return true }
         let row = row(for: view)
         guard row >= 0, !isRowSelected(row) else { return true }
