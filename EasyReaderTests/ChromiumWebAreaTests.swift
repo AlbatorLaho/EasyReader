@@ -83,7 +83,7 @@ enum ChromeForTesting {
     @MainActor
     static func readable(in browser: Process) async throws -> WebAreaReadableElement {
         for attempt in 0..<150 {
-            if attempt % 10 == 0 { _ = WebAccessibility.enable(pid: browser.processIdentifier) }
+            if attempt % 10 == 0 { _ = AppAccessibility.enable(pid: browser.processIdentifier) }
             if let window = window(of: browser), let element = find(role: "AXWebArea", in: window),
                 let readable = try element.readableElement() as? WebAreaReadableElement,
                 readable.fullText?.contains("The end of the test page.") == true

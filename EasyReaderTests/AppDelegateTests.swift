@@ -25,7 +25,7 @@ extension IntegrationTests {
             app.easyReader.delegate = recorder
             Teardown.add {
                 app.easyReader.stop()
-                NSStatusBar.system.removeStatusItem(app.statusItem)
+                if let item = app.statusItem { NSStatusBar.system.removeStatusItem(item) }
             }
             await settle(0.3)  // let the Defaults.updates loops subscribe
             return app
@@ -44,7 +44,7 @@ extension IntegrationTests {
         @Test func settingsMenuBringsOpenSettingsWindowToFront() async throws {
             let app = await launch()
             Teardown.add { SettingsOpener.window?.close() }
-            let menu = try #require(app.statusItem.menu)
+            let menu = app.statusMenu
             let index = try #require(menu.items.firstIndex { $0.action == #selector(SettingsOpener.open) })
             menu.performActionForItem(at: index)
             await settle(1)

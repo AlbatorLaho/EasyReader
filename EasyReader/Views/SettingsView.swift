@@ -16,7 +16,7 @@ struct SettingsView: View {
                 SettingsPronunciationsView()
             }
         }
-        .frame(width: 800, height: 500)
+        .frame(width: 800, height: 540)
         .padding()
     }
 }

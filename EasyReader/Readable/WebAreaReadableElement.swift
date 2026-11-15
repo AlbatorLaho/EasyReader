@@ -52,7 +52,7 @@ final class WebAreaReadableElement: ReadableElement {
     // hence only while reading.
     override func beginReading() {
         if enabledAppFlags.isEmpty, let pid = try? handle.pid(), pid != getpid() {
-            enabledAppFlags = WebAccessibility.enable(pid: pid)
+            enabledAppFlags = AppAccessibility.enable(pid: pid)
             Log.accessibility.debug("web area: turned on \(enabledAppFlags) for \(appDomain ?? "unknown app")")
         }
         watchAppFlags()
@@ -70,7 +70,7 @@ final class WebAreaReadableElement: ReadableElement {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard let self, !Task.isCancelled else { return }
-                let reenabled = WebAccessibility.enable(pid: pid, flags: enabledAppFlags)
+                let reenabled = AppAccessibility.enable(pid: pid, flags: enabledAppFlags, unreadable: false)
                 if !reenabled.isEmpty { Log.accessibility.debug("web area: app turned off \(reenabled); turned back on") }
             }
         }
@@ -80,7 +80,7 @@ final class WebAreaReadableElement: ReadableElement {
         appFlagsWatch?.cancel()
         appFlagsWatch = nil
         guard !enabledAppFlags.isEmpty, let pid = try? handle.pid() else { return }
-        WebAccessibility.restore(enabledAppFlags, pid: pid)
+        AppAccessibility.restore(enabledAppFlags, pid: pid)
         Log.accessibility.debug("web area: turned off \(enabledAppFlags) for \(appDomain ?? "unknown app")")
         enabledAppFlags = []
     }
@@ -536,55 +536,6 @@ final class WebAreaReadableElement: ReadableElement {
 
     private func string(from start: AXTextMarker, to end: AXTextMarker) -> String? {
         range(from: start, to: end).flatMap { try? handle.attribute(.stringForTextMarkerRange, for: $0) }
-    }
-}
-
-/// The app-wide AX flags that make Chromium and Electron build their full AX tree (no web area until then).
-@MainActor
-enum WebAccessibility {
-    private static let flags: [AXAttribute<Bool>] = [.manualAccessibility, .enhancedUserInterface]
-
-    /// Turns on the flags (default: all) that are off; returns those it turned on.
-    static func enable(pid: pid_t, flags: [AXAttribute<Bool>] = flags) -> [AXAttribute<Bool>] {
-        let app = AXElement.application(pid: pid)
-        var enabled: [AXAttribute<Bool>] = []
-        for flag in flags {
-            if (try? app.attribute(flag)) == true { continue }
-            // Chromium reports failure for `AXEnhancedUserInterface` but applies it
-            try? app.set(flag, to: true)
-            if (try? app.attribute(flag)) == true { enabled.append(flag) }
-        }
-        return enabled
-    }
-
-    static func restore(_ flags: [AXAttribute<Bool>], pid: pid_t) {
-        let app = AXElement.application(pid: pid)
-        for flag in flags {
-            try? app.set(flag, to: false)
-        }
-    }
-
-    /// Chromium-based browsers and Electron apps.
-    // Not just any `Helpers` folder: WebKit's JavaScriptCore has one too (Orion)
-    nonisolated static func isChromium(_ app: NSRunningApplication) -> Bool {
-        app.bundleURL.map { isChromium(bundleURL: $0) } ?? false
-    }
-
-    nonisolated static func isChromium(bundleURL: URL) -> Bool {
-        frameworks(of: bundleURL).contains { framework in
-            framework.lastPathComponent == "Electron Framework.framework"
-                || hasHelper("app_mode_loader", in: framework) || hasHelper("chrome_crashpad_handler", in: framework)
-        }
-    }
-
-    private nonisolated static func frameworks(of bundleURL: URL) -> [URL] {
-        let folder = bundleURL.appendingPathComponent("Contents/Frameworks")
-        let contents = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-        return contents.filter { $0.pathExtension == "framework" }
-    }
-
-    private nonisolated static func hasHelper(_ name: String, in framework: URL) -> Bool {
-        FileManager.default.fileExists(atPath: framework.appendingPathComponent("Versions/Current/Helpers/\(name)").path)
     }
 }
 

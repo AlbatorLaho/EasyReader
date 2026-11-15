@@ -64,6 +64,17 @@ struct Pronunciation: Identifiable, Hashable, Codable, Defaults.Serializable {
         )
     }
 
+    /// A rule with its regex compiled once; nil for an empty search or an invalid regex.
+    struct Compiled {
+        let rule: Pronunciation
+        let regex: NSRegularExpression?
+
+        init(_ rule: Pronunciation) {
+            self.rule = rule
+            regex = rule.search.isEmpty ? nil : try? rule.regularExpression()
+        }
+    }
+
     fileprivate func isAllowedMatch(_ range: NSRange, in text: NSString) -> Bool {
         guard wholeWord else { return true }
         func isWordCharacter(at index: Int) -> Bool {
@@ -97,6 +108,10 @@ struct SpokenText: Equatable {
 
     /// One pass: overlaps go to the earliest, then longest match, then an app-specific rule, then list order; replacements aren't matched again.
     init(_ original: String, applying rules: [Pronunciation]) {
+        self.init(original, compiled: rules.map(Pronunciation.Compiled.init))
+    }
+
+    init(_ original: String, compiled rules: [Pronunciation.Compiled]) {
         self.original = original
         let source = original as NSString
         let text = NSMutableString()
@@ -115,12 +130,13 @@ struct SpokenText: Equatable {
     }
 
     /// All matches of all rules, sorted by priority.
-    private static func candidates(in original: String, applying rules: [Pronunciation]) -> [Candidate] {
+    private static func candidates(in original: String, applying rules: [Pronunciation.Compiled]) -> [Candidate] {
         let source = original as NSString
         let all = NSRange(location: 0, length: source.length)
         var candidates: [Candidate] = []
-        for (index, rule) in rules.enumerated() where !rule.search.isEmpty {
-            guard let regex = try? rule.regularExpression() else { continue }
+        for (index, compiled) in rules.enumerated() {
+            guard let regex = compiled.regex else { continue }
+            let rule = compiled.rule
             for match in regex.matches(in: original, range: all)
             where match.range.length > 0 && rule.isAllowedMatch(match.range, in: source) {
                 let replacement =
@@ -135,7 +151,7 @@ struct SpokenText: Equatable {
                 }
             }
         }
-        func generality(_ rule: Int) -> Int { rules[rule].appDomain == nil ? 1 : 0 }
+        func generality(_ rule: Int) -> Int { rules[rule].rule.appDomain == nil ? 1 : 0 }
         candidates.sort {
             ($0.range.location, -$0.range.length, generality($0.rule), $0.rule)
                 < ($1.range.location, -$1.range.length, generality($1.rule), $1.rule)

@@ -11,19 +11,6 @@ struct SettingsSpeechView: View {
     @Default(.speechDelayBefore) private var speechDelayBefore
     @Default(.speechDelayAfter) private var speechDelayAfter
 
-    static private var speechSystemVoice: AVSpeechSynthesisVoice? {
-        AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())
-    }
-
-    static private var speechVoices: [(language: String, voices: [AVSpeechSynthesisVoice])] {
-        Dictionary(grouping: AVSpeechSynthesisVoice.speechVoices(), by: \.language)
-            .mapValues { voices in voices.sorted { $0.name < $1.name } }
-            .sorted { $0.key < $1.key }
-            .map { language, voices in
-                (language: Locale.current.localizedString(forIdentifier: language) ?? language, voices: voices)
-            }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 30) {
             GroupBox {
@@ -44,7 +31,7 @@ struct SettingsSpeechView: View {
                             set: { newValue in
                                 speechRate = SpeechRate.clamped(SpeechRate.rate(forMultiplier: newValue))
                             }
-                        ), in: SpeechRate.minimumMultiplier...SpeechRate.maximumMultiplier, step: 0.25, max: 4, format: .percent
+                        ), in: SpeechRate.minimumMultiplier...SpeechRate.maximumMultiplier, step: SpeechRate.step, max: 4, format: .percent
                     ) {
                         Text("Rate:")
                     } minimumValueLabel: {
@@ -62,30 +49,18 @@ struct SettingsSpeechView: View {
                     }
                 }
             } label: {
-                Picker("Voice:", systemImage: "mic.fill", selection: $speechVoice) {
-                    if let speechSystemVoice = Self.speechSystemVoice {
-                        Text("System Voice (\(speechSystemVoice.name), \(speechSystemVoice.language))").tag(nil as AVSpeechSynthesisVoice?)
-                    } else {
-                        Text("System Voice (*unknown*)").tag(nil as AVSpeechSynthesisVoice?)
-                    }
-                    Divider()
-                    ForEach(Self.speechVoices, id: \.language) { language, voices in
-                        Section {
-                            ForEach(voices, id: \.identifier) { voice in
-                                Text(voice.name).tag(voice as AVSpeechSynthesisVoice?)
-                            }
-                        } header: {
-                            Text(language)
-                        }
-                    }
+                HStack {
+                    Label("Voice:", systemImage: "mic.fill")
+                    VoicePicker(selection: $speechVoice).fixedSize()
                 }
             }
 
             GroupBox {
                 Form {
                     Picker("Stop Boundary:", selection: $speechStopBoundary) {
-                        Text("Immediate").tag(AVSpeechBoundary.immediate)
-                        Text("Word").tag(AVSpeechBoundary.word)
+                        Text("Immediate").tag(EasyReader.StopBoundary.immediate)
+                        Text("Word").tag(EasyReader.StopBoundary.word)
+                        Text("Selection").tag(EasyReader.StopBoundary.selection)
                     }
 
                     SliderControls(value: $speechDelayBefore, in: 0...1, step: 0.1) {
@@ -140,6 +115,66 @@ struct SettingsSpeechView: View {
             Caveats/Bugs:
             • voice pitch does not behave the same, and may appear to have no effect, depending on which voice is used
             """
+        }
+    }
+}
+
+// A SwiftUI `Picker` with this many items renders slowly (~0.6 s).
+private struct VoicePicker: NSViewRepresentable {
+    @Binding var selection: AVSpeechSynthesisVoice?
+
+    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let button = NSPopUpButton(frame: .zero, pullsDown: false)
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.choose(_:))
+        let menu = NSMenu()
+        let systemVoice = AVSpeechSynthesisVoice.system
+        menu.addItem(withTitle: systemVoice.map { "System Voice (\($0.name), \($0.language))" } ?? "System Voice", action: nil, keyEquivalent: "")
+        for (language, voices) in Self.languages() {
+            menu.addItem(.separator())
+            if #available(macOS 14.0, *) {
+                menu.addItem(.sectionHeader(title: language))
+            } else {
+                let header = NSMenuItem(title: language, action: nil, keyEquivalent: "")
+                header.isEnabled = false
+                menu.addItem(header)
+            }
+            for voice in voices {
+                let item = NSMenuItem(title: voice.name, action: nil, keyEquivalent: "")
+                item.representedObject = voice.identifier
+                menu.addItem(item)
+            }
+        }
+        button.menu = menu
+        return button
+    }
+
+    func updateNSView(_ button: NSPopUpButton, context: Context) {
+        context.coordinator.selection = $selection
+        let index = selection.map { button.indexOfItem(withRepresentedObject: $0.identifier) } ?? 0
+        button.selectItem(at: max(index, 0))
+    }
+
+    private static func languages() -> [(language: String, voices: [AVSpeechSynthesisVoice])] {
+        Dictionary(grouping: AVSpeechSynthesisVoice.speechVoices(), by: \.language)
+            .mapValues { voices in voices.sorted { $0.name < $1.name } }
+            .sorted { $0.key < $1.key }
+            .map { language, voices in
+                (language: Locale.current.localizedString(forIdentifier: language) ?? language, voices: voices)
+            }
+    }
+
+    @MainActor final class Coordinator: NSObject {
+        var selection: Binding<AVSpeechSynthesisVoice?>
+
+        init(selection: Binding<AVSpeechSynthesisVoice?>) {
+            self.selection = selection
+        }
+
+        @objc func choose(_ sender: NSPopUpButton) {
+            selection.wrappedValue = (sender.selectedItem?.representedObject as? String).flatMap(AVSpeechSynthesisVoice.init(identifier:))
         }
     }
 }

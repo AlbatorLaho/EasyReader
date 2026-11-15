@@ -1,4 +1,5 @@
 import AppKit
+import Defaults
 import Testing
 
 @testable import EasyReader
@@ -28,6 +29,12 @@ enum Teardown {
     fileprivate static func begin(_ test: String) {
         #expect(!isRunningTest, "integration test \(test) overlaps another one: serialization broken")
         isRunningTest = true
+        // Each test starts from the defaults (the in-memory store lasts the whole run), silent
+        Defaults.removeAll(suite: .app)
+        Defaults[.speechVolume] = 0
+        // Window tests expect a regular app (Dock icon, activation), and closing Settings must not hide the host
+        Defaults[.appPresence] = .both
+        NSApp.setActivationPolicy(.regular)
     }
 
     fileprivate static func end() async {
@@ -78,7 +85,7 @@ struct StateTimeout: Error, CustomStringConvertible {
 
 /// Records state changes. Call `expect(_:)` *before* the action: fast transitions would be missed afterwards.
 @MainActor
-final class StateRecorder: EasyReaderDelegate {
+final class StateRecorder: EasyReader.Delegate {
     @MainActor
     final class Expectation {
         let state: EasyReader.State
@@ -111,7 +118,12 @@ final class StateRecorder: EasyReaderDelegate {
     }
 
     private(set) var events: [EasyReader.State] = []
+    private(set) var progressAtStarts: [EasyReader.Progress?] = []
     private var pending: [Expectation] = []
+
+    func easyReaderDidStartUtterance(_ reader: EasyReader) {
+        progressAtStarts.append(reader.progress)
+    }
 
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
         events.append(state)

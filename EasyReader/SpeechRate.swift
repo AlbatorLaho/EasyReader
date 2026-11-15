@@ -21,9 +21,15 @@ enum SpeechRate {
         rate.clamped(to: AVSpeechUtteranceMinimumSpeechRate...AVSpeechUtteranceMaximumSpeechRate)
     }
 
-    /// Steps by real speed (`delta` 0.1 = +0.1×), so steps feel even across the range.
-    static func adjusted(_ rate: Float, byMultiplier delta: Float) -> Float {
-        clamped(self.rate(forMultiplier: multiplier(forRate: rate) + delta))
+    /// Speed step of the settings slider and the rate shortcuts.
+    static let step: Float = 0.25
+
+    /// Moves the speed by `steps` steps; a speed between steps first moves to the next one in that direction.
+    static func stepped(_ rate: Float, by steps: Int) -> Float {
+        let position = multiplier(forRate: rate) / step
+        let nearest = position.rounded()
+        let base = abs(position - nearest) < 0.01 ? nearest : position.rounded(steps > 0 ? .down : .up)
+        return clamped(self.rate(forMultiplier: (base + Float(steps)) * step))
     }
 
     /// Not clamped.

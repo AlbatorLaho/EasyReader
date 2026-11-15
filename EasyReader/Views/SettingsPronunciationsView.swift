@@ -45,6 +45,9 @@ struct SettingsPronunciationsView: View {
                         Spacer()
                         Button("Import from VoiceOver", action: importFromVoiceOver)
                             .help("Add the pronunciations from VoiceOver Utility › Speech › Pronunciation")
+                            .alert(item: $importResult) { result in
+                                Alert(title: Text(result.title), message: result.message.map(Text.init))
+                            }
                     }
                     .padding(.top, 6)
                 }
@@ -72,9 +75,21 @@ struct SettingsPronunciationsView: View {
             } label: {
                 Label(previewTitle, systemImage: "text.bubble")
             }
-        }
-        .alert(item: $importResult) { result in
-            Alert(title: Text(result.title), message: Text(result.message))
+
+            HStack {
+                Spacer()
+                ResetDefaultsButton(
+                    "Delete all rules…",
+                    confirmation: .init(
+                        title: "Delete all pronunciation rules?",
+                        message: "\(pronunciations.count == 1 ? "The rule is" : "All \(pronunciations.count) rules are") deleted. This can't be undone.",
+                        button: "Delete All Rules",
+                        action: {
+                            selection = nil
+                            Defaults.reset(.pronunciations)
+                        }),
+                    isEnabled: !pronunciations.isEmpty)
+            }
         }
     }
 
@@ -126,7 +141,7 @@ struct SettingsPronunciationsView: View {
             title: new.isEmpty ? "No New Pronunciations" : "Imported \(new.count) Pronunciation\(new.count == 1 ? "" : "s")",
             message: new.isEmpty
                 ? "All \(rules.count) of VoiceOver's pronunciations are already in the list."
-                : "\(rules.count - new.count) already in the list were skipped."
+                : rules.count == new.count ? nil : "\(rules.count - new.count) already in the list were skipped."
         )
     }
 
@@ -136,7 +151,7 @@ struct SettingsPronunciationsView: View {
             spoken.hasPhonetics
             ? AVSpeechUtterance(attributedString: spoken.attributedText)
             : AVSpeechUtterance(string: spoken.text)
-        utterance.voice = Defaults[.speechVoice]
+        utterance.voice = Defaults[.speechVoice] ?? .system
         utterance.rate = Defaults[.speechRate]
         utterance.pitchMultiplier = Defaults[.speechPitch]
         utterance.volume = Defaults[.speechVolume]
@@ -147,7 +162,7 @@ struct SettingsPronunciationsView: View {
     private struct ImportResult: Identifiable {
         let id = UUID()
         let title: String
-        let message: String
+        let message: String?
     }
 }
 

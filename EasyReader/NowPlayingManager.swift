@@ -2,8 +2,7 @@ import Cocoa
 import MediaPlayer
 import Defaults
 
-/// Media keys and the Now Playing panel. Commands are registered only while enabled and not stopped,
-/// so media keys go to other apps once reading stops.
+/// Media keys and the Now Playing panel: commands registered only while enabled and not stopped (or held after finishing).
 @MainActor
 final class NowPlayingManager {
     enum Action: Equatable {
@@ -17,6 +16,13 @@ final class NowPlayingManager {
         case changePlaybackRate(Float)
     }
 
+    enum AfterFinishing: String, Defaults.Serializable {
+        case off
+        case beep
+        case sameText
+        case startReading
+    }
+
     private struct Registration {
         let command: MPRemoteCommand
         let action: (MPRemoteCommandEvent) -> Action?
@@ -28,6 +34,10 @@ final class NowPlayingManager {
     private var registrations: [Registration]
     private var readable: Readable?
     private var state: EasyReader.State = .stopped
+    private var progress: EasyReader.Progress?
+    private var hasFinished = false
+    // Title and artwork, per readable: the title is an AX call
+    private var metadata: (readable: Readable, info: [String: Any])?
 
     var isEnabled = false {
         didSet {
@@ -60,9 +70,11 @@ final class NowPlayingManager {
         ]
     }
 
-    func update(readable: Readable?, state: EasyReader.State) {
+    func update(readable: Readable?, state: EasyReader.State, progress: EasyReader.Progress? = nil, hasFinished: Bool = false) {
         self.readable = readable
         self.state = state
+        self.progress = progress
+        self.hasFinished = hasFinished
         guard isEnabled else { return }
         apply()
     }
@@ -70,9 +82,12 @@ final class NowPlayingManager {
     @discardableResult
     func perform(_ action: Action) -> MPRemoteCommandHandlerStatus {
         Log.nowPlaying.debug("command: \(String(describing: action))")
+        if reader.hasFinished, action == .play || action == .togglePlayPause {
+            return playAfterFinishing() ? .success : .commandFailed
+        }
         let succeeded: Bool
         switch action {
-            case .play: succeeded = reader.play(from: .selection)
+            case .play: succeeded = reader.state == .reading || reader.togglePlayPause()
             case .pause: succeeded = reader.pause()
             case .stop: succeeded = reader.stop()
             case .togglePlayPause: succeeded = reader.togglePlayPause()
@@ -85,24 +100,48 @@ final class NowPlayingManager {
         return succeeded ? .success : .commandFailed
     }
 
+    private func playAfterFinishing() -> Bool {
+        switch Defaults[.mediaKeysAfterFinishing] {
+            case .off, .sameText:
+                return reader.play(from: .selection)
+            case .beep:
+                guard reader.start(reading: .frontmostApp, onlyIfNew: true) else {
+                    NSSound.beep()
+                    return false
+                }
+                return true
+            case .startReading:
+                return reader.start(reading: .frontmostApp)
+        }
+    }
+
     static func setSpeechRate(fromPlaybackRate playbackRate: Float) {
         Defaults[.speechRate] = SpeechRate.clamped(SpeechRate.rate(forMultiplier: playbackRate))
     }
 
     // MARK: - Commands
 
+    private var isHoldingAfterFinishing: Bool {
+        state == .stopped && hasFinished && readable != nil && Defaults[.mediaKeysAfterFinishing] != .off
+    }
+
     private func apply() {
-        setCommandsRegistered(state != .stopped)
+        setCommandsRegistered(state != .stopped || isHoldingAfterFinishing)
         switch state {
             case .reading:
                 infoCenter.playbackState = .playing
-                if let readable {
-                    infoCenter.nowPlayingInfo = Self.itemMetadata(readable).merging(Self.playbackInfo()) { $1 }
-                }
+                publishInfo(rate: SpeechRate.multiplier(forRate: Defaults[.speechRate]))
             case .paused:
                 infoCenter.playbackState = .paused
+                publishInfo(rate: 0)
             case .stopped:
-                clearInfo()
+                guard isHoldingAfterFinishing else {
+                    clearInfo()
+                    return
+                }
+                infoCenter.playbackState = .paused
+                progress = progress.map { EasyReader.Progress(position: $0.length, length: $0.length) }
+                publishInfo(rate: 0)
         }
     }
 
@@ -146,10 +185,15 @@ final class NowPlayingManager {
         infoCenter.nowPlayingInfo = nil
     }
 
+    private func publishInfo(rate: Float) {
+        guard let readable else { return }
+        if metadata?.readable !== readable { metadata = (readable, Self.itemMetadata(readable)) }
+        infoCenter.nowPlayingInfo = (metadata?.info ?? [:]).merging(Self.playbackInfo(progress: progress, rate: rate)) { $1 }
+    }
+
     private static func itemMetadata(_ readable: Readable) -> [String: Any] {
         var info: [String: Any] = [
-            MPMediaItemPropertyMediaType: MPMediaType.anyAudio.rawValue,
-            MPMediaItemPropertyPlaybackDuration: Double.infinity,
+            MPMediaItemPropertyMediaType: MPMediaType.anyAudio.rawValue
         ]
         info[MPMediaItemPropertyTitle] = readable.title
         info[MPMediaItemPropertyAlbumTitle] = readable.groupTitle
@@ -163,12 +207,20 @@ final class NowPlayingManager {
         MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }
 
-    private static func playbackInfo() -> [String: Any] {
-        [
+    // Measured with the default voice at 1×
+    static let charactersPerSecond = 17.0
+
+    // Times at 1×: the panel advances them by `rate`
+    private static func playbackInfo(progress: EasyReader.Progress?, rate: Float) -> [String: Any] {
+        var info: [String: Any] = [
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: 0.0,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: SpeechRate.multiplier(forRate: Defaults.Keys.speechRate.defaultValue),
-            MPNowPlayingInfoPropertyPlaybackRate: SpeechRate.multiplier(forRate: Defaults[.speechRate]),
+            MPNowPlayingInfoPropertyPlaybackRate: rate,
         ]
+        if let progress {
+            info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(progress.position) / charactersPerSecond
+            info[MPMediaItemPropertyPlaybackDuration] = Double(progress.length) / charactersPerSecond
+        }
+        return info
     }
 }

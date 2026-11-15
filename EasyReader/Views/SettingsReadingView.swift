@@ -62,7 +62,7 @@ struct SettingsReadingView: View {
                             }
 
                             SliderControls(value: $scrollUpdateRate, in: 30...60, step: 5, min: 1, format: .none) {
-                                Text("Increments:")
+                                Text("Update Rate:")
                             } minimumValueLabel: {
                                 Text("30/s")
                             } maximumValueLabel: {
@@ -112,7 +112,7 @@ struct SettingsReadingView: View {
             • Padding - how many pixels to pad the scrolling from the top and bottom of the view
             • Smooth Scrolling - scroll smoothly, instead of immediately
             \t• Duration - how long (in seconds) smooth scrolling takes to finish
-            \t• Increments - how many times per second, smooth scrolling will be updated
+            \t• Update Rate - how many times per second smooth scrolling is updated
 
             Caveats/Bugs:
             • Chromium browsers and Firefox don't scroll smoothly

@@ -13,7 +13,6 @@ extension IntegrationTests {
         private let readable = MockReadable("First sentence. Second sentence.")
 
         init() {
-            Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
             let manager = NowPlayingManager(reader: reader)
             self.manager = manager
@@ -52,6 +51,51 @@ extension IntegrationTests {
             )
         }
 
+        /// Pausing holds the elapsed time instead of resetting it.
+        @Test func publishesProgressAsTime() throws {
+            manager.isEnabled = true
+            let progress = EasyReader.Progress(position: 34, length: 340)
+            let cps = NowPlayingManager.charactersPerSecond
+            manager.update(readable: readable, state: .reading, progress: progress)
+            var info = try #require(MPNowPlayingInfoCenter.default().nowPlayingInfo)
+            #expect(info[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double == 34 / cps)
+            #expect(info[MPMediaItemPropertyPlaybackDuration] as? Double == 340 / cps)
+
+            manager.update(readable: readable, state: .paused, progress: progress)
+            info = try #require(MPNowPlayingInfoCenter.default().nowPlayingInfo)
+            #expect(info[MPNowPlayingInfoPropertyPlaybackRate] as? Float == 0)
+            #expect(info[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double == 34 / cps)
+        }
+
+        @Test(arguments: [NowPlayingManager.AfterFinishing.beep, .sameText, .startReading])
+        func keepsCommandsAfterFinishing(setting: NowPlayingManager.AfterFinishing) throws {
+            Defaults[.mediaKeysAfterFinishing] = setting
+            manager.isEnabled = true
+            let progress = EasyReader.Progress(position: 300, length: 340)
+            manager.update(readable: readable, state: .stopped, progress: progress, hasFinished: true)
+            #expect(manager.areCommandsRegistered)
+            let info = try #require(MPNowPlayingInfoCenter.default().nowPlayingInfo)
+            #expect(info[MPNowPlayingInfoPropertyPlaybackRate] as? Float == 0)
+            #expect(info[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double == 340 / NowPlayingManager.charactersPerSecond)
+        }
+
+        @Test func releasesCommandsAfterFinishingWhenOff() {
+            Defaults[.mediaKeysAfterFinishing] = .off
+            manager.isEnabled = true
+            manager.update(readable: readable, state: .reading)
+            manager.update(readable: readable, state: .stopped, hasFinished: true)
+            #expect(!manager.areCommandsRegistered)
+            #expect(MPNowPlayingInfoCenter.default().nowPlayingInfo == nil)
+        }
+
+        @Test func noTimeWithoutProgress() throws {
+            manager.isEnabled = true
+            manager.update(readable: readable, state: .reading)
+            let info = try #require(MPNowPlayingInfoCenter.default().nowPlayingInfo)
+            #expect(info[MPNowPlayingInfoPropertyElapsedPlaybackTime] == nil)
+            #expect(info[MPMediaItemPropertyPlaybackDuration] == nil)
+        }
+
         @Test func disablingWhileReadingUnregistersAndClearsInfo() {
             manager.isEnabled = true
             manager.update(readable: readable, state: .reading)
@@ -84,6 +128,39 @@ extension IntegrationTests {
             reader.readable = readable
             #expect(manager.perform(.togglePlayPause) == .success)
             #expect(readable.history.last.flatMap(readable.text(of:)) == "First sentence.")
+        }
+
+        @Test func playWhileReadingKeepsReading() async throws {
+            let recorder = StateRecorder()
+            reader.delegate = recorder
+            reader.textSelector = NLTextSelector(unit: .sentence)
+            let reading = recorder.expect(.reading)
+            #expect(reader.start(reading: MockReadable(longText)))
+            try await reading.wait(timeout: 10)
+            let starts = recorder.progressAtStarts.count
+            #expect(manager.perform(.play) == .success)
+            await settle(0.3)
+            #expect(recorder.progressAtStarts.count == starts, "no restart")
+            #expect(reader.state == .reading)
+        }
+
+        @Test func playWhilePausedFollowsResumeUnit() async throws {
+            let recorder = StateRecorder()
+            reader.delegate = recorder
+            reader.textSelector = NLTextSelector(unit: .sentence)
+            let long = Array(repeating: "word", count: 200).joined(separator: " ")
+            let reading = recorder.expect(.reading)
+            #expect(reader.start(reading: MockReadable("\(long). Second sentence.")))
+            try await reading.wait(timeout: 10)
+            await settle(2)  // a long utterance's first `willSpeakRange` lags ~0.5–1.2 s
+            let paused = recorder.expect(.paused)
+            #expect(reader.pause())
+            try await paused.wait(timeout: 10)
+            let resumed = recorder.expect(.reading)
+            #expect(manager.perform(.play) == .success)
+            try await resumed.wait(timeout: 10)
+            let spoken = try #require(reader.spokenText)
+            #expect(spoken.original.count < long.count, "resumed mid-sentence")
         }
     }
 }

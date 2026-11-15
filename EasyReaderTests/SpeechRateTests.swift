@@ -24,16 +24,23 @@ struct SpeechRateTests {
         #expect(isClose(SpeechRate.rate(forMultiplier: SpeechRate.multiplier(forRate: rate)), rate))
     }
 
-    @Test(arguments: [Float(0.2), 0.5, 0.8])
-    func adjustedStepsEvenlyInSpeed(rate: Float) {
+    @Test(arguments: [Float(0.25), 0.5, 0.75])
+    func steppedMovesOneStepInSpeed(rate: Float) {
         let before = SpeechRate.multiplier(forRate: rate)
-        #expect(isClose(SpeechRate.multiplier(forRate: SpeechRate.adjusted(rate, byMultiplier: 0.1)), before + 0.1))
-        #expect(isClose(SpeechRate.multiplier(forRate: SpeechRate.adjusted(rate, byMultiplier: -0.1)), before - 0.1))
+        #expect(isClose(SpeechRate.multiplier(forRate: SpeechRate.stepped(rate, by: 1)), before + SpeechRate.step))
+        #expect(isClose(SpeechRate.multiplier(forRate: SpeechRate.stepped(rate, by: -1)), before - SpeechRate.step))
     }
 
-    @Test func adjustedClampsAtEnds() {
-        #expect(SpeechRate.adjusted(AVSpeechUtteranceMaximumSpeechRate, byMultiplier: 0.1) == AVSpeechUtteranceMaximumSpeechRate)
-        #expect(SpeechRate.adjusted(AVSpeechUtteranceMinimumSpeechRate, byMultiplier: -0.1) == AVSpeechUtteranceMinimumSpeechRate)
+    /// 1.1× is between steps: up goes to 1.25×, down to 1×.
+    @Test func steppedSnapsToStep() {
+        let rate = SpeechRate.rate(forMultiplier: 1.1)
+        #expect(isClose(SpeechRate.multiplier(forRate: SpeechRate.stepped(rate, by: 1)), 1.25))
+        #expect(isClose(SpeechRate.multiplier(forRate: SpeechRate.stepped(rate, by: -1)), 1))
+    }
+
+    @Test func steppedClampsAtEnds() {
+        #expect(SpeechRate.stepped(AVSpeechUtteranceMaximumSpeechRate, by: 1) == AVSpeechUtteranceMaximumSpeechRate)
+        #expect(SpeechRate.stepped(AVSpeechUtteranceMinimumSpeechRate, by: -1) == AVSpeechUtteranceMinimumSpeechRate)
     }
 
     @Test func multiplierIncreasesWithRate() {

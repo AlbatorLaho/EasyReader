@@ -4,9 +4,12 @@ import KeyboardShortcuts
 
 struct SettingsGeneralView: View {
     @Default(.nowPlayingCenterIntegration) private var nowPlayingCenterIntegration
+    @Default(.mediaKeysAfterFinishing) private var mediaKeysAfterFinishing
+    @Default(.appPresence) private var appPresence
+    @Default(.quitClosesWindows) private var quitClosesWindows
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 30) {
+        VStack(alignment: .leading, spacing: 20) {
             GroupBox {
                 Form {
                     KeyboardShortcuts.Recorder("Start/Stop:", name: .toggleStartStop)
@@ -22,7 +25,7 @@ struct SettingsGeneralView: View {
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Text("Not needed with \"Now Playing Center\"")
+                            Text("Redundant with \"Now Playing Center\"")
                             InfoButton(
                                 "Media keys already play/pause and skip with Now Playing Center.",
                                 title: "Media Keys Cover These",
@@ -36,30 +39,80 @@ struct SettingsGeneralView: View {
                 Label("Global Shortcuts", systemImage: "command")
             }
 
-            HStack(spacing: 4) {
-                Toggle("\"Now Playing Center\" integration", systemImage: "play.circle", isOn: $nowPlayingCenterIntegration)
-                InfoButton(
-                    "Control reading with the media keys and see it in Now Playing.",
-                    title: "Now Playing Center",
-                    "Lets the keyboard's media keys (and headphone buttons) play/pause and skip while EasyReader reads.",
-                    "Also shows what's being read (the app and window) in Control Center's Now Playing, like music."
-                )
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 4) {
+                    Toggle("\"Now Playing Center\" integration", systemImage: "play.circle", isOn: $nowPlayingCenterIntegration)
+                    InfoButton(
+                        "Control reading with the media keys and see it in Now Playing.",
+                        title: "Now Playing Center",
+                        "Lets the keyboard's media keys (and headphone buttons) play/pause and skip while EasyReader reads.",
+                        "Also shows what's being read (the app and window) in Control Center's Now Playing, like music."
+                    )
+                }
+
+                HStack(spacing: 4) {
+                    Picker("Media Keys After Finishing:", selection: $mediaKeysAfterFinishing) {
+                        Text("Off").tag(NowPlayingManager.AfterFinishing.off)
+                        Text("Beep").tag(NowPlayingManager.AfterFinishing.beep)
+                        Text("Same Text").tag(NowPlayingManager.AfterFinishing.sameText)
+                        Text("Start Reading").tag(NowPlayingManager.AfterFinishing.startReading)
+                    }
+                    .fixedSize()
+                    InfoButton(
+                        "Whether the media keys stay with EasyReader once it reaches the end of the text.",
+                        title: "Media Keys After Finishing",
+                        "Off: the media keys go back to other apps (Music…) when reading reaches the end.",
+                        "Otherwise EasyReader stays in Now Playing, paused at the end, until another app plays, you stop reading, or the text's window closes. Play then:",
+                        "• Beep: reads what you've selected or switched to since, or beeps if nothing changed.\n• Same Text: reads the finished text again, from your selection in it or from the start.\n• Start Reading: does what Start does: reads the frontmost app, or the same text from the start if nothing changed."
+                    )
+                }
+                .padding(.leading, 20)
+                .disabled(!nowPlayingCenterIntegration)
             }
 
-            Spacer()
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 4) {
+                    Picker("Show In:", selection: $appPresence) {
+                        Text("Menu Bar").tag(AppDelegate.Presence.menuBar)
+                        Text("Dock").tag(AppDelegate.Presence.dock)
+                        Text("Both").tag(AppDelegate.Presence.both)
+                    }
+                    .fixedSize()
+                    InfoButton(
+                        "Where EasyReader and its controls are.",
+                        title: "Show In",
+                        "Menu Bar: the menu bar icon holds the controls; EasyReader shows in the Dock only while Settings is open.",
+                        "Dock: EasyReader stays in the Dock and ⌘-Tab. Right-click its Dock icon for the controls.",
+                        "Opening EasyReader again (Finder, Spotlight, the Dock) opens Settings."
+                    )
+                }
 
-            ChromiumSelectionInfo()
+                HStack(spacing: 4) {
+                    Toggle("⌘Q Only Closes Windows", isOn: $quitClosesWindows)
+                    InfoButton(
+                        "Quitting with windows open closes them instead.",
+                        title: "⌘Q Only Closes Windows",
+                        "With EasyReader in the menu bar only, ⌘Q (or Quit in its app menu) while Settings is open closes the window and leaves EasyReader running in the menu bar.",
+                        "Quit in the menu bar icon's menu always quits."
+                    )
+                }
+                .padding(.leading, 20)
+                .disabled(appPresence != .menuBar)
+            }
 
-            HStack {
-                AccessibilityPermissionButton()
-                Spacer()
-                ResetDefaultsButton(for: "all") {
-                    KeyboardShortcuts.resetAll()
-                    Defaults.removeAll()
-                } label: {
-                    Label("Reset all settings…", systemImage: "exclamationmark.triangle.fill")
+            VStack(alignment: .leading, spacing: 20) {
+                ChromiumSelectionInfo()
+
+                HStack {
+                    AccessibilityPermissionButton()
+                    Spacer()
+                    ResetDefaultsButton(for: "general") {
+                        KeyboardShortcuts.resetAll()
+                        Defaults.reset(.appPresence, .quitClosesWindows, .nowPlayingCenterIntegration, .mediaKeysAfterFinishing)
+                    }
                 }
             }
+            .frame(maxHeight: .infinity, alignment: .bottom)
         }
 
         TextPlayground("General Playground") {

@@ -38,13 +38,16 @@ private final class InMemoryDefaults: UserDefaults {
 }
 
 extension Defaults.Keys {
+    static let appPresence = Key<AppDelegate.Presence>("AppPresence", default: .menuBar, suite: .app)
+    static let quitClosesWindows = Key<Bool>("QuitClosesWindows", default: true, suite: .app)
     static let nowPlayingCenterIntegration = Key<Bool>("NowPlayingCenterIntegration", default: true, suite: .app)
+    static let mediaKeysAfterFinishing = Key<NowPlayingManager.AfterFinishing>("MediaKeysAfterFinishing", default: .off, suite: .app)
 
     static let speechVoice = Key<AVSpeechSynthesisVoice?>("SpeechVoice", suite: .app)
     static let speechVolume = Key<Float>("SpeechVolume", default: 1.0, suite: .app)
     static let speechRate = Key<Float>("SpeechRate", default: AVSpeechUtteranceDefaultSpeechRate, suite: .app)
     static let speechPitch = Key<Float>("SpeechPitch", default: 1.0, suite: .app)
-    static let speechStopBoundary = Key<AVSpeechBoundary>("SpeechStopBoundary", default: .immediate, suite: .app)
+    static let speechStopBoundary = Key<EasyReader.StopBoundary>("SpeechStopBoundary", default: .immediate, suite: .app)
     static let speechDelayBefore = Key<Double>("SpeechDelayBefore", default: 0, suite: .app)
     static let speechDelayAfter = Key<Double>("SpeechDelayAfter", default: 0, suite: .app)
 
@@ -74,6 +77,20 @@ extension AVSpeechSynthesisVoice: Defaults.Serializable {
     public static let bridge = AVSpeechSynthesisVoiceBridge()
 }
 
+extension AVSpeechSynthesisVoice {
+    /// The Spoken Content voice, or the language's default. Looked up by name in case Apple removes the deprecated `NSSpeechSynthesizer`.
+    static var system: AVSpeechSynthesisVoice? {
+        let identifier = (NSClassFromString("NSSpeechSynthesizer") as? NSObject.Type)?.value(forKey: "defaultVoice") as? String
+        return identifier.flatMap(installed(identifier:))
+            ?? AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())
+    }
+
+    /// `init(identifier:)` returns a default voice for an unknown identifier.
+    static func installed(identifier: String) -> AVSpeechSynthesisVoice? {
+        AVSpeechSynthesisVoice(identifier: identifier).flatMap { $0.identifier == identifier ? $0 : nil }
+    }
+}
+
 public struct AVSpeechSynthesisVoiceBridge: Defaults.Bridge, Sendable {
     public typealias Value = AVSpeechSynthesisVoice
     public typealias Serializable = String
@@ -84,24 +101,6 @@ public struct AVSpeechSynthesisVoiceBridge: Defaults.Bridge, Sendable {
 
     public func deserialize(_ object: Serializable?) -> Value? {
         guard let object else { return nil }
-        return AVSpeechSynthesisVoice(identifier: object)
-    }
-}
-
-extension AVSpeechBoundary: Defaults.Serializable {
-    public static let bridge = AVSpeechBoundaryBridge()
-}
-
-public struct AVSpeechBoundaryBridge: Defaults.Bridge, Sendable {
-    public typealias Value = AVSpeechBoundary
-    public typealias Serializable = Int
-
-    public func serialize(_ value: Value?) -> Serializable? {
-        value?.rawValue
-    }
-
-    public func deserialize(_ object: Serializable?) -> Value? {
-        guard let object else { return nil }
-        return AVSpeechBoundary(rawValue: object)
+        return AVSpeechSynthesisVoice.installed(identifier: object)
     }
 }
