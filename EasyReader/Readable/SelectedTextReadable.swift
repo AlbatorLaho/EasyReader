@@ -69,21 +69,28 @@ final class SelectedTextReadable: Readable {
 
     /// Nil when the setting is off or nothing is selected.
     static func selection(in pid: pid_t, focused: AXElement?) -> SelectedTextReadable? {
-        guard Defaults[.readSelectedTextFallback] else { return nil }
+        guard Defaults[.readSelectedTextFallback], let (text, isFocusedSelection) = selectedText(in: pid, focused: focused) else { return nil }
         let app = NSRunningApplication(processIdentifier: pid)
         let title = try? focused?.attribute(.window)?.attribute(.title)
-        if let focused, let text = try? focused.attribute(.selectedText), hasText(text) {
-            Log.accessibility.debug("fallback: selected text of focused element (\(text.utf16.count) chars)")
-            let range = try? focused.attribute(.selectedTextRange)
-            // Some apps report a stale or empty range
-            let source = range.flatMap { range in
-                range.length == text.utf16.count ? (element: focused, offset: range.location) : nil
+        // Some apps report a stale or empty range
+        let source =
+            isFocusedSelection
+            ? (try? focused?.attribute(.selectedTextRange)).flatMap { range in
+                range.length == text.utf16.count ? focused.map { (element: $0, offset: range.location) } : nil
             }
-            return SelectedTextReadable(text, app: app, title: title, source: source)
+            : nil
+        return SelectedTextReadable(text, app: app, title: title, source: source)
+    }
+
+    /// The app's selected text: the focused element's (`isFocusedSelection`), else copied with ⌘C.
+    static func selectedText(in pid: pid_t, focused: AXElement?) -> (text: String, isFocusedSelection: Bool)? {
+        if let focused, let text = try? focused.attribute(.selectedText), hasText(text) {
+            Log.accessibility.debug("selected text of focused element (\(text.utf16.count) chars)")
+            return (text, true)
         }
         if let text = CopiedSelection.copy(from: pid, timeout: 0.5), hasText(text) {
-            Log.accessibility.debug("fallback: copied selection (\(text.utf16.count) chars)")
-            return SelectedTextReadable(text, app: app, title: title)
+            Log.accessibility.debug("copied selection (\(text.utf16.count) chars)")
+            return (text, false)
         }
         return nil
     }

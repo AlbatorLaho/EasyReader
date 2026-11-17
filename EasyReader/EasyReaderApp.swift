@@ -11,6 +11,14 @@ struct EasyReaderApp: App {
         Settings {
             SettingsView()
         }
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("Open…") { ReaderWindow.openDocument() }
+                    .keyboardShortcut("o")
+                Button("Open URL…") { ReaderWindow.openWebPage() }
+                    .keyboardShortcut("l")
+            }
+        }
     }
 }
 
@@ -28,6 +36,13 @@ final class SettingsOpener: NSObject {
         Defaults[.appPresence] == .menuBar ? .accessory : .regular
     }
 
+    /// Windows that keep the Dock icon while open.
+    private nonisolated static let windowIDs: Set = [windowID, ReaderWindow.windowID]
+
+    private static var hasOpenWindow: Bool {
+        NSApp.windows.contains { $0.isVisible && windowIDs.contains($0.identifier?.rawValue ?? "") }
+    }
+
     private static var closeObserver: NSObjectProtocol?
 
     @objc static func open() {
@@ -41,7 +56,7 @@ final class SettingsOpener: NSObject {
             Modern.openSettings()
             // Read outside a view, which SwiftUI doesn't promise to support → the app menu's item if no window shows.
             Task {
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(seconds: 0.5)
                 guard window?.isVisible != true else { return }
                 Log.settings.error("openSettings opened no window, using the menu item")
                 openWithMenuItem()
@@ -54,12 +69,30 @@ final class SettingsOpener: NSObject {
             }
             // Activated before the policy change lands, the app isn't put first in ⌘-Tab.
             Task {
-                try? await Task.sleep(nanoseconds: 100_000_000)
+                try? await Task.sleep(seconds: 0.1)
                 NSApp.activate(ignoringOtherApps: true)
                 window?.makeKeyAndOrderFront(nil)
             }
         }
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Shows one of the app's other windows the way `open` shows Settings; `then` runs once it's key (or after 1 s).
+    static func present(_ window: NSWindow, then action: (@MainActor () -> Void)? = nil) {
+        NSApp.setActivationPolicy(.regular)
+        observeClose()
+        NSApp.unhide(nil)
+        window.makeKeyAndOrderFront(nil)
+        // Activated before the policy change lands, the app isn't put first in ⌘-Tab.
+        Task {
+            try? await Task.sleep(seconds: 0.1)
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            for _ in 0..<18 where !window.isKeyWindow {
+                try? await Task.sleep(seconds: 0.05)
+            }
+            action?()
+        }
     }
 
     private static func observeClose() {
@@ -69,14 +102,17 @@ final class SettingsOpener: NSObject {
         ) { notification in
             nonisolated(unsafe) let window = notification.object
             MainActor.assumeIsolated {
-                guard (window as? NSWindow)?.identifier?.rawValue == windowID else { return }
+                guard let window = window as? NSWindow, windowIDs.contains(window.identifier?.rawValue ?? "") else { return }
+                // Still visible while it closes
+                guard !NSApp.windows.contains(where: { $0 !== window && $0.isVisible && windowIDs.contains($0.identifier?.rawValue ?? "") })
+                else { return }
                 didClose()
             }
         }
     }
 
     static func applyRestingPolicy() {
-        guard window?.isVisible != true else { return }
+        guard !hasOpenWindow else { return }
         NSApp.setActivationPolicy(restingPolicy)
     }
 
@@ -110,6 +146,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var statusItem: NSStatusItem?
     let statusMenu = NSMenu()
     private let dockMenu = NSMenu()
+    let readerService = ReaderService()
+    private let statusItemDropTarget = StatusItemDropTarget()
     private var isQuitting = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -118,6 +156,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         easyReader = EasyReader()
         easyReader.delegate = self
         nowPlayingManager = NowPlayingManager(reader: easyReader)
+        ReaderWindow.reader = easyReader
+        NSApp.servicesProvider = readerService
+        NSUpdateDynamicServices()
         // Its first lookup takes ~450 ms.
         DispatchQueue.main.async { _ = AVSpeechSynthesisVoice.system }
 
@@ -125,9 +166,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         KeyboardShortcuts.onKeyDown(for: .togglePlayPause, action: togglePlayPauseAction)
         KeyboardShortcuts.onKeyDown(for: .skipForward, action: skipForwardAction)
         KeyboardShortcuts.onKeyDown(for: .skipBackward, action: skipBackwardAction)
+        KeyboardShortcuts.onKeyDown(for: .readSelectionInReaderWindow, action: readSelectionInReaderWindowAction)
         dockMenu.items = playbackMenuItems()
         statusMenu.items =
             playbackMenuItems() + [
+                .separator(),
+                {
+                    let menuItem = NSMenuItem(title: "Open…", action: #selector(ReaderWindow.openDocument), keyEquivalent: "o")
+                    menuItem.target = ReaderWindow.self
+                    return menuItem
+                }(),
+                {
+                    let menuItem = NSMenuItem(title: "Open URL…", action: #selector(ReaderWindow.openWebPage), keyEquivalent: "l")
+                    menuItem.target = ReaderWindow.self
+                    return menuItem
+                }(),
                 .separator(),
                 NSMenuItem(title: "About EasyReader", action: #selector(aboutAction), keyEquivalent: ""),
                 {
@@ -216,6 +269,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    // Files dropped on the Dock icon or opened with EasyReader in Finder (document types in Info.plist)
+    func application(_ application: NSApplication, open urls: [URL]) {
+        ReaderWindow.open(urls)
+    }
+
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         dockMenu
     }
@@ -226,6 +284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
             item.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)
             item.menu = statusMenu
+            if let button = item.button { statusItemDropTarget.attach(to: button) }
             statusItem = item
         } else if !shown, let item = statusItem {
             NSStatusBar.system.removeStatusItem(item)
@@ -249,13 +308,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }(),
             {
                 let menuItem = NSMenuItem(title: "Skip Forward", action: #selector(skipForwardAction), keyEquivalent: "")
-                menuItem.image = NSImage(systemSymbolName: "goforward", accessibilityDescription: nil)
                 menuItem.setShortcut(for: .skipForward)
                 return menuItem
             }(),
             {
                 let menuItem = NSMenuItem(title: "Skip Backward", action: #selector(skipBackwardAction), keyEquivalent: "")
-                menuItem.image = NSImage(systemSymbolName: "gobackward", accessibilityDescription: nil)
                 menuItem.setShortcut(for: .skipBackward)
                 return menuItem
             }(),
@@ -287,6 +344,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !easyReader.skip(.backward) { NSSound.beep() }
     }
 
+    @objc func readSelectionInReaderWindowAction() {
+        Log.app.debug("read selection in reader window")
+        guard let app = NSWorkspace.shared.frontmostApplication, readSelectionInReaderWindow(of: app.processIdentifier) else {
+            NSSound.beep()
+            return
+        }
+    }
+
+    /// Like Services' "Read with EasyReader" from any app: its selection (AX, else ⌘C) read in a reader window, titled after its window.
+    func readSelectionInReaderWindow(of pid: pid_t) -> Bool {
+        guard pid == getpid() || AXElement.isProcessTrusted(prompt: true) else { return false }
+        let focused = try? AXElement.application(pid: pid).attribute(.focusedUIElement)
+        guard let (text, _) = SelectedTextReadable.selectedText(in: pid, focused: focused) else { return false }
+        let title = (try? focused?.attribute(.window)?.attribute(.title)).flatMap { $0.isEmpty ? nil : $0 }
+        ReaderWindow.forNewContent().read(ReaderWindow.plainText(text), title: title ?? NSRunningApplication(processIdentifier: pid)?.localizedName ?? "Reader")
+        return true
+    }
+
     @objc func aboutAction() {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(nil)
@@ -297,11 +372,13 @@ extension AppDelegate: EasyReader.Delegate {
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
         updateNowPlaying()
         statusMenu.update()
+        ReaderWindow.updateToolbars()
     }
 
     // Skips and rate changes don't change the state
     func easyReaderDidStartUtterance(_ reader: EasyReader) {
         updateNowPlaying()
+        ReaderWindow.updateToolbars()
     }
 
     private func updateNowPlaying() {
@@ -322,16 +399,10 @@ extension AppDelegate {
 extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-            case #selector(toggleStartStopAction):
-                menuItem.title = easyReader.state == .reading ? "Stop" : "Start"
-                menuItem.image = NSImage(systemSymbolName: easyReader.state == .reading ? "stop.fill" : "play.fill", accessibilityDescription: nil)
-                return true
-            case #selector(togglePlayPauseAction):
-                menuItem.title = easyReader.state == .paused ? "Resume" : "Pause"
-                menuItem.image = NSImage(systemSymbolName: easyReader.state == .paused ? "play.fill" : "pause.fill", accessibilityDescription: nil)
-                return easyReader.state != .stopped
-            case #selector(skipForwardAction): return easyReader.state != .stopped && easyReader.canSkipForward
-            case #selector(skipBackwardAction): return easyReader.state != .stopped
+            case #selector(toggleStartStopAction): return PlaybackControl.startStop.apply(to: menuItem, for: easyReader)
+            case #selector(togglePlayPauseAction): return PlaybackControl.playPause.apply(to: menuItem, for: easyReader)
+            case #selector(skipForwardAction): return PlaybackControl.skipForward.apply(to: menuItem, for: easyReader)
+            case #selector(skipBackwardAction): return PlaybackControl.skipBackward.apply(to: menuItem, for: easyReader)
             case nil: return false
             default: return true
         }

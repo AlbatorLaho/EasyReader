@@ -16,6 +16,16 @@ struct SettingsGeneralView: View {
                     KeyboardShortcuts.Recorder("Increase Rate:", name: .increaseRate)
                     KeyboardShortcuts.Recorder("Decrease Rate:", name: .decreaseRate)
                     KeyboardShortcuts.Recorder("Default Rate:", name: .defaultRate)
+                    HStack(spacing: 4) {
+                        KeyboardShortcuts.Recorder("Read Selection in Reader:", name: .readSelectionInReaderWindow)
+                        InfoButton(
+                            "Read the selected text of any app in a Reader window.",
+                            title: "Read Selection in Reader",
+                            "Like Services → \"Read with EasyReader\", but it works in any app and you choose the shortcut here.",
+                            "It takes the app's selection through accessibility, or by copying it (⌘C) when the app doesn't report it, then puts your clipboard back. Clipboard history apps may still record the copy.",
+                            "The text opens in a Reader window and is read from the start. Formatting isn't kept."
+                        )
+                    }
 
                     GroupBox {
                         Form {

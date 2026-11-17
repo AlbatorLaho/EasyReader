@@ -31,7 +31,14 @@ final class TextAreaReadableElement: ReadableElement {
             return
         }
         scroller.scroll(
-            to: selectionBounds, contentFrame: contentFrame(elementFrame: elementFrame, scrollAreaFrame: scrollAreaFrame), options: options)
+            to: selectionBounds, contentFrame: contentFrame(elementFrame: elementFrame, scrollAreaFrame: scrollAreaFrame), options: options
+        ) { [weak self] in
+            guard let self, let scrollAreaFrame = scroller.frame,
+                let bounds = try? handle.attribute(.boundsForRange, for: CFRange(selection)),
+                let elementFrame = try? handle.attribute(.frame)
+            else { return nil }
+            return (bounds, contentFrame(elementFrame: elementFrame, scrollAreaFrame: scrollAreaFrame))
+        }
     }
 
     /// SwiftUI's TextEditor reports only its visible rect as its frame; an `NSTextView` is as tall as its text (wraps to the width).

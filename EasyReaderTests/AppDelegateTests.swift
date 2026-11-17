@@ -65,6 +65,102 @@ extension IntegrationTests {
             #expect(NSApp.orderedWindows.first == settings)
         }
 
+        private func pasteboard(_ write: (NSPasteboard) -> Void) -> NSPasteboard {
+            let pasteboard = NSPasteboard(name: NSPasteboard.Name("EasyReaderTests-\(UUID().uuidString)"))
+            Teardown.add { pasteboard.releaseGlobally() }
+            pasteboard.clearContents()
+            write(pasteboard)
+            return pasteboard
+        }
+
+        /// Read with EasyReader (or a drop on the menu bar icon) puts the text in the reader window and reads it there; the controls follow,
+        /// with Start and Resume told apart.
+        @Test func readServiceReadsTextInReaderWindow() async throws {
+            let app = await launch()
+            Teardown.add { for readerWindow in ReaderWindow.windows { readerWindow.window.close() } }
+            let reading = recorder.expect(.reading)
+            #expect(ReaderWindow.read(pasteboard { $0.setString(longText, forType: .string) }))
+            try await reading.wait(timeout: 10)
+            let reader = try #require(ReaderWindow.front)
+            #expect(reader.textView.string == longText)
+            #expect(app.easyReader.readable is TextAreaReadableElement)
+            ReaderWindow.updateToolbars()  // the app's own reader delegate does this; here the recorder replaced it
+            let items = try #require(reader.window.toolbar?.items)
+            #expect(items.first?.label == "Stop")
+
+            let paused = recorder.expect(.paused)
+            #expect(app.easyReader.togglePlayPause())
+            try await paused.wait(timeout: 5)
+            ReaderWindow.updateToolbars()
+            #expect(items.map(\.label) == ["Start", "Resume", "Skip Backward", "Skip Forward"])
+            let start = PlaybackControl.startStop.appearance(for: app.easyReader)
+            let resume = PlaybackControl.playPause.appearance(for: app.easyReader)
+            #expect(start.symbols.first != resume.symbols.first)
+            #expect(start.image != nil)
+            let menuItem = try #require(app.statusMenu.items.first { $0.action == #selector(AppDelegate.toggleStartStopAction) })
+            app.statusMenu.update()
+            #expect(menuItem.title == "Start")
+        }
+
+        /// Read with EasyReader on a file in Finder opens it in the reader window and reads it.
+        @Test func readServiceReadsFile() async throws {
+            _ = await launch()
+            Teardown.add { for readerWindow in ReaderWindow.windows { readerWindow.window.close() } }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("ReadService-\(UUID().uuidString).txt")
+            try longText.write(to: url, atomically: true, encoding: .utf8)
+            Teardown.add { try? FileManager.default.removeItem(at: url) }
+            let reading = recorder.expect(.reading)
+            #expect(ReaderWindow.read(pasteboard { $0.writeObjects([url as NSURL]) }))
+            try await reading.wait(timeout: 10)
+            let reader = try #require(ReaderWindow.front)
+            #expect(reader.textView.string == longText)
+            #expect(reader.window.title == url.lastPathComponent)
+        }
+
+        /// The Read Selection in Reader shortcut reads the front app's selection in a reader window titled after the app's window.
+        @Test func readSelectionShortcutReadsSelectionInReaderWindow() async throws {
+            let app = await launch()
+            Teardown.add { for readerWindow in ReaderWindow.windows { readerWindow.window.close() } }
+            let text = "Alpha one. Beta two. Gamma three."
+            let field = NSTextField(string: text)
+            let source = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 400, height: 60), styleMask: [.titled], backing: .buffered, defer: false)
+            source.isReleasedWhenClosed = false
+            source.title = "Selection Source \(UUID().uuidString)"
+            source.contentView = field
+            source.makeKeyAndOrderFront(nil)
+            source.makeFirstResponder(field)
+            Teardown.add { source.close() }
+            await settle()
+            try #require(field.currentEditor()).selectedRange = (text as NSString).range(of: "Beta two. Gamma three.")
+            await settle()
+            let reading = recorder.expect(.reading)
+            #expect(app.readSelectionInReaderWindow(of: getpid()))
+            try await reading.wait(timeout: 10)
+            let reader = try #require(ReaderWindow.front)
+            #expect(reader.textView.string == "Beta two. Gamma three.")
+            #expect(reader.window.title == source.title)
+        }
+
+        @Test func readServiceRefusesBlankText() async {
+            _ = await launch()
+            #expect(!ReaderWindow.read(pasteboard { $0.setString(" \n", forType: .string) }))
+        }
+
+        /// The status menu shows the same shortcuts as the File menu (Open…, Open URL…); there's no New Reader Window.
+        @Test func statusMenuShortcutsMatchFileMenu() async throws {
+            let app = await launch()
+            let fileMenu = try #require(NSApp.mainMenu?.items.first { $0.submenu?.items.contains { $0.title == "Open…" } == true }?.submenu)
+            fileMenu.delegate?.menuNeedsUpdate?(fileMenu)  // SwiftUI fills its items when the menu opens
+            #expect(!fileMenu.items.contains { $0.title.contains("New Reader Window") })
+            for title in ["Open…", "Open URL…"] {
+                let fileItem = try #require(fileMenu.items.first { $0.title == title })
+                let statusItem = try #require(app.statusMenu.items.first { $0.title == title })
+                #expect(statusItem.keyEquivalent == fileItem.keyEquivalent, "\(title)")
+                #expect(statusItem.keyEquivalentModifierMask == fileItem.keyEquivalentModifierMask, "\(title)")
+                #expect(!statusItem.keyEquivalent.isEmpty, "\(title)")
+            }
+        }
+
         @Test func speechSettingChangeRestartsReading() async throws {
             let app = await launch()
             let readable = try await startReading(app.easyReader)

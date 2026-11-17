@@ -6,7 +6,9 @@ import KeyboardShortcuts
 extension UserDefaults {
     // In-memory under tests: they run inside the Debug app. `UserDefaults` is thread-safe but not `Sendable`.
     nonisolated(unsafe) static let app: UserDefaults =
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil ? .standard : InMemoryDefaults()
+        isUnderTest ? InMemoryDefaults() : .standard
+
+    nonisolated static let isUnderTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 }
 
 /// Never persists. Posts KVO on writes so `Defaults.updates`/`@Default` still observe changes.
@@ -59,6 +61,8 @@ extension Defaults.Keys {
     static let scrollDuration = Key<Double>("ScrollDuration", default: 0.3, suite: .app)
     static let scrollUpdateRate = Key<Double>("ScrollUpdateRate", default: 60, suite: .app)
     static let readSelectedTextFallback = Key<Bool>("ReadSelectedTextFallback", default: false, suite: .app)
+    static let readerOpensNewWindows = Key<Bool>("ReaderOpensNewWindows", default: true, suite: .app)
+    static let readerDarkBackground = Key<Bool>("ReaderDarkBackground", default: true, suite: .app)
 
     static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [], suite: .app)
 }
@@ -71,6 +75,7 @@ extension KeyboardShortcuts.Name {
     static let increaseRate = Self("IncreaseRate")
     static let decreaseRate = Self("DecreaseRate")
     static let defaultRate = Self("DefaultRate")
+    static let readSelectionInReaderWindow = Self("ReadSelectionInReaderWindow")
 }
 
 extension AVSpeechSynthesisVoice: Defaults.Serializable {

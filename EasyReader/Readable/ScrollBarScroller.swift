@@ -16,8 +16,11 @@ final class ScrollBarScroller {
     private var verticalScrollBar: AXElement? { try? scrollArea.attribute(.verticalScrollBar) }
     private var horizontalScrollBar: AXElement? { try? scrollArea.attribute(.horizontalScrollBar) }
 
-    /// Puts `bounds` (screen coordinates) `options.padding` below the top of the scroll area, unless already visible.
-    func scroll(to bounds: CGRect, contentFrame: CGRect, options: ScrollOptions) {
+    /// Bounds of the target and the content frame, measured again.
+    typealias Measure = @MainActor () -> (bounds: CGRect, contentFrame: CGRect)?
+
+    /// Puts `bounds` (screen coordinates) `options.padding` below the scroll area's top unless visible; `remeasure` corrects it once scrolled.
+    func scroll(to bounds: CGRect, contentFrame: CGRect, options: ScrollOptions, remeasure: Measure? = nil) {
         guard let scrollAreaFrame = frame else {
             Log.scroll.debug("scroll to \(bounds): missing scroll area frame")
             return
@@ -47,30 +50,50 @@ final class ScrollBarScroller {
             )
             Log.scroll.debug("vertical scroll → \(value) (smooth: \(options.smooth))")
             verticalTask?.cancel()
-            verticalTask = set(scrollBar, to: value, options: options)
+            verticalTask = set(scrollBar, to: value, options: options, correctingTo: padding, remeasure: remeasure)
         }
     }
 
     nonisolated static func scrollValue(offset: CGFloat, scrollableLength: CGFloat) -> CGFloat {
         guard scrollableLength.isNormal, scrollableLength > 0 else { return 0 }
-        return min(max(offset / scrollableLength, 0), 1)
+        return (offset / scrollableLength).clamped(to: 0...1)
     }
 
-    private func set(_ scrollBar: AXElement, to target: CGFloat, options: ScrollOptions) -> Task<Void, Never>? {
+    /// TextKit 2 estimates the height of text not laid out yet (a far scroll lands hundreds of points off): measure again and nudge.
+    private func correct(_ scrollBar: AXElement, padding: CGFloat, remeasure: Measure) async {
+        for _ in 0..<3 {
+            // Other apps apply a set asynchronously.
+            guard (try? await Task.sleep(seconds: 0.05)) != nil,
+                let scrollAreaFrame = frame, let measured = remeasure(),
+                let current: CGFloat = try? scrollBar.attribute(.value)
+            else { return }
+            let scrollableLength = measured.contentFrame.height - scrollAreaFrame.height
+            let offset = measured.bounds.minY - (scrollAreaFrame.minY + padding)
+            guard abs(offset) > 1, scrollableLength > 0 else { return }
+            let value = (current + offset / scrollableLength).clamped(to: 0...1)
+            guard value != current else { return }
+            Log.scroll.debug("correcting vertical scroll by \(offset) pt → \(value)")
+            try? scrollBar.set(.value, to: value)
+        }
+    }
+
+    private func set(
+        _ scrollBar: AXElement, to target: CGFloat, options: ScrollOptions, correctingTo padding: CGFloat = 0, remeasure: Measure? = nil
+    ) -> Task<Void, Never>? {
         guard options.smooth, let current: CGFloat = try? scrollBar.attribute(.value) else {
             try? scrollBar.set(.value, to: target)
-            return nil
+            guard let remeasure else { return nil }
+            return Task { await correct(scrollBar, padding: padding, remeasure: remeasure) }
         }
 
         let frameInterval = 1.0 / options.updateRate
         let totalFrames = Int(options.duration / frameInterval)
         let step = (target - current) / CGFloat(totalFrames)
-        let frameNanoseconds = UInt64(frameInterval * 1_000_000_000)
 
         return Task {
             for index in 1...max(totalFrames, 1) {
                 // Throws only when a newer scroll cancelled this one.
-                guard (try? await Task.sleep(nanoseconds: frameNanoseconds)) != nil else { return }
+                guard (try? await Task.sleep(seconds: frameInterval)) != nil else { return }
                 let value = index >= totalFrames ? target : current + (step * CGFloat(index))
                 do {
                     try scrollBar.set(.value, to: value)
@@ -78,6 +101,7 @@ final class ScrollBarScroller {
                     return  // element went away
                 }
             }
+            if let remeasure { await correct(scrollBar, padding: padding, remeasure: remeasure) }
         }
     }
 }

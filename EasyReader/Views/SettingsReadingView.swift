@@ -10,6 +10,8 @@ struct SettingsReadingView: View {
     @Default(.scrollDuration) private var scrollDuration
     @Default(.scrollUpdateRate) private var scrollUpdateRate
     @Default(.readSelectedTextFallback) private var readSelectedTextFallback
+    @Default(.readerOpensNewWindows) private var readerOpensNewWindows
+    @Default(.readerDarkBackground) private var readerDarkBackground
 
     var body: some View {
         VStack(alignment: .leading, spacing: 30) {
@@ -80,6 +82,33 @@ struct SettingsReadingView: View {
                 Toggle("Auto Scrolling", systemImage: "arrow.up.arrow.down", isOn: $scrollSelectionIntoView)
             }
 
+            GroupBox {
+                Form {
+                    HStack(spacing: 4) {
+                        Toggle("Open files in new windows", isOn: $readerOpensNewWindows)
+                        InfoButton(
+                            "Each file or web page opens in a window of its own.",
+                            title: "Reader Windows",
+                            "The Reader window (menu bar icon → Reader Window) shows files, web pages and text you send it, and reads them like any other app.",
+                            "Off: there's one Reader window, and opening something replaces its text.",
+                            "On: each file or page opens in a new window (or the front one, if it's empty)."
+                        )
+                    }
+
+                    HStack(spacing: 4) {
+                        Toggle("Dark background in Dark Mode", isOn: $readerDarkBackground)
+                        InfoButton(
+                            "In Dark Mode, show documents light on dark.",
+                            title: "Dark Background",
+                            "On: in Dark Mode the Reader window is dark, and the document's colors are adjusted to stay readable (black text turns light), like TextEdit's \"Use Dark Background for Windows\".",
+                            "Off: documents always show as they would print, dark on light."
+                        )
+                    }
+                }
+            } label: {
+                Label("Reader Window", systemImage: "doc.richtext")
+            }
+
             Spacer()
 
             HStack {
@@ -95,6 +124,8 @@ struct SettingsReadingView: View {
                         .scrollDuration,
                         .scrollUpdateRate,
                         .readSelectedTextFallback,
+                        .readerOpensNewWindows,
+                        .readerDarkBackground,
                     ])
             }
         }
