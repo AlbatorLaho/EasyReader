@@ -11,7 +11,8 @@ struct SliderControls<Label: View, ValueLabel: View, Value: BinaryFloatingPoint>
 
     init(
         value: Binding<Value>, in bounds: ClosedRange<Value>, step: Value.Stride = 1, min: NSNumber? = 0, max: NSNumber? = nil,
-        format: NumberFormatter.Style = .decimal, @ViewBuilder label: @escaping () -> Label, @ViewBuilder minimumValueLabel: @escaping () -> ValueLabel,
+        format: NumberFormatter.Style = .decimal, fractionDigits: ClosedRange<Int>? = nil, @ViewBuilder label: @escaping () -> Label,
+        @ViewBuilder minimumValueLabel: @escaping () -> ValueLabel,
         @ViewBuilder maximumValueLabel: @escaping () -> ValueLabel
     ) {
         self.label = label
@@ -24,6 +25,10 @@ struct SliderControls<Label: View, ValueLabel: View, Value: BinaryFloatingPoint>
         formatter.numberStyle = format
         formatter.minimum = min
         formatter.maximum = max
+        if let fractionDigits {
+            formatter.minimumFractionDigits = fractionDigits.lowerBound
+            formatter.maximumFractionDigits = fractionDigits.upperBound
+        }
     }
 
     init<V: BinaryInteger>(

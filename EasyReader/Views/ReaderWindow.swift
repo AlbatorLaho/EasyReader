@@ -69,10 +69,11 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
             window.setFrameTopLeftPoint(front.cascadeTopLeft(from: NSPoint(x: front.frame.minX, y: front.frame.maxY)))
         } else {
             window.center()
-            // Tests resize it: they'd save their sizes to the real defaults.
-            if !UserDefaults.isUnderTest { window.setFrameAutosaveName(Self.windowID) }
+            restoreSavedFrame()
         }
 
+        // Right away: the first update comes a turn later (black text on dark until then).
+        applyDarkBackground(Defaults[.readerDarkBackground])
         darkBackgroundTask = Task { [weak self] in
             for await darkBackground in Defaults.updates(.readerDarkBackground) {
                 self?.applyDarkBackground(darkBackground)
@@ -100,15 +101,25 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
 
     /// The window to show: the front one, else the last one used, else a new one.
     static var current: ReaderWindow {
-        front ?? windows.last ?? make()
+        front ?? reused ?? make()
+    }
+
+    /// The window kept after closing the last one, at the last closed window's size.
+    private static var reused: ReaderWindow? {
+        windows.last?.restoreSavedFrame()
+        return windows.last
+    }
+
+    // Shared by all windows, unlike an autosave name; not under tests, which resize windows and would save to the real defaults.
+    private func restoreSavedFrame() {
+        if !UserDefaults.isUnderTest { window.setFrameUsingName(Self.windowID) }
     }
 
     /// Where opened content goes: with `readerOpensNewWindows` a new window unless the front one is empty.
     static func forNewContent() -> ReaderWindow {
         guard Defaults[.readerOpensNewWindows] else { return current }
         if let front { return front.isEmpty ? front : make() }
-        // The window kept after closing the last one
-        return windows.last ?? make()
+        return reused ?? make()
     }
 
     var isEmpty: Bool { textView.string.isEmpty && loadTask == nil }
@@ -121,6 +132,9 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         loadTask?.cancel()
+        if !UserDefaults.isUnderTest, !Self.windows.contains(where: { $0 !== self && $0.window.isVisible }) {
+            window.saveFrame(usingName: Self.windowID)
+        }
         // One window is kept (with its text) for reuse.
         if Self.windows.count > 1 {
             Self.windows.removeAll { $0 === self }
@@ -265,7 +279,7 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
 
     @available(macOS 12.0, *)
     private static func importHTML(_ data: Data, options: [NSAttributedString.DocumentReadingOptionKey: Any]) async throws -> NSAttributedString {
-        // Called back on main, where the caller is
+        // Called back on main, where the caller is.
         struct Result: @unchecked Sendable { let text: NSAttributedString }
         return try await withCheckedThrowingContinuation { continuation in
             NSAttributedString.loadFromHTML(data: data, options: options) { text, _, error in
@@ -340,6 +354,8 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         {
             _ = reader.stop()
         }
+        let (text, background) = Self.separatingPageBackground(text, documentAttributes: documentAttributes)
+        textView.backgroundColor = background ?? .textBackgroundColor
         textView.textStorage?.setAttributedString(text)
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         textView.scrollToBeginningOfDocument(nil)
@@ -347,6 +363,24 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         window.title = title
         window.representedURL = nil
         fitWidth(Self.preferredWidth(of: text, documentAttributes: documentAttributes))
+    }
+
+    /// The page's background (the document's, else the one behind most of the text), removed from the text: HTML import leaves it in stripes.
+    nonisolated static func separatingPageBackground(
+        _ text: NSAttributedString, documentAttributes: [NSAttributedString.DocumentAttributeKey: Any]
+    ) -> (NSAttributedString, NSColor?) {
+        let all = NSRange(location: 0, length: text.length)
+        var lengths: [NSColor: Int] = [:]
+        text.enumerateAttribute(.backgroundColor, in: all) { value, range, _ in
+            if let color = value as? NSColor { lengths[color, default: 0] += range.length }
+        }
+        let majority = lengths.max { $0.value < $1.value }.flatMap { $0.value * 2 > text.length ? $0.key : nil }
+        guard let background = documentAttributes[.backgroundColor] as? NSColor ?? majority else { return (text, nil) }
+        let separated = NSMutableAttributedString(attributedString: text)
+        text.enumerateAttribute(.backgroundColor, in: all) { value, range, _ in
+            if value as? NSColor == background { separated.removeAttribute(.backgroundColor, range: range) }
+        }
+        return (separated, background)
     }
 
     /// Widens the window to a document's fixed width (within the screen); text wraps to the window either way.
@@ -358,17 +392,44 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         let screen = (window.screen ?? NSScreen.main)?.visibleFrame ?? frame
         let width = min(window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: documentWidth + padding, height: 0)).width, screen.width)
         guard width > frame.width else { return }
-        // Stays portrait where the screen allows
+        // Stays portrait where the screen allows.
         let height = max(frame.height, min(width * 1.3, screen.height))
         frame = NSRect(x: min(frame.minX, screen.maxX - width), y: max(frame.maxY - height, screen.minY), width: width, height: height)
         window.setFrame(frame, display: true)
     }
 
-    /// Shows the text and reads it from the start (Services, drops on the menu bar icon).
+    /// Shows the text and reads it from the start.
     func read(_ text: NSAttributedString, title: String = "Reader") {
         show(text, title: title)
         present { [weak self] in
             if self?.startReading() != true { NSSound.beep() }
+        }
+    }
+
+    /// Like Services' "Read with EasyReader" from any app: its selection read in a reader window, titled after its window.
+    static func readSelection(of pid: pid_t) -> Bool {
+        guard pid == getpid() || AXElement.isProcessTrusted(prompt: true) else { return false }
+        let focused = try? AXElement.application(pid: pid).attribute(.focusedUIElement)
+        guard let text = AppSelection.text(in: pid, focused: focused) else { return false }
+        let title = (try? focused?.attribute(.window)?.attribute(.title)).flatMap { $0.isEmpty ? nil : $0 }
+        forNewContent().read(plainText(text), title: title ?? NSRunningApplication(processIdentifier: pid)?.localizedName ?? "Reader")
+        return true
+    }
+
+    /// Shows text to try the settings on; read from the start only with `reading`.
+    static func openSample(reading: Bool = false) {
+        let title = "Sample Text"
+        let readerWindow =
+            windows.first(where: { $0.window.isVisible && $0.window.title == title && $0.textView.string == sampleText })
+            ?? {
+                let readerWindow = forNewContent()
+                readerWindow.show(plainText(sampleText), title: title)
+                return readerWindow
+            }()
+        readerWindow.present { [weak readerWindow] in
+            guard reading else { return }
+            readerWindow?.textView.setSelectedRange(NSRange(location: 0, length: 0))
+            if readerWindow?.startReading() != true { NSSound.beep() }
         }
     }
 
@@ -523,7 +584,7 @@ private final class LoadingView: NSVisualEffectView {
         layer?.cornerRadius = 10
         spinner.style = .spinning
         spinner.controlSize = .small
-        // Keeps spinning while HTML import blocks the main thread
+        // Keeps spinning while HTML import blocks the main thread.
         spinner.usesThreadedAnimation = true
         label.lineBreakMode = .byTruncatingMiddle
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

@@ -57,7 +57,7 @@ extension IntegrationTests {
             await settle(0.3)
             let readable = try readerReadable()
             let scrollView = try #require(reader.textView.enclosingScrollView)
-            let options = ScrollOptions(padding: 40, smooth: smooth, duration: 0.2, updateRate: 60)
+            let options = ScrollOptions(padding: 40, duration: smooth ? 0.2 : 0)
             var distances: [CGFloat] = []
             for n in [250, 40, 180, 100, 260, 10] {
                 let start = (text as NSString).range(of: "Paragraph \(n).").location
@@ -76,7 +76,7 @@ extension IntegrationTests {
         }
 
         private func readerReadable() throws -> TextAreaReadableElement {
-            let app = AXElement.application(pid: NSRunningApplication.current.processIdentifier)
+            let app = AXElement.application(pid: getpid())
             let windows = try #require(try app.attribute(.windows))
             let window = try #require(windows.first { (try? $0.attribute(.title) as String?) == ReaderWindow.current.window.title })
             var queue = [window]

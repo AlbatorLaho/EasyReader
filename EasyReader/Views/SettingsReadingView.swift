@@ -2,152 +2,230 @@ import SwiftUI
 import Defaults
 
 struct SettingsReadingView: View {
+    @Default(.speechVoice) private var speechVoice
+    @Default(.speechVolume) private var speechVolume
+    @Default(.speechRate) private var speechRate
+    @Default(.speechPitch) private var speechPitch
     @Default(.selectionUnit) private var selectionUnit
+    @Default(.speechStopBoundary) private var speechStopBoundary
     @Default(.resumeUnit) private var resumeUnit
+    @Default(.pauseBetweenUnits) private var pauseBetweenUnits
+    @Default(.repeatingSkipInterval) private var repeatingSkipInterval
     @Default(.scrollSelectionIntoView) private var scrollSelectionIntoView
     @Default(.scrollPadding) private var scrollPadding
-    @Default(.scrollSmooth) private var scrollSmooth
     @Default(.scrollDuration) private var scrollDuration
-    @Default(.scrollUpdateRate) private var scrollUpdateRate
-    @Default(.readSelectedTextFallback) private var readSelectedTextFallback
-    @Default(.readerOpensNewWindows) private var readerOpensNewWindows
-    @Default(.readerDarkBackground) private var readerDarkBackground
+
+    private var unit: String { selectionUnit == .paragraph ? "paragraph" : "sentence" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 30) {
+        VStack(alignment: .leading, spacing: 20) {
             GroupBox {
                 Form {
-                    Picker("Selection Unit:", selection: $selectionUnit) {
-                        Text("Sentence").tag(Selection.Unit.sentence)
-                        Text("Paragraph").tag(Selection.Unit.paragraph)
+                    HStack(spacing: 4) {
+                        VoicePicker(selection: $speechVoice)
+                            .fixedSize()
+                        InfoButton(
+                            "The voice EasyReader reads with.",
+                            title: "Voice",
+                            "System Voice should be the one set in System Settings → Accessibility → Spoken Content. macOS doesn't offer a supported way to ask, so it may not always match.",
+                            "Changing the voice while reading restarts from the current word.",
+                            "For more voices (like the Enhanced and Premium ones), use the System Voice menu in Spoken Content: Manage Voices… (Customize… on older macOS)."
+                        )
                     }
+                    .formLabel(Text("Voice:"))
 
-                    Picker("Resume From:", selection: $resumeUnit) {
-                        Text("Word").tag(EasyReader.ResumeUnit.word)
-                        Text("Selection").tag(EasyReader.ResumeUnit.selection)
+                    SliderControls(value: $speechVolume, in: 0...1, step: 0.1, max: 1, format: .percent) {
+                        Text("Volume:")
+                    } minimumValueLabel: {
+                        Image(systemName: "speaker.fill")
+                    } maximumValueLabel: {
+                        Image(systemName: "speaker.wave.3.fill")
                     }
 
                     HStack(spacing: 4) {
-                        Toggle("Read selected text in unsupported apps", isOn: $readSelectedTextFallback)
+                        SliderControls(
+                            value: Binding(
+                                get: { SpeechRate.multiplier(forRate: speechRate) },
+                                set: { newValue in
+                                    speechRate = SpeechRate.clamped(SpeechRate.rate(forMultiplier: newValue))
+                                }
+                            ), in: SpeechRate.minimumMultiplier...SpeechRate.maximumMultiplier, step: SpeechRate.step, max: 4, fractionDigits: 1...2
+                        ) {
+                            Text("Speed:")
+                        } minimumValueLabel: {
+                            Text("0.5×")
+                        } maximumValueLabel: {
+                            Text("4×")
+                        }
                         InfoButton(
-                            "In unsupported apps, read just the selected text.",
-                            title: "Unsupported Apps",
-                            "EasyReader reads text views, web pages, PDFs and Apple Books, selecting each sentence as it reads and going on through the whole text.",
-                            "Apps are usually unsupported because they have little or no accessibility support.",
-                            "In unsupported apps, this reads only the text you selected: nothing is highlighted or scrolled, and reading stops at the end of the selection.",
-                            "If the app doesn't report its selection to accessibility, EasyReader copies it (⌘C), then puts your clipboard back. Clipboard history apps may still record the copy."
+                            "How fast the voice talks; 1.0 is the voice's normal speed.",
+                            title: "Speed",
+                            "1.0 is the voice's normal speed, 2.0 about twice as fast. Some voices run a little faster or slower than others.",
+                            "Changing it while reading restarts from the current word. The faster/slower shortcuts (General) change it too."
+                        )
+                    }
+
+                    HStack(spacing: 4) {
+                        SliderControls(value: $speechPitch, in: 0.5...2, step: 0.1, min: 0.5, max: 2, fractionDigits: 1...1) {
+                            Text("Pitch:")
+                        } minimumValueLabel: {
+                            Text("0.5×")
+                        } maximumValueLabel: {
+                            Text("2×")
+                        }
+                        InfoButton(
+                            "How high or low the voice sounds.",
+                            title: "Pitch",
+                            "1.0 is the voice's own pitch. Some voices change only a little, or not at all."
                         )
                     }
                 }
             } label: {
-                Label("Reading", systemImage: "doc.plaintext")
+                Label("Speech", systemImage: "waveform")
             }
 
             GroupBox {
                 Form {
-                    SliderControls(value: $scrollPadding, in: 0...64, step: 8) {
-                        Text("Padding:")
-                    } minimumValueLabel: {
-                        Text("0px")
-                    } maximumValueLabel: {
-                        Text("64px")
-                    }
-
-                    GroupBox {
-                        Form {
-                            SliderControls(value: $scrollDuration, in: 0.1...1, step: 0.1) {
-                                Text("Duration:")
-                            } minimumValueLabel: {
-                                Text("0.1s")
-                            } maximumValueLabel: {
-                                Text("1s")
-                            }
-
-                            SliderControls(value: $scrollUpdateRate, in: 30...60, step: 5, min: 1, format: .none) {
-                                Text("Update Rate:")
-                            } minimumValueLabel: {
-                                Text("30/s")
-                            } maximumValueLabel: {
-                                Text("60/s")
-                            }
+                    HStack(spacing: 4) {
+                        Picker("Read by:", selection: $selectionUnit) {
+                            Text("Sentence").tag(Selection.Unit.sentence)
+                            Text("Paragraph").tag(Selection.Unit.paragraph)
                         }
-                        .disabled(!scrollSmooth)
-                    } label: {
-                        Toggle("Smooth Scrolling", systemImage: "point.fill.topleft.down.curvedto.point.fill.bottomright.up", isOn: $scrollSmooth)
+                        .fixedSize()
+                        InfoButton(
+                            "How much EasyReader selects and reads at once.",
+                            title: "Read By",
+                            "EasyReader selects a sentence (or paragraph), reads it, then moves on to the next one.",
+                            "Skipping forward or back also moves by this much."
+                        )
                     }
-                    .padding(.top)
+
+                    HStack(spacing: 4) {
+                        Picker("Pause/stop:", selection: $speechStopBoundary) {
+                            Text("Immediately").tag(EasyReader.StopBoundary.immediate)
+                            Text("After the word").tag(EasyReader.StopBoundary.word)
+                            Text("After the \(unit)").tag(EasyReader.StopBoundary.selection)
+                        }
+                        .fixedSize()
+                        InfoButton(
+                            "When speech stops after you pause or stop.",
+                            title: "Pause/Stop",
+                            "Immediately: mid-word, the moment you press it.",
+                            "After the word: finishes the word it's on.",
+                            "After the \(unit): finishes the \(unit), then selects the next one, so playing again starts there. Press pause again to stop sooner."
+                        )
+                    }
+
+                    HStack(spacing: 4) {
+                        Picker("Resume from:", selection: $resumeUnit) {
+                            Text("Where it stopped").tag(EasyReader.ResumeUnit.word)
+                            Text("Start of the \(unit)").tag(EasyReader.ResumeUnit.selection)
+                        }
+                        .fixedSize()
+                        InfoButton(
+                            "Where reading picks up when you play after a pause.",
+                            title: "Resume From",
+                            "Where it stopped: carries on from the word it stopped on.",
+                            "Start of the \(unit): reads the whole \(unit) again.",
+                            "If you selected something else while paused, reading starts from that instead."
+                        )
+                    }
+
+                    HStack(spacing: 4) {
+                        SliderControls(value: $pauseBetweenUnits, in: 0...1, step: 0.1, max: 10) {
+                            Text("Delay between \(unit)s:")
+                        } minimumValueLabel: {
+                            Text("0s")
+                        } maximumValueLabel: {
+                            Text("1s")
+                        }
+                        InfoButton(
+                            "Extra silence before each next \(unit).",
+                            title: "Delay Between \(unit.capitalized)s",
+                            "Once a \(unit) is read, the next one is selected, then EasyReader waits this long before reading it.",
+                            "Starting, resuming and skipping aren't delayed."
+                        )
+                    }
+
+                    HStack(spacing: 4) {
+                        SliderControls(
+                            value: $repeatingSkipInterval, in: EasyReader.repeatingSkipIntervals, step: 0.05, min: 0.05, max: 1,
+                            fractionDigits: 2...2
+                        ) {
+                            Text("Skip repeat interval:")
+                        } minimumValueLabel: {
+                            Text("0.05s")
+                        } maximumValueLabel: {
+                            Text("1s")
+                        }
+                        InfoButton(
+                            "How often a held skip key skips again.",
+                            title: "Skip Repeat Interval",
+                            "Holding a skip key (the media keys or your skip forward/back shortcuts) skips once, then, after a moment, again every this many seconds until you let go.",
+                            "Chromium browsers can take up to half a second per skip, so short intervals skip as fast as they can there."
+                        )
+                    }
+                }
+            } label: {
+                Label("Playback", systemImage: "text.alignleft")
+            }
+
+            GroupBox {
+                Form {
+                    HStack(spacing: 4) {
+                        SliderControls(value: $scrollPadding, in: 0...64, step: 8, max: 1024) {
+                            Text("Space above:")
+                        } minimumValueLabel: {
+                            Text("0pt")
+                        } maximumValueLabel: {
+                            Text("64pt")
+                        }
+                        InfoButton(
+                            "How far below the top the \(unit) being read is scrolled to.",
+                            title: "Space Above",
+                            "When the \(unit) being read gets this close to the top or bottom edge, or goes past it, the text scrolls to put it this far below the top."
+                        )
+                    }
+
+                    SliderControls(value: $scrollDuration, in: 0...1, step: 0.1, max: 10) {
+                        Text("Scroll duration:")
+                    } minimumValueLabel: {
+                        Text("Instant")
+                    } maximumValueLabel: {
+                        Text("1s")
+                    }
                 }
                 .disabled(!scrollSelectionIntoView)
             } label: {
-                Toggle("Auto Scrolling", systemImage: "arrow.up.arrow.down", isOn: $scrollSelectionIntoView)
-            }
-
-            GroupBox {
-                Form {
-                    HStack(spacing: 4) {
-                        Toggle("Open files in new windows", isOn: $readerOpensNewWindows)
-                        InfoButton(
-                            "Each file or web page opens in a window of its own.",
-                            title: "Reader Windows",
-                            "The Reader window (menu bar icon → Reader Window) shows files, web pages and text you send it, and reads them like any other app.",
-                            "Off: there's one Reader window, and opening something replaces its text.",
-                            "On: each file or page opens in a new window (or the front one, if it's empty)."
-                        )
-                    }
-
-                    HStack(spacing: 4) {
-                        Toggle("Dark background in Dark Mode", isOn: $readerDarkBackground)
-                        InfoButton(
-                            "In Dark Mode, show documents light on dark.",
-                            title: "Dark Background",
-                            "On: in Dark Mode the Reader window is dark, and the document's colors are adjusted to stay readable (black text turns light), like TextEdit's \"Use Dark Background for Windows\".",
-                            "Off: documents always show as they would print, dark on light."
-                        )
-                    }
+                HStack(spacing: 4) {
+                    Toggle("Scroll to follow along", isOn: $scrollSelectionIntoView)
+                    InfoButton(
+                        "Keep the \(unit) being read in view.",
+                        title: "Scroll to Follow Along",
+                        "Scrolls the text as reading moves on, so the \(unit) being read stays in view.",
+                        "Chromium and Firefox browsers always scroll instantly, just far enough to show the \(unit), without the space above."
+                    )
                 }
-            } label: {
-                Label("Reader Window", systemImage: "doc.richtext")
             }
 
-            Spacer()
-
-            HStack {
-                Spacer()
+            SettingsFooter {
                 ResetDefaultsButton(
                     for: "reading",
                     keys: [
+                        .speechVoice,
+                        .speechVolume,
+                        .speechRate,
+                        .speechPitch,
                         .selectionUnit,
+                        .speechStopBoundary,
                         .resumeUnit,
+                        .pauseBetweenUnits,
+                        .repeatingSkipInterval,
                         .scrollSelectionIntoView,
                         .scrollPadding,
-                        .scrollSmooth,
                         .scrollDuration,
-                        .scrollUpdateRate,
-                        .readSelectedTextFallback,
-                        .readerOpensNewWindows,
-                        .readerDarkBackground,
                     ])
             }
-        }
-
-        TextPlayground("Reading Playground") {
-            """
-            Text for testing reading
-
-            Reading:
-            • Selection Unit - whether to read a sentence or a paragraph at a time
-            • Resume From - when resuming, start from the word it was paused at, or from the start of the selection
-            • Read selected text in unsupported apps - for apps EasyReader doesn't support, just read the selected text (nothing gets selected or scrolled, and reading stops at the end of the selection)
-
-            Auto Scrolling:
-            • Padding - how many pixels to pad the scrolling from the top and bottom of the view
-            • Smooth Scrolling - scroll smoothly, instead of immediately
-            \t• Duration - how long (in seconds) smooth scrolling takes to finish
-            \t• Update Rate - how many times per second smooth scrolling is updated
-
-            Caveats/Bugs:
-            • Chromium browsers and Firefox don't scroll smoothly
-            """
         }
     }
 }

@@ -12,14 +12,7 @@ extension IntegrationTests {
         private let recorder = StateRecorder()
 
         init() {
-            Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            Defaults[.speechDelayBefore] = 0
-            Defaults[.speechDelayAfter] = 0
-            Defaults[.speechStopBoundary] = .immediate
-            Defaults[.resumeUnit] = .word
-            Defaults[.pronunciations] = []
-            Defaults[.scrollSelectionIntoView] = true
             reader.delegate = recorder
             reader.textSelector = NLTextSelector(unit: .sentence)
             let reader = reader
@@ -221,18 +214,17 @@ extension IntegrationTests {
             #expect(!reader.hasFinished)
         }
 
-        @Test func onlyIfNewRefusesUnchangedFinishedText() async throws {
+        @Test func rereadFinishedIgnoresNewSelection() async throws {
             let text = "One. Two."
             let readable = MockReadable(text)
             let stopped = recorder.expect(.stopped)
             #expect(reader.start(reading: readable))
             try await stopped.wait(timeout: 15)
-            #expect(!reader.start(reading: readable, onlyIfNew: true))
-            readable.selection = Selection((text as NSString).range(of: "One."))
+            readable.selection = Selection((text as NSString).range(of: "Two."))
             let reading = recorder.expect(.reading)
-            #expect(reader.start(reading: readable, onlyIfNew: true))
+            #expect(reader.rereadFinished())
             try await reading.wait(timeout: 15)
-            #expect(!reader.hasFinished)
+            #expect(readable.selection.flatMap(readable.text(of:)) == "One.")
         }
 
         @Test func startingOnSelectionScrollsToIt() {

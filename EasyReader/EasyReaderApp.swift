@@ -2,6 +2,7 @@ import AVFoundation
 import SwiftUI
 import Defaults
 import KeyboardShortcuts
+import LaunchAtLogin
 
 @main
 struct EasyReaderApp: App {
@@ -37,7 +38,7 @@ final class SettingsOpener: NSObject {
     }
 
     /// Windows that keep the Dock icon while open.
-    private nonisolated static let windowIDs: Set = [windowID, ReaderWindow.windowID]
+    private nonisolated static let windowIDs: Set = [windowID, ReaderWindow.windowID, SetupGuide.windowID]
 
     private static var hasOpenWindow: Bool {
         NSApp.windows.contains { $0.isVisible && windowIDs.contains($0.identifier?.rawValue ?? "") }
@@ -149,9 +150,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let readerService = ReaderService()
     private let statusItemDropTarget = StatusItemDropTarget()
     private var isQuitting = false
+    private var settingsLoops: [Task<Void, Never>] = []
+
+    // An agent app (`LSUIElement`) turned regular after launch isn't activated like one, so the guide's launch is regular from the start.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        if SetupGuide.isNeeded { NSApp.setActivationPolicy(.regular) }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApplication.shared.setActivationPolicy(SettingsOpener.restingPolicy)
+        NSApplication.shared.setActivationPolicy(SetupGuide.isNeeded ? .regular : SettingsOpener.restingPolicy)
+        // A login item enabled on macOS 12 or earlier moves to SMAppService once the Mac runs 13+.
+        if !UserDefaults.isUnderTest { LaunchAtLogin.migrateIfNeeded() }
 
         easyReader = EasyReader()
         easyReader.delegate = self
@@ -162,11 +171,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Its first lookup takes ~450 ms.
         DispatchQueue.main.async { _ = AVSpeechSynthesisVoice.system }
 
-        KeyboardShortcuts.onKeyDown(for: .toggleStartStop, action: toggleStartStopAction)
-        KeyboardShortcuts.onKeyDown(for: .togglePlayPause, action: togglePlayPauseAction)
-        KeyboardShortcuts.onKeyDown(for: .skipForward, action: skipForwardAction)
-        KeyboardShortcuts.onKeyDown(for: .skipBackward, action: skipBackwardAction)
-        KeyboardShortcuts.onKeyDown(for: .readSelectionInReaderWindow, action: readSelectionInReaderWindowAction)
+        KeyboardShortcuts.onKeyDown(for: .toggleStartStop) { [weak self] in self?.toggleStartStopAction() }
+        KeyboardShortcuts.onKeyDown(for: .togglePlayPause) { [weak self] in self?.playPauseShortcut() }
+        for (name, direction) in [(KeyboardShortcuts.Name.skipForward, Selection.Direction.forward), (.skipBackward, .backward)] {
+            KeyboardShortcuts.onKeyDown(for: name) { [weak self] in self?.skipShortcutDown(direction) }
+            KeyboardShortcuts.onKeyUp(for: name) { [weak self] in self?.skipShortcutUp(direction) }
+        }
+        KeyboardShortcuts.onKeyDown(for: .readSelectionInReaderWindow) { [weak self] in self?.readSelectionInReaderWindowAction() }
         dockMenu.items = playbackMenuItems()
         statusMenu.items =
             playbackMenuItems() + [
@@ -208,38 +219,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Log.app.debug("shortcut: reset rate → \(Defaults[.speechRate])")
         }
 
-        Task {
-            for await _ in Defaults.updates([.speechVoice, .speechVolume, .speechRate, .speechPitch], initial: false) {
-                Log.settings.debug("speech settings changed (state \(easyReader.state))")
-                guard easyReader.state == .reading else { continue }
-                easyReader.play(from: .word)
-            }
-        }
-        Task {
-            for await value in Defaults.updates(.selectionUnit) {
-                Log.settings.debug("selection unit: \(value)")
-                easyReader.textSelector = NLTextSelector(unit: value)
-            }
-        }
-        Task {
-            for await value in Defaults.updates(.nowPlayingCenterIntegration) {
-                Log.settings.debug("Now Playing integration: \(value)")
-                nowPlayingManager.isEnabled = value
-            }
-        }
-        Task {
-            for await value in Defaults.updates(.appPresence, initial: false) {
-                Log.settings.debug("app presence: \(value)")
-                updateStatusItem()
-                SettingsOpener.applyRestingPolicy()
-            }
-        }
-        Task {
-            for await value in Defaults.updates(.mediaKeysAfterFinishing, initial: false) {
-                Log.settings.debug("media keys after finishing: \(value)")
-                updateNowPlaying()
-            }
-        }
+        settingsLoops = [
+            Task { [weak self] in
+                for await _ in Defaults.updates([.speechVoice, .speechVolume, .speechRate, .speechPitch], initial: false) {
+                    guard let self else { return }
+                    Log.settings.debug("speech settings changed (state \(easyReader.state))")
+                    guard easyReader.state == .reading else { continue }
+                    easyReader.play(from: .word)
+                }
+            },
+            Task { [weak self] in
+                for await value in Defaults.updates(.selectionUnit) {
+                    guard let self else { return }
+                    Log.settings.debug("selection unit: \(value)")
+                    easyReader.textSelector = NLTextSelector(unit: value)
+                }
+            },
+            Task { [weak self] in
+                for await value in Defaults.updates(.nowPlayingCenterIntegration) {
+                    guard let self else { return }
+                    Log.settings.debug("Now Playing integration: \(value)")
+                    nowPlayingManager.isEnabled = value
+                }
+            },
+            Task { [weak self] in
+                for await value in Defaults.updates(.appPresence, initial: false) {
+                    guard let self else { return }
+                    Log.settings.debug("app presence: \(value)")
+                    updateStatusItem()
+                    SettingsOpener.applyRestingPolicy()
+                }
+            },
+            Task { [weak self] in
+                for await value in Defaults.updates(.playWhenFinished, initial: false) {
+                    guard let self else { return }
+                    Log.settings.debug("play when finished: \(value)")
+                    updateNowPlaying()
+                }
+            },
+        ]
+
+        SetupGuide.showIfNeeded()
+    }
+
+    /// Undoes `applicationDidFinishLaunching`'s observers and status item (tests launch several delegates). Removes every shortcut handler.
+    func stopObserving() {
+        for loop in settingsLoops { loop.cancel() }
+        settingsLoops = []
+        KeyboardShortcuts.removeAllHandlers()
+        nowPlayingManager.isEnabled = false
+        if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
+        statusItem = nil
     }
 
     @objc private func quitAction() {
@@ -344,22 +374,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !easyReader.skip(.backward) { NSSound.beep() }
     }
 
+    /// Same as the media key, so "When finished, Play key" applies too.
+    private func playPauseShortcut() {
+        Log.app.debug("shortcut: play/pause (state \(easyReader.state))")
+        let hadFinished = easyReader.hasFinished
+        // After finishing, playing again beeps itself where it should.
+        if nowPlayingManager.perform(.togglePlayPause) != .success, !hadFinished { NSSound.beep() }
+    }
+
+    private var heldSkipShortcut: Selection.Direction?
+
+    private func skipShortcutDown(_ direction: Selection.Direction) {
+        guard heldSkipShortcut != direction else { return }
+        Log.app.debug("shortcut: skip \(direction) (held: repeats)")
+        heldSkipShortcut = direction
+        if !easyReader.beginRepeatingSkip(direction, firstRepeatAfter: NSEvent.keyRepeatDelay) { NSSound.beep() }
+    }
+
+    private func skipShortcutUp(_ direction: Selection.Direction) {
+        guard heldSkipShortcut == direction else { return }
+        heldSkipShortcut = nil
+        easyReader.endRepeatingSkip()
+    }
+
     @objc func readSelectionInReaderWindowAction() {
         Log.app.debug("read selection in reader window")
-        guard let app = NSWorkspace.shared.frontmostApplication, readSelectionInReaderWindow(of: app.processIdentifier) else {
+        guard let app = NSWorkspace.shared.frontmostApplication, ReaderWindow.readSelection(of: app.processIdentifier) else {
             NSSound.beep()
             return
         }
-    }
-
-    /// Like Services' "Read with EasyReader" from any app: its selection (AX, else ⌘C) read in a reader window, titled after its window.
-    func readSelectionInReaderWindow(of pid: pid_t) -> Bool {
-        guard pid == getpid() || AXElement.isProcessTrusted(prompt: true) else { return false }
-        let focused = try? AXElement.application(pid: pid).attribute(.focusedUIElement)
-        guard let (text, _) = SelectedTextReadable.selectedText(in: pid, focused: focused) else { return false }
-        let title = (try? focused?.attribute(.window)?.attribute(.title)).flatMap { $0.isEmpty ? nil : $0 }
-        ReaderWindow.forNewContent().read(ReaderWindow.plainText(text), title: title ?? NSRunningApplication(processIdentifier: pid)?.localizedName ?? "Reader")
-        return true
     }
 
     @objc func aboutAction() {

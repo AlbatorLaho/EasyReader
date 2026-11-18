@@ -67,9 +67,9 @@ extension IntegrationTests {
             #expect(info[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double == 34 / cps)
         }
 
-        @Test(arguments: [NowPlayingManager.AfterFinishing.beep, .sameText, .startReading])
-        func keepsCommandsAfterFinishing(setting: NowPlayingManager.AfterFinishing) throws {
-            Defaults[.mediaKeysAfterFinishing] = setting
+        @Test(arguments: [NowPlayingManager.PlayWhenFinished.sameText, .sameApp, .anyText])
+        func keepsCommandsAfterFinishing(setting: NowPlayingManager.PlayWhenFinished) throws {
+            Defaults[.playWhenFinished] = setting
             manager.isEnabled = true
             let progress = EasyReader.Progress(position: 300, length: 340)
             manager.update(readable: readable, state: .stopped, progress: progress, hasFinished: true)
@@ -80,7 +80,7 @@ extension IntegrationTests {
         }
 
         @Test func releasesCommandsAfterFinishingWhenOff() {
-            Defaults[.mediaKeysAfterFinishing] = .off
+            Defaults[.playWhenFinished] = .off
             manager.isEnabled = true
             manager.update(readable: readable, state: .reading)
             manager.update(readable: readable, state: .stopped, hasFinished: true)
@@ -113,6 +113,7 @@ extension IntegrationTests {
 
         @Test(arguments: [
             NowPlayingManager.Action.play, .pause, .stop, .togglePlayPause, .nextTrack, .previousTrack,
+            .seek(.forward, begin: true), .seek(.backward, begin: true),
         ])
         func playbackCommandsFailWithoutReadable(action: NowPlayingManager.Action) {
             #expect(manager.perform(action) == .commandFailed)
@@ -121,6 +122,40 @@ extension IntegrationTests {
         @Test func changePlaybackRateSetsClampedSpeechRate() {
             #expect(manager.perform(.changePlaybackRate(10)) == .success)
             #expect(Defaults[.speechRate] == AVSpeechUtteranceMaximumSpeechRate)
+        }
+
+        /// Holding ⏭ skips on begin and every interval until the end event; slowest rate so units don't finish meanwhile.
+        @Test func holdingNextSkipsRepeatedlyUntilReleased() async {
+            Defaults[.speechRate] = AVSpeechUtteranceMinimumSpeechRate
+            let readable = MockReadable(longText)
+            reader.textSelector = NLTextSelector(unit: .sentence)
+            reader.readable = readable
+            Defaults[.repeatingSkipInterval] = 0.2
+            let interval = EasyReader.repeatingSkipInterval
+            let before = readable.history.count
+
+            #expect(manager.perform(.seek(.forward, begin: true)) == .success)
+            await settle(interval * 2.5)
+            #expect(manager.perform(.seek(.forward, begin: false)) == .success)
+            let skips = readable.history.count - before
+            #expect(skips == 3)
+
+            await settle(interval * 2)
+            #expect(readable.history.count - before == skips, "no skips after release")
+        }
+
+        @Test func stoppingEndsRepeatingSkip() async {
+            Defaults[.speechRate] = AVSpeechUtteranceMinimumSpeechRate
+            let readable = MockReadable(longText)
+            reader.textSelector = NLTextSelector(unit: .sentence)
+            reader.readable = readable
+
+            #expect(manager.perform(.seek(.forward, begin: true)) == .success)
+            reader.stop()
+            manager.update(readable: readable, state: .stopped)
+            let count = readable.history.count
+            await settle(EasyReader.repeatingSkipInterval * 2)
+            #expect(readable.history.count == count)
         }
 
         @Test func togglePlayPauseStartsReading() {

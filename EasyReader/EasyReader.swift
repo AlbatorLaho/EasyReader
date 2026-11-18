@@ -12,7 +12,10 @@ final class EasyReader: NSObject {
             Log.reader.debug("state \(oldValue) → \(state)")
             if state != .reading { stopAfterUnit = nil }
             if state == .reading { hasFinished = false }
-            if state == .stopped { readable?.endReading() }
+            if state == .stopped {
+                endRepeatingSkip()
+                readable?.endReading()
+            }
             delegate?.easyReader(self, didChangeState: state)
         }
     }
@@ -31,7 +34,7 @@ final class EasyReader: NSObject {
             oldValue?.onInvalidate = nil
             readable?.onInvalidate = { [weak self] in
                 Log.reader.debug("readable invalidated, stopping")
-                self?.stop()
+                self?.stop(immediately: true)
                 self?.readable = nil
             }
         }
@@ -44,6 +47,7 @@ final class EasyReader: NSObject {
     private(set) var spokenText: SpokenText?
     private var lastReadOffset: Int?
     private var pendingStart: Task<Void, Never>?
+    private var repeatingSkip: Task<Void, Never>?
     /// Stopped because the text ran out, not by the user.
     private(set) var hasFinished = false {
         didSet {
@@ -52,7 +56,6 @@ final class EasyReader: NSObject {
         }
     }
     private var reachedEnd = false
-    private var finishedSelection: Selection?
     // Fetching `fullText` per utterance is slow on web pages
     private var textLength: Int?
 
@@ -94,12 +97,21 @@ final class EasyReader: NSObject {
         }
     }
 
+    /// Reads the finished text again from the top, whatever was selected in it since.
+    func rereadFinished() -> Bool {
+        guard hasFinished, let readable, let length = readable.fullText?.utf16.count else { return false }
+        // At the end, as finishing leaves it: playing wraps around to the start.
+        readable.selection = Selection(length..<length)
+        return play(from: .selection)
+    }
+
     func prepareForTermination() {
         readable?.endReading()
     }
 
     @discardableResult
     func pause() -> Bool {
+        endRepeatingSkip()
         guard isSpeaking else {
             Log.reader.debug("pause: not speaking")
             return false
@@ -108,8 +120,10 @@ final class EasyReader: NSObject {
         return stopSpeaking(.pause)
     }
 
+    /// `immediately`: ignores the stop boundary (the text went away).
     @discardableResult
-    func stop() -> Bool {
+    func stop(immediately: Bool = false) -> Bool {
+        endRepeatingSkip()
         pendingStart?.cancel()
         pendingStart = nil
         guard isSpeaking else {
@@ -127,12 +141,12 @@ final class EasyReader: NSObject {
             return true
         }
         Log.reader.debug("stop (stopType was \(stopType))")
-        return stopSpeaking(.cancel)
+        return stopSpeaking(.cancel, immediately: immediately)
     }
 
     /// `.selection`: a second request doesn't wait for the unit's end.
-    private func stopSpeaking(_ type: StopType) -> Bool {
-        let boundary = Defaults[.speechStopBoundary]
+    private func stopSpeaking(_ type: StopType, immediately: Bool = false) -> Bool {
+        let boundary = immediately ? .immediate : Defaults[.speechStopBoundary]
         if boundary == .selection, stopAfterUnit == nil {
             Log.reader.debug("\(type) after this unit")
             stopAfterUnit = type
@@ -162,12 +176,38 @@ final class EasyReader: NSObject {
         return advance(direction)
     }
 
+    static let repeatingSkipIntervals: ClosedRange<Double> = 0.05...1
+    static var repeatingSkipInterval: TimeInterval {
+        min(max(Defaults[.repeatingSkipInterval], repeatingSkipIntervals.lowerBound), repeatingSkipIntervals.upperBound)
+    }
+
+    /// Held skip key: skips now, then again after `delay` and every `repeatingSkipInterval` until `endRepeatingSkip()`, pause/stop, or a skip fails.
+    @discardableResult
+    func beginRepeatingSkip(_ direction: Selection.Direction, firstRepeatAfter delay: TimeInterval? = nil) -> Bool {
+        endRepeatingSkip()
+        guard skip(direction) else { return false }
+        repeatingSkip = Task { [weak self] in
+            var wait = delay ?? Self.repeatingSkipInterval
+            while true {
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                guard !Task.isCancelled, let self, skip(direction) else { return }
+                wait = Self.repeatingSkipInterval
+            }
+        }
+        return true
+    }
+
+    func endRepeatingSkip() {
+        repeatingSkip?.cancel()
+        repeatingSkip = nil
+    }
+
     var canSkipForward: Bool {
         nextSelection(.forward).map { !$0.isEmpty } ?? false
     }
 
     @discardableResult
-    private func advance(_ direction: Selection.Direction) -> Bool {
+    private func advance(_ direction: Selection.Direction, pausingFirst: Bool = false) -> Bool {
         guard select(direction) else {
             if direction == .backward {
                 Log.reader.debug("skip(backward): at start, re-reading current selection")
@@ -175,10 +215,9 @@ final class EasyReader: NSObject {
             }
             Log.reader.debug("skip(\(direction)): nothing to select, stopping")
             reachedEnd = direction == .forward
-            finishedSelection = readable?.selection
             return stop()
         }
-        return readSelection()
+        return readSelection(pausingFirst: pausingFirst)
     }
 
     func pronunciations(with appDomain: String?) -> [Pronunciation] {
@@ -187,7 +226,7 @@ final class EasyReader: NSObject {
         }
     }
 
-    private func read(_ spoken: SpokenText) {
+    private func read(_ spoken: SpokenText, pausingFirst: Bool) {
         let utterance =
             spoken.hasPhonetics
             ? AVSpeechUtterance(attributedString: spoken.attributedText)
@@ -196,8 +235,8 @@ final class EasyReader: NSObject {
         utterance.volume = Defaults[.speechVolume]
         utterance.rate = Defaults[.speechRate]
         utterance.pitchMultiplier = Defaults[.speechPitch]
-        utterance.preUtteranceDelay = Defaults[.speechDelayBefore]
-        utterance.postUtteranceDelay = Defaults[.speechDelayAfter]
+        // Before the next unit, once it is selected, so a stop after the unit never waits it out.
+        if pausingFirst { utterance.preUtteranceDelay = Defaults[.pauseBetweenUnits] }
         Log.speech.debug(
             "speak \(spoken.text.utf16.count) chars (voice \(utterance.voice?.identifier ?? "default"), rate \(utterance.rate)): \(spoken.text.prefix(80).debugDescription)"
         )
@@ -213,12 +252,7 @@ final class EasyReader: NSObject {
         guard Defaults[.scrollSelectionIntoView] else { return }
         readable?.scroll(
             to: selection,
-            options: ScrollOptions(
-                padding: Defaults[.scrollPadding],
-                smooth: Defaults[.scrollSmooth],
-                duration: Defaults[.scrollDuration],
-                updateRate: Defaults[.scrollUpdateRate]
-            ))
+            options: ScrollOptions(padding: Defaults[.scrollPadding], duration: Defaults[.scrollDuration]))
     }
 
     private func nextSelection(_ direction: Selection.Direction) -> Selection? {
@@ -264,7 +298,7 @@ final class EasyReader: NSObject {
     }
 
     /// From `offset` (in the original selected text) only if it's still the text last read.
-    private func readSelection(from offset: Int? = nil) -> Bool {
+    private func readSelection(from offset: Int? = nil, pausingFirst: Bool = false) -> Bool {
         guard let selectedText = readable?.selectedText else {
             Log.reader.debug("readSelection: no selected text")
             return false
@@ -289,7 +323,7 @@ final class EasyReader: NSObject {
             Log.reader.debug("interrupting current utterance (stopType was \(stopType))")
             synthesizer.stopSpeaking(at: .immediate)
         }
-        read(spoken)
+        read(spoken, pausingFirst: pausingFirst)
         return true
     }
 }
@@ -314,7 +348,7 @@ extension EasyReader: @preconcurrency AVSpeechSynthesizerDelegate {
         guard stopType == .none,
             let selection = readable?.selection,
             !selection.isEmpty,
-            advance(.forward)
+            advance(.forward, pausingFirst: true)
         else {
             if stopType == .none { stopType = .cancel }
             applyStopType()
@@ -343,7 +377,6 @@ extension EasyReader: @preconcurrency AVSpeechSynthesizerDelegate {
         } else {
             Log.reader.debug("unit finished at end of text, stopping")
             reachedEnd = true
-            finishedSelection = readable?.selection
             stopType = .cancel
         }
     }
@@ -414,14 +447,10 @@ extension EasyReader {
         static var frontmostApp: Self { .app(NSWorkspace.shared.frontmostApplication) }
     }
 
-    /// While paused, starting the same target resumes it. `onlyIfNew`: false if it's the finished text, selection unchanged.
-    func start(reading readable: Readable, onlyIfNew: Bool = false) -> Bool {
-        if onlyIfNew, hasFinished, let current = self.readable, Self.isSameTarget(current, readable),
-            readable.selection == finishedSelection
-        {
-            Log.reader.debug("start: finished text unchanged")
-            return false
-        }
+    /// While paused, starting the same target resumes it.
+    func start(reading readable: Readable) -> Bool {
+        pendingStart?.cancel()
+        pendingStart = nil
         if state == .paused, let current = self.readable, Self.isSameTarget(current, readable) {
             Log.reader.debug("start: resuming paused \(type(of: readable))")
             return play(from: Defaults[.resumeUnit])
@@ -434,25 +463,22 @@ extension EasyReader {
 
     private static func isSameTarget(_ lhs: Readable, _ rhs: Readable) -> Bool {
         if lhs === rhs { return true }
-        if let lhs = lhs as? SelectedTextReadable, let rhs = rhs as? SelectedTextReadable {
-            return lhs.app == rhs.app && lhs.fullText == rhs.fullText
-        }
         guard let lhs = lhs as? ReadableElement, let rhs = rhs as? ReadableElement else { return false }
         return lhs.handle == rhs.handle
     }
 
-    func start(reading target: ReadTarget, onlyIfNew: Bool = false) -> Bool {
+    func start(reading target: ReadTarget) -> Bool {
         switch target {
             case .element(let element, let fromFocused):
-                return start(reading: element, fromFocused: fromFocused, onlyIfNew: onlyIfNew)
+                return start(reading: element, fromFocused: fromFocused)
             case .app(let app):
                 guard let app else { return false }
-                return start(reading: .application(pid: app.processIdentifier), fromFocused: true, onlyIfNew: onlyIfNew)
+                return start(reading: .application(pid: app.processIdentifier), fromFocused: true)
         }
     }
 
-    private func start(reading element: AXElement, fromFocused: Bool, onlyIfNew: Bool) -> Bool {
-        if NSRunningApplication.current.processIdentifier != (try? element.pid()) {
+    private func start(reading element: AXElement, fromFocused: Bool) -> Bool {
+        if getpid() != (try? element.pid()) {
             guard AXElement.isProcessTrusted(prompt: true) else {
                 Log.accessibility.error("No accessibility API permission.")
                 return false
@@ -464,21 +490,19 @@ extension EasyReader {
                 let isChromium = NSRunningApplication(processIdentifier: pid).map(AppAccessibility.isChromium) ?? false
                 let flags = AppAccessibility.enable(pid: pid)
                 if !flags.isEmpty {
-                    return startAfterEnabling(flags, reading: element, fromFocused: fromFocused, pid: pid, tries: isChromium ? 50 : 15, onlyIfNew: onlyIfNew)
+                    return startAfterEnabling(flags, reading: element, fromFocused: fromFocused, pid: pid, tries: isChromium ? 50 : 15)
                 }
             }
-            if let fallback = selectedTextFallback(in: element, focused: focusedElement) {
-                return start(reading: fallback, onlyIfNew: onlyIfNew)
-            }
+            if readSelectionInReaderWindow(of: element) { return true }
             Log.accessibility.error(focusedElement == nil ? "Unable to get focused element." : "Unable to find readable element.")
             return false
         }
-        return start(reading: readableElement, onlyIfNew: onlyIfNew)
+        return start(reading: readableElement)
     }
 
     // Some apps (like Chromium) vend no content until their AX mode is on; retry (every 0.1 s) while they build the tree.
     private func startAfterEnabling(
-        _ flags: [AXAttribute<Bool>], reading element: AXElement, fromFocused: Bool, pid: pid_t, tries: Int, onlyIfNew: Bool
+        _ flags: [AXAttribute<Bool>], reading element: AXElement, fromFocused: Bool, pid: pid_t, tries: Int
     ) -> Bool {
         Log.accessibility.debug("turned on \(flags); waiting for content")
         pendingStart?.cancel()
@@ -493,16 +517,12 @@ extension EasyReader {
                     AppAccessibility.restore(flags, pid: pid)
                 }
                 pendingStart = nil
-                if !start(reading: readable, onlyIfNew: onlyIfNew) { NSSound.beep() }
+                if !start(reading: readable) { NSSound.beep() }
                 return
             }
             AppAccessibility.restore(flags, pid: pid)
             if !Task.isCancelled {
-                let focused = fromFocused ? try? element.attribute(.focusedUIElement) : element
-                if let fallback = self?.selectedTextFallback(in: element, focused: focused) {
-                    if self?.start(reading: fallback) != true { NSSound.beep() }
-                    return
-                }
+                if self?.readSelectionInReaderWindow(of: element) == true { return }
                 Log.accessibility.error("Unable to find readable element.")
                 NSSound.beep()
             }
@@ -510,9 +530,10 @@ extension EasyReader {
         return true
     }
 
-    private func selectedTextFallback(in element: AXElement, focused: AXElement?) -> SelectedTextReadable? {
-        guard let pid = try? element.pid() else { return nil }
-        return SelectedTextReadable.selection(in: pid, focused: focused)
+    /// For apps with nothing readable (`readSelectedTextFallback`).
+    private func readSelectionInReaderWindow(of element: AXElement) -> Bool {
+        guard Defaults[.readSelectedTextFallback], let pid = try? element.pid() else { return false }
+        return ReaderWindow.readSelection(of: pid)
     }
 
     /// BFS over children and parents, never climbing past the window.

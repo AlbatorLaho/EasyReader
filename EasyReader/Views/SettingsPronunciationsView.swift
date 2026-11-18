@@ -44,7 +44,7 @@ struct SettingsPronunciationsView: View {
                             .help("Remove the selected pronunciation")
                         Spacer()
                         Button("Import from VoiceOver", action: importFromVoiceOver)
-                            .help("Add the pronunciations from VoiceOver Utility › Speech › Pronunciation")
+                            .help("Add the pronunciations from VoiceOver Utility → Speech → Pronunciation")
                             .alert(item: $importResult) { result in
                                 Alert(title: Text(result.title), message: result.message.map(Text.init))
                             }
@@ -67,7 +67,7 @@ struct SettingsPronunciationsView: View {
                     HStack {
                         TextField("Sample text", text: $previewText)
                         Button(action: speakPreview) { Image(systemName: "play.fill") }
-                            .help("Speak the preview with the current voice and rate")
+                            .help("Speak the preview with the current voice settings")
                     }
                     Text(previewSpoken.text.isEmpty ? " " : previewSpoken.text)
                         .foregroundColor(.secondary)
@@ -76,14 +76,14 @@ struct SettingsPronunciationsView: View {
                 Label(previewTitle, systemImage: "text.bubble")
             }
 
-            HStack {
-                Spacer()
+            SettingsFooter {
                 ResetDefaultsButton(
-                    "Delete all rules…",
+                    "Delete All Pronunciations…",
                     confirmation: .init(
-                        title: "Delete all pronunciation rules?",
-                        message: "\(pronunciations.count == 1 ? "The rule is" : "All \(pronunciations.count) rules are") deleted. This can't be undone.",
-                        button: "Delete All Rules",
+                        title: "Delete all pronunciations?",
+                        message:
+                            "\(pronunciations.count == 1 ? "The pronunciation is" : "All \(pronunciations.count) pronunciations are") deleted. This can't be undone.",
+                        button: "Delete All Pronunciations",
                         action: {
                             selection = nil
                             Defaults.reset(.pronunciations)
@@ -184,11 +184,9 @@ private struct RuleOptions: View {
                 Toggle("Regular expression", isOn: rule.isRegex)
                     .help("Text is an ICU regular expression; Speak As can use $1, $2… for captured groups")
                     .disabled(!isEnabled)
-                HStack(spacing: 4) {
-                    Toggle("Speak As is IPA", isOn: rule.isPhonetic)
-                        .disabled(!isEnabled)
-                    InfoButton("IPA spells out exactly how the matched text should sound.") { IPAInfo() }
-                }
+                Toggle("Phonetic (IPA)", isOn: rule.isPhonetic)
+                    .disabled(!isEnabled)
+                    .info("IPA spells out exactly how the matched text should sound.") { IPAInfo() }
             }
             // One line in every state, so the box keeps its height.
             Group {
@@ -251,6 +249,7 @@ private struct AppMenu: View {
 
     // LaunchServices lookups cost ~15 ms each, and every row's menu lists every app.
     private static var names: [String: String] = [:]
+    private static var cachedApps: [String]?
 
     var body: some View {
         Menu {
@@ -288,11 +287,15 @@ private struct AppMenu: View {
         return name
     }
 
-    /// Sorted by name.
+    /// Sorted by name; kept for one main-actor turn, in which every row's menu asks.
     static func runningApps() -> [String] {
+        if let cachedApps { return cachedApps }
         let ids = NSWorkspace.shared.runningApplications
             .filter { $0.activationPolicy == .regular }
             .compactMap(\.bundleIdentifier)
-        return Array(Set(ids)).sorted { name(of: $0).localizedStandardCompare(name(of: $1)) == .orderedAscending }
+        let apps = Array(Set(ids)).sorted { name(of: $0).localizedStandardCompare(name(of: $1)) == .orderedAscending }
+        cachedApps = apps
+        DispatchQueue.main.async { cachedApps = nil }
+        return apps
     }
 }

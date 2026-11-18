@@ -112,11 +112,7 @@ extension IntegrationTests {
         }
 
         private func makeReader() -> EasyReader {
-            Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            Defaults[.speechDelayBefore] = 0
-            Defaults[.speechDelayAfter] = 0
-            Defaults[.speechStopBoundary] = .immediate
             let reader = EasyReader()
             reader.delegate = recorder
             reader.textSelector = NLTextSelector(unit: .sentence)
@@ -213,7 +209,7 @@ extension IntegrationTests {
             let text = try #require(readable.fullText)
             let last = try selection(of: "The end of the test page.", in: text)
             #expect(readable.highlightRects(for: last)?.isEmpty != false, "end of page visible before scrolling")
-            readable.scroll(to: last, options: ScrollOptions(padding: 16, smooth: false, duration: 0, updateRate: 60))
+            readable.scroll(to: last, options: ScrollOptions(padding: 16, duration: 0))
             var visible: [CGRect] = []
             for _ in 0..<20 where visible.isEmpty {
                 await settle()
@@ -226,7 +222,7 @@ extension IntegrationTests {
         @Test func startsAtVisibleTop() async throws {
             let page = try await readable()
             let text = try #require(page.fullText)
-            page.scroll(to: try selection(of: "Paragraph 30 ", in: text), options: ScrollOptions(padding: 16, smooth: false, duration: 0, updateRate: 60))
+            page.scroll(to: try selection(of: "Paragraph 30 ", in: text), options: ScrollOptions(padding: 16, duration: 0))
             await settle(0.5)
             let fresh = try #require(try page.handle.readableElement() as? WebAreaReadableElement)
             let start = try #require(fresh.selection)
@@ -307,11 +303,7 @@ extension IntegrationTests {
         }
 
         private func makeReader() -> EasyReader {
-            Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            Defaults[.speechDelayBefore] = 0
-            Defaults[.speechDelayAfter] = 0
-            Defaults[.speechStopBoundary] = .immediate
             let reader = EasyReader()
             reader.delegate = recorder
             reader.textSelector = NLTextSelector(unit: .sentence)

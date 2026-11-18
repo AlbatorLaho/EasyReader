@@ -21,6 +21,18 @@ struct NLTextSelectorTests {
         #expect(text(of: third, in: string) == "Third one.")
     }
 
+    /// Lines with nothing to read (imported HTML has many) are stepped over, both ways; only blanks left → empty.
+    @Test func blankUnitsSkippedWithoutBlocks() {
+        let string = "First one.\n\u{00A0}\n\u{FFFC}\n \nSecond one.\n\n\u{00A0}\n"
+        let selector = NLTextSelector(unit: .sentence)
+        let first = selector.select(.forward, from: Selection(), in: string, blocks: { _ in nil })
+        #expect(text(of: first, in: string) == "First one.")
+        let second = selector.select(.forward, from: first, in: string, blocks: { _ in nil })
+        #expect(text(of: second, in: string) == "Second one.")
+        #expect(selector.select(.forward, from: second, in: string, blocks: { _ in nil }).isEmpty)
+        #expect(text(of: selector.select(.backward, from: second, in: string, blocks: { _ in nil }), in: string) == "First one.")
+    }
+
     @Test func forwardAtEndIsEmpty() {
         let string = "Only one."
         let selector = NLTextSelector(unit: .sentence)

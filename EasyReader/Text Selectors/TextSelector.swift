@@ -34,7 +34,20 @@ extension TextSelector {
             let movedOn = direction == .forward ? next > position && next < range.upperBound : next < position && next > range.lowerBound
             position = movedOn ? next : (direction == .forward ? range.upperBound : range.lowerBound)
         }
-        return select(direction, from: Selection(position..<position), in: string)
+        return selectSkippingBlanks(direction, from: position, in: string)
+    }
+
+    /// Steps over units with nothing to read (blank lines, U+FFFC); empty when only blanks are left.
+    private func selectSkippingBlanks(_ direction: Selection.Direction, from position: Int, in string: String) -> Selection {
+        var position = position
+        for _ in 0..<1000 {
+            let found = select(direction, from: Selection(position..<position), in: string)
+            guard Self.isBlank(found, in: string) else { return found }
+            let next = direction == .forward ? found.upperBound : found.lowerBound
+            guard next != position else { break }
+            position = next
+        }
+        return Selection(position..<position)
     }
 
     private static func isBlank(_ selection: Selection, in string: String) -> Bool {

@@ -12,15 +12,21 @@ final class NowPlayingManager {
         case togglePlayPause
         case nextTrack
         case previousTrack
+        /// Holding ⏮/⏭: `EasyReader.beginRepeatingSkip` until released.
+        case seek(Selection.Direction, begin: Bool)
         /// Speed multiplier.
         case changePlaybackRate(Float)
     }
 
-    enum AfterFinishing: String, Defaults.Serializable {
+    enum PlayWhenFinished: String, Defaults.Serializable {
+        /// Media keys go back to other apps.
         case off
-        case beep
+        /// The finished text again, from the start.
         case sameText
-        case startReading
+        /// Like Start, but only while the finished text's app is in front.
+        case sameApp
+        /// Like Start.
+        case anyText
     }
 
     private struct Registration {
@@ -64,6 +70,12 @@ final class NowPlayingManager {
             Registration(command: center.togglePlayPauseCommand) { _ in .togglePlayPause },
             Registration(command: center.nextTrackCommand) { _ in .nextTrack },
             Registration(command: center.previousTrackCommand) { _ in .previousTrack },
+            Registration(command: center.seekForwardCommand) { event in
+                (event as? MPSeekCommandEvent).map { .seek(.forward, begin: $0.type == .beginSeeking) }
+            },
+            Registration(command: center.seekBackwardCommand) { event in
+                (event as? MPSeekCommandEvent).map { .seek(.backward, begin: $0.type == .beginSeeking) }
+            },
             Registration(command: center.changePlaybackRateCommand) { event in
                 (event as? MPChangePlaybackRateCommandEvent).map { .changePlaybackRate($0.playbackRate) }
             },
@@ -82,7 +94,7 @@ final class NowPlayingManager {
     @discardableResult
     func perform(_ action: Action) -> MPRemoteCommandHandlerStatus {
         Log.nowPlaying.debug("command: \(String(describing: action))")
-        if reader.hasFinished, action == .play || action == .togglePlayPause {
+        if reader.hasFinished, Defaults[.playWhenFinished] != .off, action == .play || action == .togglePlayPause {
             return playAfterFinishing() ? .success : .commandFailed
         }
         let succeeded: Bool
@@ -93,6 +105,12 @@ final class NowPlayingManager {
             case .togglePlayPause: succeeded = reader.togglePlayPause()
             case .nextTrack: succeeded = reader.skip(.forward)
             case .previousTrack: succeeded = reader.skip(.backward)
+            case .seek(let direction, begin: true):
+                // Seeking begins ~0.4 s after the key goes down: the first repeat comes one interval later.
+                succeeded = reader.beginRepeatingSkip(direction)
+            case .seek(_, begin: false):
+                reader.endRepeatingSkip()
+                succeeded = true
             case .changePlaybackRate(let playbackRate):
                 Self.setSpeechRate(fromPlaybackRate: playbackRate)
                 succeeded = true
@@ -101,16 +119,17 @@ final class NowPlayingManager {
     }
 
     private func playAfterFinishing() -> Bool {
-        switch Defaults[.mediaKeysAfterFinishing] {
-            case .off, .sameText:
-                return reader.play(from: .selection)
-            case .beep:
-                guard reader.start(reading: .frontmostApp, onlyIfNew: true) else {
+        switch Defaults[.playWhenFinished] {
+            case .off, .sameText:  // .off: not reached
+                return reader.rereadFinished()
+            case .sameApp:
+                guard let app = NSWorkspace.shared.frontmostApplication, app.bundleIdentifier == readable?.appDomain else {
+                    Log.nowPlaying.debug("play when finished: finished text's app isn't in front")
                     NSSound.beep()
                     return false
                 }
-                return true
-            case .startReading:
+                return reader.start(reading: .app(app))
+            case .anyText:
                 return reader.start(reading: .frontmostApp)
         }
     }
@@ -122,7 +141,7 @@ final class NowPlayingManager {
     // MARK: - Commands
 
     private var isHoldingAfterFinishing: Bool {
-        state == .stopped && hasFinished && readable != nil && Defaults[.mediaKeysAfterFinishing] != .off
+        state == .stopped && hasFinished && readable != nil && Defaults[.playWhenFinished] != .off
     }
 
     private func apply() {
@@ -148,6 +167,7 @@ final class NowPlayingManager {
     private func setCommandsRegistered(_ registered: Bool) {
         guard registered != areCommandsRegistered else { return }
         areCommandsRegistered = registered
+        if !registered { reader.endRepeatingSkip() }
         Log.nowPlaying.debug("\(registered ? "registering" : "removing") remote commands")
         for index in registrations.indices {
             if registered {

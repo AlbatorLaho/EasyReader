@@ -34,7 +34,14 @@ extension Readable {
 
 struct ScrollOptions {
     let padding: Int
-    let smooth: Bool
+    /// 0 = instant.
     let duration: Double
-    let updateRate: Double
+
+    var smooth: Bool { duration > 0 }
+    @MainActor var updateRate: Double { Self.screenRefreshRate }
+
+    @MainActor static var screenRefreshRate: Double {
+        if #available(macOS 12.0, *), let fps = NSScreen.main?.maximumFramesPerSecond, fps > 0 { return Double(fps) }
+        return 60
+    }
 }

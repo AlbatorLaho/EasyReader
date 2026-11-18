@@ -16,20 +16,20 @@ EasyReader reads your selection, then selects the next sentence (or paragraph) i
 - Can read just the selected text in unsupported apps (optional)
 - Custom pronunciations (per app, regex or IPA), and can import them from VoiceOver
 - Global keyboard shortcuts
-- Can integrate with the "Now Playing Center" and media keys
+- Can use the media keys and show in Now Playing
 
 ## Supported apps
 
 |                                                     | Selects as it reads                  | Auto scroll    | Notes                                                                                  |
 | --------------------------------------------------- | ------------------------------------ | -------------- | -------------------------------------------------------------------------------------- |
 | Text views (TextEdit and other native text editors) | 🟢                                   | 🟢 smooth      |                                                                                        |
-| Safari (WebKit) browsers                            | 🟢                                   | 🟢 smooth      | also apps with embeded (WebKit) web views                                              |
+| Safari (WebKit) browsers                            | 🟢                                   | 🟢 smooth      | also apps with embedded (WebKit) web views                                             |
 | Chromium browsers                                   | 🟡 with a [flag](#chromium-browsers) | 🟡 jumps       |                                                                                        |
 | Firefox browsers                                    | 🟢                                   | 🟡 jumps       | not fully tested                                                                       |
 | PDFs in Preview                                     | 🟢                                   | 🟢 smooth      | may be buggy; (purposefully) tries to skip page headers, footers and footnotes         |
 | Apple Books                                         | 🟢                                   | 🟢 turns pages | may be buggy                                                                           |
 | Electron apps                                       | ⚪                                   | ⚪             | untested, might work like Chromium                                                     |
-| Unsupported apps                                    | 🔴                                   | 🔴             | only reads the selected text, if "Read selected text in unsupported apps" is turned on |
+| Unsupported apps                                    | 🔴                                   | 🔴             | reads the selection in a Reader window, if turned on in General settings             |
 
 🟢 supported · 🟡 partly supported · 🔴 not supported · ⚪ unknown
 
@@ -49,13 +49,13 @@ EasyReader starts reading at the text you selected on the page you're on (Books 
 
 An app is unsupported if it has little or no accessibility support (some apps draw their own UI, so there's nothing EasyReader can read), or if its text is in a kind of view EasyReader can't read yet.
 
-If "Read selected text in unsupported apps" is turned on (Reading settings), EasyReader will still read the selected text in them. It won't select or scroll anything there, and it stops at the end of the selection.
+If "Open selection for unsupported apps" is turned on (General settings), Start opens the text you selected there in a Reader window and reads it. The open selection shortcut does the same in any app.
 
 ## Getting Started
 
 ### Requirements
 
-- MacOS 11+
+- macOS 11+
 - Xcode 16+ (for building)
 
 ### Installing
@@ -64,14 +64,14 @@ If "Read selected text in unsupported apps" is turned on (Reading settings), Eas
 2. Open `EasyReader-v*.dmg` file
 3. Move `EasyReader.app` to your Applications folder
 
-⚠️ I haven't setup notarization, since I don't have an Apple developer account. So the first time you open it, you'll have to right click it and choose "Open" (or allow it in System Settings > Privacy & Security).
+⚠️ I haven't set up notarization, since I don't have an Apple developer account. So the first time you open it, you'll have to right-click it and choose "Open" (or allow it in System Settings → Privacy & Security (System Preferences → Security & Privacy on macOS 11–12)).
 
 ### Usage
 
 1. Run `EasyReader.app` (runs as a status item in the menu bar)
 2. Open settings from the menu bar
 3. Set up your shortcuts, and customize to your liking
-4. Click into whatever you want read, then press the Start/Stop shortcut (or click "Start" in the menu bar)
+4. Click into whatever you want read, then press the start/stop shortcut (or click "Start" in the menu bar)
 
 It starts reading from your selection, or from the cursor/top of the page if there isn't one.
 

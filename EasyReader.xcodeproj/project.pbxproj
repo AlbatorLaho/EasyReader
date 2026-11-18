@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7E5700000000000000000201 /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 7E5700000000000000000203 /* LaunchAtLogin */; };
 		E383FBD32CF539B500F32E57 /* Defaults in Frameworks */ = {isa = PBXBuildFile; productRef = E383FBD22CF539B500F32E57 /* Defaults */; };
 		E3BE9A542D474DE80019EEC0 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = E3BE9A532D474DE80019EEC0 /* KeyboardShortcuts */; };
 /* End PBXBuildFile section */
@@ -67,6 +68,7 @@
 			files = (
 				E383FBD32CF539B500F32E57 /* Defaults in Frameworks */,
 				E3BE9A542D474DE80019EEC0 /* KeyboardShortcuts in Frameworks */,
+				7E5700000000000000000201 /* LaunchAtLogin in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -131,6 +133,7 @@
 				E393FD0D2CD6E2D100DA7CA3 /* Sources */,
 				E393FD0E2CD6E2D100DA7CA3 /* Frameworks */,
 				E393FD0F2CD6E2D100DA7CA3 /* Resources */,
+				7E5700000000000000000204 /* Copy LaunchAtLogin Helper */,
 			);
 			buildRules = (
 			);
@@ -143,6 +146,7 @@
 			packageProductDependencies = (
 				E383FBD22CF539B500F32E57 /* Defaults */,
 				E3BE9A532D474DE80019EEC0 /* KeyboardShortcuts */,
+				7E5700000000000000000203 /* LaunchAtLogin */,
 			);
 			productName = EasyReader;
 			productReference = E393FD112CD6E2D100DA7CA3 /* EasyReader.app */;
@@ -178,6 +182,7 @@
 			packageReferences = (
 				E383FBD12CF539B500F32E57 /* XCRemoteSwiftPackageReference "Defaults" */,
 				E3BE9A522D474DE80019EEC0 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
+				7E5700000000000000000202 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Legacy" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E393FD122CD6E2D100DA7CA3 /* Products */;
@@ -206,6 +211,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		7E5700000000000000000204 /* Copy LaunchAtLogin Helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy LaunchAtLogin Helper";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The package signs the helper by identity name, which ad-hoc builds lack; the identity hash (or \"-\") works for both.\nEXPANDED_CODE_SIGN_IDENTITY_NAME=\"${EXPANDED_CODE_SIGN_IDENTITY:--}\" \"${BUILT_PRODUCTS_DIR}/LaunchAtLogin_LaunchAtLogin.bundle/Contents/Resources/copy-helper-swiftpm.sh\"\ncodesign --verify --strict \"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems/LaunchAtLoginHelper.app\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		7E57000000000000000000C1 /* Sources */ = {
@@ -306,7 +333,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -369,7 +396,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -477,12 +504,20 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		7E5700000000000000000202 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Legacy" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/LaunchAtLogin-Legacy";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.2;
+			};
+		};
 		E383FBD12CF539B500F32E57 /* XCRemoteSwiftPackageReference "Defaults" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sindresorhus/Defaults";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 9.0.0;
+				minimumVersion = 9.0.9;
 			};
 		};
 		E3BE9A522D474DE80019EEC0 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
@@ -490,12 +525,17 @@
 			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 2.2.4;
+				minimumVersion = 3.1.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		7E5700000000000000000203 /* LaunchAtLogin */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E5700000000000000000202 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Legacy" */;
+			productName = LaunchAtLogin;
+		};
 		E383FBD22CF539B500F32E57 /* Defaults */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E383FBD12CF539B500F32E57 /* XCRemoteSwiftPackageReference "Defaults" */;

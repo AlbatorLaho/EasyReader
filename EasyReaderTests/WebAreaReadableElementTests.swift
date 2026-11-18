@@ -29,11 +29,7 @@ extension IntegrationTests {
 
         /// Silent reader, as in EasyReaderSpeechTests.
         private func makeReader() -> EasyReader {
-            Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            Defaults[.speechDelayBefore] = 0
-            Defaults[.speechDelayAfter] = 0
-            Defaults[.speechStopBoundary] = .immediate
             let reader = EasyReader()
             reader.delegate = recorder
             reader.textSelector = NLTextSelector(unit: .sentence)
@@ -184,7 +180,7 @@ extension IntegrationTests {
                 return bounds.minY
             }
             let before = try #require(top())
-            readable.scroll(to: last, options: ScrollOptions(padding: 16, smooth: false, duration: 0, updateRate: 60))
+            readable.scroll(to: last, options: ScrollOptions(padding: 16, duration: 0))
             await settle(0.5)
             let after = try #require(top())
             #expect(after < before, "selection did not move up into view (\(before) → \(after))")
@@ -200,7 +196,7 @@ extension IntegrationTests {
             func value() throws -> CGFloat { try #require(try scrollBar.attribute(.value)) }
             #expect(try value() == 0)
 
-            readable.scroll(to: target, options: ScrollOptions(padding: 16, smooth: true, duration: 0.6, updateRate: 30))
+            readable.scroll(to: target, options: ScrollOptions(padding: 16, duration: 0.6))
             await settle(0.3)
             let midway = try value()
             await settle(0.6)

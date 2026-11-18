@@ -40,11 +40,7 @@ extension IntegrationTests {
         }
 
         private func makeReader() -> EasyReader {
-            Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            Defaults[.speechDelayBefore] = 0
-            Defaults[.speechDelayAfter] = 0
-            Defaults[.speechStopBoundary] = .immediate
             let reader = EasyReader()
             reader.delegate = recorder
             reader.textSelector = NLTextSelector(unit: .sentence)
@@ -53,7 +49,7 @@ extension IntegrationTests {
         }
 
         private func axWindow(for window: NSWindow) throws -> AXElement {
-            let app = AXElement.application(pid: NSRunningApplication.current.processIdentifier)
+            let app = AXElement.application(pid: getpid())
             let windows = try #require(try app.attribute(.windows))
             return try #require(
                 windows.first(where: { (try? $0.attribute(.title) as String?) == window.title }),
@@ -122,12 +118,12 @@ extension IntegrationTests {
             readable.selection = last
             scrollView.contentView.scroll(to: .zero)  // selecting may auto-scroll; reset to test our scroll code
             await settle()
-            readable.scroll(to: last, options: ScrollOptions(padding: 16, smooth: false, duration: 0, updateRate: 60))
+            readable.scroll(to: last, options: ScrollOptions(padding: 16, duration: 0))
             await settle()
             #expect(scrollView.contentView.bounds.origin.y > 0)
         }
 
-        /// SwiftUI's `TextEditor` (Settings playgrounds) reports only its visible frame, so the full text's bounds give the document size.
+        /// SwiftUI's `TextEditor` reports only its visible frame, so the full text's bounds give the document size.
         @Test func scrollsSwiftUITextEditor() async throws {
             struct Editor: View {
                 @State var text = (1...80).map { "Sentence number \($0)." }.joined(separator: " ")
@@ -160,7 +156,7 @@ extension IntegrationTests {
             await settle(0.3)
             try scrollBar.set(.value, to: CGFloat(0))  // selecting may auto-scroll; reset
             await settle(0.3)
-            readable.scroll(to: target, options: ScrollOptions(padding: 16, smooth: false, duration: 0, updateRate: 60))
+            readable.scroll(to: target, options: ScrollOptions(padding: 16, duration: 0))
             await settle(0.3)
             let value: CGFloat = try #require(try scrollBar.attribute(.value))
             #expect(value > 0.5)

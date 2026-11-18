@@ -11,12 +11,8 @@ extension IntegrationTests {
         private let recorder = StateRecorder()
 
         init() {
-            Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
             Defaults[.speechPitch] = 1
-            Defaults[.speechDelayBefore] = 0
-            Defaults[.speechDelayAfter] = 0
-            Defaults[.speechStopBoundary] = .immediate
         }
 
         private func launch() async -> AppDelegate {
@@ -117,9 +113,8 @@ extension IntegrationTests {
             #expect(reader.window.title == url.lastPathComponent)
         }
 
-        /// The Read Selection in Reader shortcut reads the front app's selection in a reader window titled after the app's window.
-        @Test func readSelectionShortcutReadsSelectionInReaderWindow() async throws {
-            let app = await launch()
+        /// A window whose text field (an `AXTextField`: nothing readable) has "Beta two. Gamma three." selected.
+        private func selectionSource() async throws -> NSWindow {
             Teardown.add { for readerWindow in ReaderWindow.windows { readerWindow.window.close() } }
             let text = "Alpha one. Beta two. Gamma three."
             let field = NSTextField(string: text)
@@ -133,12 +128,40 @@ extension IntegrationTests {
             await settle()
             try #require(field.currentEditor()).selectedRange = (text as NSString).range(of: "Beta two. Gamma three.")
             await settle()
+            return source
+        }
+
+        /// The Read Selection in Reader shortcut reads the front app's selection in a reader window titled after the app's window.
+        @Test func readSelectionShortcutReadsSelectionInReaderWindow() async throws {
+            _ = await launch()
+            let source = try await selectionSource()
             let reading = recorder.expect(.reading)
-            #expect(app.readSelectionInReaderWindow(of: getpid()))
+            #expect(ReaderWindow.readSelection(of: getpid()))
             try await reading.wait(timeout: 10)
             let reader = try #require(ReaderWindow.front)
             #expect(reader.textView.string == "Beta two. Gamma three.")
             #expect(reader.window.title == source.title)
+        }
+
+        /// With `readSelectedTextFallback`, Start in an app with nothing readable reads its selection in a reader window.
+        @Test func startInUnsupportedAppReadsSelectionInReaderWindow() async throws {
+            let app = await launch()
+            Defaults[.readSelectedTextFallback] = true
+            let source = try await selectionSource()
+            let reading = recorder.expect(.reading)
+            #expect(app.easyReader.start(reading: .app(.current)))
+            try await reading.wait(timeout: 10)
+            let reader = try #require(ReaderWindow.front)
+            #expect(reader.textView.string == "Beta two. Gamma three.")
+            #expect(reader.window.title == source.title)
+        }
+
+        @Test func startInUnsupportedAppFailsWithFallbackOff() async throws {
+            let app = await launch()
+            Defaults[.readSelectedTextFallback] = false
+            _ = try await selectionSource()
+            #expect(!app.easyReader.start(reading: .app(.current)))
+            #expect(ReaderWindow.windows.allSatisfy { !$0.window.isVisible })
         }
 
         @Test func readServiceRefusesBlankText() async {

@@ -2,7 +2,7 @@ import SwiftUI
 import Defaults
 import KeyboardShortcuts
 
-/// A tab's reset button; holding ⌥ turns it into "Reset all settings…".
+/// A tab's reset button; holding ⌥ turns it into "Reset All Settings…".
 struct ResetDefaultsButton: View {
     private let title: String
     private let confirmation: Confirmation
@@ -15,9 +15,9 @@ struct ResetDefaultsButton: View {
         self.isEnabled = isEnabled
     }
 
-    init(for name: String, action: @escaping () -> Void) {
+    init(for name: String, action: @escaping @MainActor () -> Void) {
         self.init(
-            "Reset \(name)…",
+            "Reset \(name.capitalized)…",
             confirmation: Confirmation(
                 title: "Reset \(name) settings?",
                 message: "The \(name) settings go back to their defaults.",
@@ -45,7 +45,7 @@ struct ResetDefaultsButton: View {
 
     @ViewBuilder private var label: some View {
         if optionKey.isDown {
-            Label("Reset all settings…", systemImage: "exclamationmark.triangle.fill")
+            Label("Reset All Settings…", systemImage: "exclamationmark.triangle.fill")
         } else {
             Text(title)
         }
@@ -59,7 +59,7 @@ struct ResetDefaultsButton: View {
         let title: String
         let message: String
         let button: String
-        let action: () -> Void
+        let action: @MainActor () -> Void
 
         static var resetAll: Confirmation {
             Confirmation(

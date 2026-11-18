@@ -183,8 +183,7 @@ extension IntegrationTests {
         private func makeReader() -> EasyReader {
             Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            Defaults[.speechDelayBefore] = 0
-            Defaults[.speechDelayAfter] = 0
+            Defaults[.pauseBetweenUnits] = 0
             Defaults[.speechStopBoundary] = .immediate
             let reader = EasyReader()
             reader.delegate = recorder
@@ -194,7 +193,7 @@ extension IntegrationTests {
         }
 
         private func axWindow() throws -> AXElement {
-            let app = AXElement.application(pid: NSRunningApplication.current.processIdentifier)
+            let app = AXElement.application(pid: getpid())
             let windows = try #require(try app.attribute(.windows))
             return try #require(windows.first { (try? $0.attribute(.title) as String?) == window.title }, "test window not in AX tree")
         }
@@ -321,7 +320,7 @@ extension IntegrationTests {
             for _ in 0..<12 { _ = try next(readable) }
             let selection = try #require(readable.selection)
             try await go(toPage: 0)
-            readable.scroll(to: selection, options: ScrollOptions(padding: 16, smooth: false, duration: 0, updateRate: 60))
+            readable.scroll(to: selection, options: ScrollOptions(padding: 16, duration: 0))
             await settle(0.3)
             let page = try #require(pdfView.currentSelection?.pages.first)
             #expect(pdfView.visiblePages.contains(page))
