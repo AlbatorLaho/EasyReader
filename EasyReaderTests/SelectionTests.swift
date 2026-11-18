@@ -18,7 +18,6 @@ struct SelectionTests {
         #expect(!selection.isEmpty)
         #expect(Selection(NSRange(selection)) == selection)
         #expect(Selection(CFRange(selection)) == selection)
-        #expect(Range<Int>(selection) == 3..<8)
     }
 
     @Test func notFoundRangeIsNil() {

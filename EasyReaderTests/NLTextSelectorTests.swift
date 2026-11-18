@@ -100,6 +100,40 @@ struct NLTextSelectorTests {
         let string = "😀 Hi."
         #expect(NLTextSelector(unit: .sentence).select(.backward, from: Selection(1..<3), in: string).isEmpty)
     }
+
+    /// NaturalLanguage splits Wikipedia-style citations ("1850.[" + "2] It grew…"); they stay with their sentence, both ways.
+    @Test func citationsStayWithTheirSentence() {
+        let string = "The city was founded in 1850.[2] It grew fast.[3][4]\nHistory\nThe first settlers came.[5]"
+        let expected = ["The city was founded in 1850.[2]", "It grew fast.[3][4]", "History", "The first settlers came.[5]"]
+        let selector = NLTextSelector(unit: .sentence)
+        var forward: [String] = []
+        var current = Selection()
+        while case let next = selector.select(.forward, from: current, in: string), !next.isEmpty, forward.count < 10 {
+            forward.append(text(of: next, in: string) ?? "")
+            current = next
+        }
+        #expect(forward == expected)
+        var backward: [String] = []
+        current = Selection(string.utf16.count..<string.utf16.count)
+        while case let next = selector.select(.backward, from: current, in: string), !next.isEmpty, backward.count < 10 {
+            backward.insert(text(of: next, in: string) ?? "", at: 0)
+            current = next
+        }
+        #expect(backward == expected)
+    }
+
+    @Test(
+        arguments: [
+            ("1850.[2] It", "1850.[".utf16.count, "1850.[2] ".utf16.count),
+            ("fast.[3][4]\nHistory", "fast.[".utf16.count, "fast.[3][4]\n".utf16.count),
+            ("Open [ bracket", "Open [".utf16.count, "Open [".utf16.count),
+            ("Not.[closed\nyet]", "Not.[".utf16.count, "Not.[".utf16.count),
+            ("Mid wo[r]d", "Mid wo".utf16.count, "Mid wo".utf16.count),
+        ] as [(String, Int, Int)])
+    func skippingCitations(string: String, boundary: Int, expected: Int) {
+        let index = String.Index(utf16Offset: boundary, in: string)
+        #expect(NLTextSelector.skippingCitations(from: index, in: string).utf16Offset(in: string) == expected)
+    }
 }
 
 /// Units stay within blocks reported separately (Chromium page text has no breaks between them).

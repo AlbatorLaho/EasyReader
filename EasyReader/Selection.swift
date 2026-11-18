@@ -91,12 +91,6 @@ extension NSRange {
     }
 }
 
-extension Range<Int> {
-    init?(_ selection: Selection) {
-        self.init(NSRange(selection))
-    }
-}
-
 extension Range<String.Index> {
     init?<S: StringProtocol>(_ selection: Selection, in string: S) {
         self.init(NSRange(selection), in: string)

@@ -402,7 +402,7 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
     func read(_ text: NSAttributedString, title: String = "Reader") {
         show(text, title: title)
         present { [weak self] in
-            if self?.startReading() != true { NSSound.beep() }
+            NSSound.beep(unless: self?.startReading() == true)
         }
     }
 
@@ -429,7 +429,7 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         readerWindow.present { [weak readerWindow] in
             guard reading else { return }
             readerWindow?.textView.setSelectedRange(NSRange(location: 0, length: 0))
-            if readerWindow?.startReading() != true { NSSound.beep() }
+            NSSound.beep(unless: readerWindow?.startReading() == true)
         }
     }
 
@@ -542,7 +542,7 @@ extension ReaderWindow: NSToolbarDelegate, NSToolbarItemValidation {
                 case .skipBackward: reader.skip(.backward)
                 case .skipForward: reader.skip(.forward)
             }
-        if !ok { NSSound.beep() }
+        NSSound.beep(unless: ok)
     }
 }
 

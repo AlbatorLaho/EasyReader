@@ -80,7 +80,7 @@ private struct SetupGuideView: View {
 
             step(5, "Make it yours") {
                 HStack {
-                    Button("Open Settings…") { SettingsOpener.open() }
+                    Button("Open \(SettingsOpener.menuTitle)") { SettingsOpener.open() }
                     Text("Pick a voice, fix pronunciations, and set up shortcuts.").foregroundColor(.secondary)
                 }
             }
@@ -97,7 +97,7 @@ private struct SetupGuideView: View {
 
     private var presenceNote: String {
         switch appPresence {
-            case .menuBar: "The menu bar icon has the controls. Open EasyReader again to get to Settings."
+            case .menuBar: "The menu bar icon has the controls. Open EasyReader again to get to \(SettingsOpener.name)."
             case .dock: "Right-click the Dock icon for the controls."
             case .both: "Use the menu bar icon or right-click the Dock icon for the controls."
         }

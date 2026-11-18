@@ -227,14 +227,7 @@ final class EasyReader: NSObject {
     }
 
     private func read(_ spoken: SpokenText, pausingFirst: Bool) {
-        let utterance =
-            spoken.hasPhonetics
-            ? AVSpeechUtterance(attributedString: spoken.attributedText)
-            : AVSpeechUtterance(string: spoken.text)
-        utterance.voice = Defaults[.speechVoice] ?? .system
-        utterance.volume = Defaults[.speechVolume]
-        utterance.rate = Defaults[.speechRate]
-        utterance.pitchMultiplier = Defaults[.speechPitch]
+        let utterance = AVSpeechUtterance(spoken)
         // Before the next unit, once it is selected, so a stop after the unit never waits it out.
         if pausingFirst { utterance.preUtteranceDelay = Defaults[.pauseBetweenUnits] }
         Log.speech.debug(
@@ -517,7 +510,7 @@ extension EasyReader {
                     AppAccessibility.restore(flags, pid: pid)
                 }
                 pendingStart = nil
-                if !start(reading: readable) { NSSound.beep() }
+                NSSound.beep(unless: start(reading: readable))
                 return
             }
             AppAccessibility.restore(flags, pid: pid)
@@ -584,5 +577,15 @@ extension EasyReader {
             current = parent
         }
         return nil
+    }
+}
+
+extension AVSpeechUtterance {
+    convenience init(_ spoken: SpokenText) {
+        if spoken.hasPhonetics { self.init(attributedString: spoken.attributedText) } else { self.init(string: spoken.text) }
+        voice = Defaults[.speechVoice] ?? .system
+        volume = Defaults[.speechVolume]
+        rate = Defaults[.speechRate]
+        pitchMultiplier = Defaults[.speechPitch]
     }
 }

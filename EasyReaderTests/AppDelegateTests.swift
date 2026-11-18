@@ -16,12 +16,16 @@ extension IntegrationTests {
         }
 
         private func launch() async -> AppDelegate {
+            let previousReader = ReaderWindow.reader
+            let previousServicesProvider = NSApp.servicesProvider
             let app = AppDelegate()
             app.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
             app.easyReader.delegate = recorder
             Teardown.add {
                 app.easyReader.stop()
-                if let item = app.statusItem { NSStatusBar.system.removeStatusItem(item) }
+                app.stopObserving()
+                ReaderWindow.reader = previousReader
+                NSApp.servicesProvider = previousServicesProvider
             }
             await settle(0.3)  // let the Defaults.updates loops subscribe
             return app
@@ -182,6 +186,36 @@ extension IntegrationTests {
                 #expect(statusItem.keyEquivalentModifierMask == fileItem.keyEquivalentModifierMask, "\(title)")
                 #expect(!statusItem.keyEquivalent.isEmpty, "\(title)")
             }
+        }
+
+        /// The menu bar icon is a template image that shows the reader's state.
+        /// Tests launch many delegates: one torn down stops following the settings.
+        @Test func stoppedDelegateIgnoresSettings() async {
+            let app = await launch()
+            #expect(app.statusItem != nil)
+            app.stopObserving()
+            Defaults[.appPresence] = .dock
+            await settle(0.1)
+            Defaults[.appPresence] = .both
+            await settle(0.1)
+            #expect(app.statusItem == nil)
+        }
+
+        @Test func statusItemIconFollowsState() async throws {
+            let app = await launch()
+            let button = try #require(app.statusItem?.button)
+            let reader = try #require(app.easyReader)
+            #expect(button.image?.name() == "MenuBarIconIdle")
+            #expect(button.image?.isTemplate == true)
+            #expect(button.image?.accessibilityDescription == "EasyReader")
+            _ = try await startReading(reader)
+            app.easyReader(reader, didChangeState: reader.state)  // the recorder replaced the app as delegate
+            #expect(button.image?.name() == "MenuBarIcon")
+            let paused = recorder.expect(.paused)
+            #expect(reader.pause())
+            try await paused.wait(timeout: 10)
+            app.easyReader(reader, didChangeState: reader.state)
+            #expect(button.image?.name() == "MenuBarIconPaused")
         }
 
         @Test func speechSettingChangeRestartsReading() async throws {

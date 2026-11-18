@@ -24,20 +24,50 @@ final class NLTextSelector: TextSelector {
                     tagRange = range
                     return false
                 }
-                endIndex = tagRange?.upperBound ?? string.endIndex
+                endIndex = tagRange.map { Self.skippingCitations(from: $0.upperBound, in: string) } ?? string.endIndex
             case .backward:
                 endIndex = selection.startIndex(in: string)
-                var tagRange: Range<String.Index>?
+                var tagStart: String.Index?
                 tagger.enumerateTagsReversed(in: string.startIndex..<endIndex, unit: taggerUnit, scheme: .lexicalClass) { tag, range in
                     guard tag != .paragraphBreak else { return true }
-                    tagRange = range
+                    let start = Self.skippingCitations(from: range.lowerBound, in: string)
+                    // Only a citation's tail ("2] ") between the two boundaries: belongs to the unit before
+                    guard start < endIndex else { return true }
+                    tagStart = start
                     return false
                 }
-                startIndex = tagRange?.lowerBound ?? string.startIndex
+                startIndex = tagStart ?? string.startIndex
         }
         let result = Selection(startIndex..<endIndex, in: string)
         Log.selector.debug("\(taggerUnit.rawValue) \(direction) from \(selection) → \(result)")
         return result
+    }
+
+    /// NaturalLanguage ends sentences inside citations ("1850.[" + "2] It…"): moves such a boundary past them and the space after.
+    static func skippingCitations(from boundary: String.Index, in string: String) -> String.Index {
+        guard boundary > string.startIndex, string[string.index(before: boundary)] == "[",
+            var index = citationEnd(from: boundary, in: string)
+        else { return boundary }
+        while index < string.endIndex, string[index] == "[", let end = citationEnd(from: string.index(after: index), in: string) {
+            index = end
+        }
+        while index < string.endIndex, string[index].isWhitespace {
+            index = string.index(after: index)
+        }
+        return index
+    }
+
+    /// After the "]" closing a short citation whose text starts at `start`.
+    private static func citationEnd(from start: String.Index, in string: String) -> String.Index? {
+        var index = start
+        for _ in 0..<32 {
+            guard index < string.endIndex else { return nil }
+            let character = string[index]
+            if character == "]" { return index > start ? string.index(after: index) : nil }
+            if character == "[" || character.isNewline { return nil }
+            index = string.index(after: index)
+        }
+        return nil
     }
 }
 

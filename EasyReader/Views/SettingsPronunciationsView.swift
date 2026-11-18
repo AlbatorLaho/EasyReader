@@ -147,14 +147,7 @@ struct SettingsPronunciationsView: View {
 
     private func speakPreview() {
         let spoken = previewSpoken
-        let utterance =
-            spoken.hasPhonetics
-            ? AVSpeechUtterance(attributedString: spoken.attributedText)
-            : AVSpeechUtterance(string: spoken.text)
-        utterance.voice = Defaults[.speechVoice] ?? .system
-        utterance.rate = Defaults[.speechRate]
-        utterance.pitchMultiplier = Defaults[.speechPitch]
-        utterance.volume = Defaults[.speechVolume]
+        let utterance = AVSpeechUtterance(spoken)
         Self.previewSynthesizer.stopSpeaking(at: .immediate)
         Self.previewSynthesizer.speak(utterance)
     }
