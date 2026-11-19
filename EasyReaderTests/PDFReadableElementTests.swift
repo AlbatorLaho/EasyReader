@@ -6,101 +6,6 @@ import Testing
 
 @testable import EasyReader
 
-@Suite struct PDFTextTests {
-    typealias Info = PDFReadableElement.LeafInfo
-
-    @Test func flattenedKeepsOffsets() {
-        let (flat, lineBreaks) = PDFReadableElement.flattened("One line\nwraps 😀 here.\r\nEnd")
-        #expect(flat == "One line wraps 😀 here.  End")
-        #expect(lineBreaks == [8, 23, 24])
-        #expect(flat.utf16.count == "One line\nwraps 😀 here.\r\nEnd".utf16.count)
-    }
-
-    /// Word joiners keep the length (offsets map back to the leaf); a hyphen that's part of the word stays.
-    @Test func dehyphenateJoinsWordsBrokenAtLineEnds() {
-        let value = "be-\ncause self-\naware X-\nRay 3-\nd"
-        let (flat, lineBreaks) = PDFReadableElement.flattened(value)
-        var units = Array(flat.utf16)
-        PDFReadableElement.dehyphenate(&units, lineBreaks: lineBreaks) { $0 == "because" }
-        #expect(String(decoding: units, as: UTF16.self) == "be\u{2060}\u{2060}cause self-\u{2060}aware X- Ray 3- d")
-        #expect(units.count == value.utf16.count)
-    }
-
-    /// PDFKit's report keeps line breaks and hyphens where our text has spaces and word joiners.
-    @Test func userSelectionEndsWhereItsTextDoes() {
-        let text = "Intro. A sen\u{2060}\u{2060}tence runs on. Next one."
-        let report = "A sen-\ntence runs\non."
-        #expect(PDFReadableElement.end(of: report, in: text, from: 7) == 28)
-        #expect(PDFReadableElement.end(of: "😀 b", in: "x 😀 b c", from: 2) == 6)
-        #expect(PDFReadableElement.end(of: "longer than the text", in: text, from: 30) == text.utf16.count)
-        #expect(PDFReadableElement.end(of: "\n", in: text, from: 7) == 7)
-    }
-
-    @Test(
-        arguments: [
-            ("ends mid", true), ("ends here.", false), ("asks?\n", false), ("quoted.”", false), ("so:", false),
-            ("a list;", true), ("hyphen-", true), ("", false), ("(closed.) ", false),
-        ] as [(String, Bool)])
-    func endsMidSentence(text: String, expected: Bool) {
-        #expect(PDFReadableElement.endsMidSentence(text) == expected)
-    }
-
-    @Test func joinRules() {
-        let join = { (a: Info, b: Info) in PDFReadableElement.join(a, b, isWord: { $0 == "because" }) }
-        #expect(join(Info(text: "as he"), Info(text: "read, he")) == .space)
-        #expect(join(Info(text: "Ends.\n"), Info(text: "next")) == .none)
-        #expect(join(Info(text: "be-"), Info(text: "cause")) == .hyphen(keepsHyphen: false))
-        #expect(join(Info(text: "self-"), Info(text: "aware")) == .hyphen(keepsHyphen: true))
-        // Font size: about the same joins, clearly different doesn't.
-        #expect(join(Info(text: "as he", fontSize: 10), Info(text: "read", fontSize: 10.4)) == .space)
-        #expect(join(Info(text: "as he", fontSize: 10), Info(text: "5 a Jer.", fontSize: 8)) == .none)
-        #expect(join(Info(text: "Big title", fontSize: 24), Info(text: "body", fontSize: 12)) == .none)
-        // Headings: in an AXHeading, or one title-case line before a capital (an inline title-case run still joins).
-        #expect(join(Info(text: "Introduction", isHeading: true), Info(text: "text")) == .none)
-        #expect(join(Info(text: "PRESENT CODE — ACTIVITY"), Info(text: "Today you")) == .none)
-        #expect(join(Info(text: "Quality of Life Wheel"), Info(text: "where a person")) == .space)
-        #expect(join(Info(text: "This is a sample"), Info(text: "Quality of Life Wheel")) == .space)
-    }
-
-    /// A title-case line doesn't open a sentence that smaller text after it would be deferred for.
-    @Test func runsOn() {
-        #expect(PDFReadableElement.runsOn(Info(text: "spake")))
-        #expect(!PDFReadableElement.runsOn(Info(text: "The First Book of Nephi")))
-        #expect(!PDFReadableElement.runsOn(Info(text: "Chapter", isHeading: true)))
-    }
-
-    @Test func footnotesAreSmallPrintEndingThePage() {
-        let page: [(fontSize: CGFloat?, length: Int)] = [(10, 900), (10, 20), (8, 300), (8, 200)]
-        #expect(PDFReadableElement.footnoteStart(page) { _ in true } == 2)
-        #expect(PDFReadableElement.footnoteStart(page) { _ in nil } == 2)
-        #expect(PDFReadableElement.footnoteStart(page) { $0 == 3 } == 3)  // index 2 in the upper half: not a footnote
-        #expect(PDFReadableElement.footnoteStart([(8, 300), (8, 200)]) { _ in true } == 2)  // all one size: none
-        #expect(PDFReadableElement.footnoteStart([(10, 900), (nil, 50)]) { _ in true } == 2)  // size unknown: kept
-    }
-
-    @Test func footnoteMarksAreShortSuperscriptRuns() {
-        let text = "his a heart, word12 here and x7y and big"
-        func run(_ location: Int, _ length: Int, _ size: CGFloat) -> (range: NSRange, fontSize: CGFloat?) {
-            (NSRange(location: location, length: length), size)
-        }
-        let runs = [
-            run(0, 4, 10), run(4, 2, 6),  // "a "
-            run(6, 11, 10), run(17, 2, 6),  // "12"
-            run(19, 10, 10), run(29, 3, 9),  // "x7y" at 90%: not a mark
-            run(32, 8, 10),
-        ]
-        #expect(PDFReadableElement.markerRanges(runs, in: text) == [NSRange(location: 4, length: 1), NSRange(location: 17, length: 2)])
-    }
-
-    @Test func marginIsTopAndBottomOfPage() {
-        let page = CGRect(x: 0, y: 1000, width: 600, height: 800)
-        #expect(PDFReadableElement.isInMargin(CGRect(x: 50, y: 1020, width: 100, height: 20), of: page))
-        #expect(PDFReadableElement.isInMargin(CGRect(x: 50, y: 1760, width: 100, height: 20), of: page))
-        #expect(!PDFReadableElement.isInMargin(CGRect(x: 50, y: 1100, width: 100, height: 20), of: page))
-        #expect(!PDFReadableElement.isInMargin(.zero, of: page))
-    }
-}
-
 extension IntegrationTests {
     /// The real AX code against a `PDFView` in the host's own process: one `AXStaticText` leaf per paragraph.
     @MainActor
@@ -110,13 +15,17 @@ extension IntegrationTests {
         private let recorder = StateRecorder()
         static let pageCount = 30
 
-        /// Two paragraphs per page (more on some); page 2's second runs on to page 3, past a footnote.
+        /// Two paragraphs per page (more on some); page 2's second runs on to page 3; pages 10–12 and 21 have only title and page number.
         static func paragraphs(page: Int) -> [String] {
             let opening = "Page \(page) opens here. This sentence on page \(page) is long enough to wrap across several lines of the narrow column."
             switch page {
+                case 10...12, 21: return []
                 case 2: return [opening, "A second paragraph on page 2. It runs on to the"]
                 case 3: return ["next page, where it ends. " + opening, "A second paragraph on page 3. It ends the page."]
                 case 4: return [opening, "Words like hyph-\nenated and self-\naware are split.", "A second paragraph on page 4. It ends the page."]
+                case 27: return [opening, "A second paragraph on page 27 has boxes*. It ends the page."]
+                case 28: return [opening, "A ruled note is marked4 here. It ends the page."]
+                case 29: return [opening, "A verse has a letter mark here. It ends the page."]
                 default: return [opening, "A second paragraph on page \(page). It ends the page."]
             }
         }
@@ -141,7 +50,7 @@ extension IntegrationTests {
             await settle(0.3)
         }
 
-        private static func makePDF() -> Data {
+        static func makePDF() -> Data {
             let data = NSMutableData()
             var box = CGRect(x: 0, y: 0, width: 612, height: 792)
             let context = CGContext(consumer: CGDataConsumer(data: data)!, mediaBox: &box, nil)!
@@ -151,11 +60,12 @@ extension IntegrationTests {
                 func draw(_ string: String, size: CGFloat, in rect: CGRect) {
                     NSAttributedString(string: string, attributes: [.font: NSFont.systemFont(ofSize: size)]).draw(in: rect)
                 }
-                draw("Running Title", size: 10, in: CGRect(x: 72, y: 740, width: 300, height: 20))
+                // Another running title from page 22 on: page 22, loaded past the empty 21 without frames, can't confirm it.
+                draw(page >= 22 ? "Appendix Title" : "Running Title", size: 10, in: CGRect(x: 72, y: 740, width: 300, height: 20))
                 draw("\(page + 1)", size: 10, in: CGRect(x: 300, y: 20, width: 40, height: 20))
                 switch page {
                     case 5:
-                        // A superscript footnote mark.
+                        // A superscript footnote mark, with its footnote.
                         let text = NSMutableAttributedString(
                             string: paragraphs(page: page)[0] + "\n\nA second paragraph has a marked",
                             attributes: [.font: NSFont.systemFont(ofSize: 14)])
@@ -163,15 +73,73 @@ extension IntegrationTests {
                             NSAttributedString(string: "z", attributes: [.font: NSFont.systemFont(ofSize: 8), .baselineOffset: 6]))
                         text.append(NSAttributedString(string: " word. It ends the page.", attributes: [.font: NSFont.systemFont(ofSize: 14)]))
                         text.draw(in: CGRect(x: 72, y: 150, width: 300, height: 540))
+                        draw("z The note.", size: 9, in: CGRect(x: 72, y: 80, width: 300, height: 20))
+                    case 28, 29:
+                        // Marked footnotes after a rule line (28) and starting with a chapter number larger than its text (29).
+                        let (paragraph, mark) = page == 28 ? ("A ruled note is marked", "4") : ("A verse has a letter", "a")
+                        let text = NSMutableAttributedString(
+                            string: paragraphs(page: page)[0] + "\n\n" + paragraph, attributes: [.font: NSFont.systemFont(ofSize: 14)])
+                        text.append(
+                            NSAttributedString(string: mark, attributes: [.font: NSFont.systemFont(ofSize: 8), .baselineOffset: 6]))
+                        let rest = page == 28 ? " here. It ends the page." : " mark here. It ends the page."
+                        text.append(NSAttributedString(string: rest, attributes: [.font: NSFont.systemFont(ofSize: 14)]))
+                        text.draw(in: CGRect(x: 72, y: 150, width: 300, height: 540))
+                        let note = NSMutableAttributedString(
+                            string: page == 28 ? "______\n" : "1", attributes: [.font: NSFont.systemFont(ofSize: page == 28 ? 9 : 13)])
+                        note.append(
+                            NSAttributedString(
+                                string: page == 28 ? "4 The ruled note." : " 1 a The verse note.",
+                                attributes: [.font: NSFont.systemFont(ofSize: page == 28 ? 9 : 8)]))
+                        note.draw(in: CGRect(x: 72, y: 60, width: 300, height: 40))
+                    case 17, 18:
+                        // An exponent and a footnote mark (superscripts), on a page with that footnote (17) and without (18).
+                        let body = [.font: NSFont.systemFont(ofSize: 14)] as [NSAttributedString.Key: Any]
+                        let superscript = [.font: NSFont.systemFont(ofSize: 8), .baselineOffset: 6] as [NSAttributedString.Key: Any]
+                        let text = NSMutableAttributedString(string: paragraphs(page: page)[0] + "\n\nAn area of x", attributes: body)
+                        text.append(NSAttributedString(string: "2", attributes: superscript))
+                        text.append(NSAttributedString(string: " has a mark", attributes: body))
+                        text.append(NSAttributedString(string: "3", attributes: superscript))
+                        text.append(NSAttributedString(string: " here. It ends the page.", attributes: body))
+                        text.draw(in: CGRect(x: 72, y: 150, width: 300, height: 540))
+                        if page == 17 { draw("3 The note.", size: 9, in: CGRect(x: 72, y: 80, width: 300, height: 20)) }
                     case 6:
                         // A caption (smaller, mid-page) inside a sentence: read after the sentence's block.
                         draw(paragraphs(page: page)[0] + "\n\nA sentence before the", size: 14, in: CGRect(x: 72, y: 450, width: 300, height: 240))
                         draw("Figure 1: a caption.", size: 9, in: CGRect(x: 72, y: 410, width: 300, height: 20))
                         draw("caption ends here. It ends the page.", size: 14, in: CGRect(x: 72, y: 340, width: 300, height: 60))
+                    case 2, 16:
+                        // A superscript mark ending the first paragraph, for the footnote ending the page.
+                        let text = NSMutableAttributedString(string: paragraphs(page: page)[0], attributes: [.font: NSFont.systemFont(ofSize: 14)])
+                        text.append(
+                            NSAttributedString(string: page == 2 ? "1" : "2", attributes: [.font: NSFont.systemFont(ofSize: 8), .baselineOffset: 6]))
+                        text.append(
+                            NSAttributedString(string: "\n\n" + paragraphs(page: page)[1], attributes: [.font: NSFont.systemFont(ofSize: 14)]))
+                        text.draw(in: CGRect(x: 72, y: 150, width: 300, height: 540))
                     default:
                         draw(paragraphs(page: page).joined(separator: "\n\n"), size: 14, in: CGRect(x: 72, y: 150, width: 300, height: 540))
                 }
                 if page == 2 { draw("1 A footnote on page 2.", size: 9, in: CGRect(x: 72, y: 80, width: 300, height: 20)) }
+                // Small print ending the page: numbered without a body mark (26, read), a symbol with a full-size mark (27, skipped).
+                if page == 26 { draw("1. Step one is small print.", size: 9, in: CGRect(x: 72, y: 80, width: 300, height: 20)) }
+                if page == 27 { draw("* A starred note.", size: 9, in: CGRect(x: 72, y: 80, width: 300, height: 20)) }
+                // Headings without a stop, not title case: bold in the paragraph's leaf (7) or its own (14), larger in the paragraph's (15).
+                let headings: [Int: (String, NSFont, CGFloat)] = [
+                    7: ("A bold heading without a stop", NSFont(name: "Helvetica-Bold", size: 14)!, 691),
+                    14: ("A bold heading on its own", NSFont(name: "Helvetica-Bold", size: 14)!, 715),
+                    15: ("A larger heading", NSFont(name: "Helvetica", size: 18)!, 693),
+                ]
+                if let (heading, font, y) = headings[page] {
+                    NSAttributedString(string: heading, attributes: [.font: font]).draw(in: CGRect(x: 72, y: y, width: 300, height: 24))
+                }
+                // Small print ending the page: a caption (read), then a footnote (skipped).
+                if page == 16 {
+                    draw("Figure 2: small print, not a footnote.", size: 9, in: CGRect(x: 72, y: 120, width: 300, height: 20))
+                    draw("2 A second footnote.", size: 9, in: CGRect(x: 72, y: 80, width: 300, height: 20))
+                }
+                // Headings recurring two pages apart, below the margin.
+                if page == 22 || page == 24 { draw("Part \(page / 2 - 8)", size: 14, in: CGRect(x: 72, y: 700, width: 300, height: 20)) }
+                // A one-line paragraph in the bottom margin, unlike the other pages' margin lines.
+                if page == 8 { draw("A short last line.", size: 14, in: CGRect(x: 72, y: 35, width: 300, height: 20)) }
                 NSGraphicsContext.current = nil
                 context.endPDFPage()
             }
@@ -181,10 +149,7 @@ extension IntegrationTests {
 
         /// Silent reader, as in EasyReaderSpeechTests.
         private func makeReader() -> EasyReader {
-            Defaults[.speechVolume] = 0
             Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            Defaults[.pauseBetweenUnits] = 0
-            Defaults[.speechStopBoundary] = .immediate
             let reader = EasyReader()
             reader.delegate = recorder
             reader.textSelector = NLTextSelector(unit: .sentence)
@@ -334,6 +299,141 @@ extension IntegrationTests {
             #expect(!text.split(separator: "\n").contains { Int($0.trimmingCharacters(in: .whitespaces)) != nil })
         }
 
+        /// With `cleanUpPDFText` off, headers/footers, footnotes and their marks are read.
+        @Test func readsHeadersAndFootnotesWithoutCleanup() async throws {
+            Defaults[.cleanUpPDFText] = false
+            try await go(toPage: 17)
+            let readable = try readable()
+            let text = try #require(readable.fullText)
+            let lines = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            #expect(lines.contains("Running Title"), "\(text)")
+            // A page number runs on into the next page's header (no stop ends it).
+            #expect(lines.contains("18 Running Title"), "\(text)")
+            #expect(lines.contains("3 The note."), "\(text)")
+            let range = (text as NSString).range(of: "An area of x2 has a mark3 here.")
+            try #require(range.location != NSNotFound, "\(text)")
+            readable.selection = Selection(range)
+            #expect(readable.selectedText == "An area of x2 has a mark3 here.")
+        }
+
+        /// A heading line is a unit of its own, whether PDFKit puts it in the paragraph's leaf or its own.
+        @Test(arguments: [(7, "A bold heading without a stop", false), (14, "A bold heading on its own", true), (15, "A larger heading", false)])
+        func headingIsItsOwnUnit(page: Int, heading: String, ownLeaf: Bool) async throws {
+            try await go(toPage: page)
+            let readable = try readable()
+            #expect(try leafValues(page: page).contains(heading) == ownLeaf)
+            var units: [String] = []
+            for _ in 0..<2 { units.append(try next(readable)) }
+            #expect(units == [heading, "Page \(page) opens here."])
+        }
+
+        private func leafValues(page: Int) throws -> [String] {
+            var values: [String] = []
+            var stack = [try #require(try readable().handle.attribute(.children)?[page])]
+            while let element = stack.popLast() {
+                if try element.role() == .staticText { values.append(try element.attribute(.value) ?? "") }
+                stack += (try element.attribute(.children)) ?? []
+            }
+            return values
+        }
+
+        /// A selection in a skipped footnote reads the page's footnotes from there.
+        @Test func readsFootnoteUserSelected() async throws {
+            try await go(toPage: 2)
+            try axSelect("A footnote on page 2.", page: 2)
+            let readable = try readable()
+            #expect(readable.selectedText == "A footnote on page 2.")
+            #expect(try #require(readable.fullText).contains("1 A footnote on page 2."))
+            #expect(try next(readable) == "A second paragraph on page 3.")
+        }
+
+        /// A short selection left far away that a footnote here contains doesn't bring the footnotes back.
+        @Test func skipsFootnoteMatchingStaleSelection() async throws {
+            try await go(toPage: 5)
+            try axSelect("The note.", page: 5)
+            try await go(toPage: 17)
+            let readable = try readable()
+            #expect(!(try #require(readable.fullText)).contains("3 The note."))
+            #expect(try next(readable) == "Page 17 opens here.")
+        }
+
+        @Test func readsUnmarkedSmallPrintEndingPage() async throws {
+            try await go(toPage: 16)
+            let text = try #require(try readable().fullText)
+            #expect(text.contains("Figure 2: small print, not a footnote."))
+            #expect(!text.contains("A second footnote"))
+        }
+
+        /// Small print starting like a footnote, but with no matching mark in the body, is read.
+        @Test func readsMarkedSmallPrintWithoutBodyMark() async throws {
+            try await go(toPage: 26)
+            #expect(try #require(try readable().fullText).contains("1. Step one is small print."))
+        }
+
+        /// A symbol footnote is skipped when the body has its mark, even at full size.
+        @Test func skipsSymbolFootnoteWithFullSizeMark() async throws {
+            try await go(toPage: 27)
+            let text = try #require(try readable().fullText)
+            #expect(text.contains("has boxes*."))
+            #expect(!text.contains("A starred note."))
+        }
+
+        /// A footnote after a rule line (28), or starting with a chapter number near body size (29), is skipped and its mark not read.
+        @Test(arguments: [
+            (28, "A ruled note is marked4 here.", "A ruled note is marked\u{2060} here."),
+            (29, "A verse has a lettera mark here.", "A verse has a letter\u{2060} mark here."),
+        ])
+        func skipsFootnoteStartingUnlikeIt(page: Int, sentence: String, spoken: String) async throws {
+            try await go(toPage: page)
+            let readable = try readable()
+            let text = try #require(readable.fullText)
+            #expect(!text.contains("The ruled note") && !text.contains("The verse note"), "\(text)")
+            #expect(!text.contains("_"), "\(text)")
+            let range = (text as NSString).range(of: sentence)
+            try #require(range.location != NSNotFound, "\(text)")
+            readable.selection = Selection(range)
+            #expect(readable.selectedText == spoken)
+        }
+
+        /// A margin line that doesn't repeat on nearby pages isn't a header or footer.
+        @Test func readsUniqueLineInMargin() async throws {
+            try await go(toPage: 8)
+            #expect(try #require(try readable().fullText).contains("A short last line."))
+        }
+
+        /// Pages loaded ahead (no leaf frames) lose headers/footers seen in the margin of any page before: empty pages 10–12 are skipped.
+        @Test func skipsHeadersOnPagesLoadedAhead() async throws {
+            try await go(toPage: 9)
+            let readable = try readable()
+            var units: [String] = []
+            for _ in 0..<6 { units.append(try next(readable)) }
+            #expect(units.contains("Page 13 opens here."), "\(units)")
+            #expect(!units.contains { Int($0) != nil }, "\(units)")
+            // Page 13 is more than two pages from any page with frames (8–10), which confirmed the header.
+            #expect(!units.contains { $0.contains("Running Title") }, "\(units)")
+        }
+
+        /// A first line of a frameless page (22) recurring on a nearby frameless page (24) isn't taken for a header.
+        @Test func readsRecurringLineOnPagesWithoutFrames() async throws {
+            try await go(toPage: 20)
+            let readable = try readable()
+            var units: [String] = []
+            for _ in 0..<8 { units.append(try next(readable)) }
+            #expect(units.contains("Page 22 opens here."), "\(units)")
+            #expect(units.contains { $0.contains("Part 3") }, "\(units)")
+            #expect(!units.contains { $0.contains("Running Title") || Int($0) != nil }, "\(units)")
+        }
+
+        /// A header read on a frameless page (22) is left out once a page with frames confirms it; reading goes on from the leaf after it.
+        @Test func dropsHeaderConfirmedAfterItsPageLoaded() async throws {
+            try await go(toPage: 20)
+            let readable = try readable()
+            var units: [String] = []
+            for _ in 0..<7 { units.append(try next(readable)) }
+            #expect(Array(units.suffix(3)) == ["Appendix Title", "Part 3", "Page 22 opens here."], "\(units)")
+            #expect(!(try #require(readable.fullText)).contains("Appendix Title"))
+        }
+
         /// A sentence running on from one page to the next is one unit; the footnote in between comes after its block.
         @Test func joinsSentenceAcrossPages() async throws {
             try await go(toPage: 2)
@@ -356,7 +456,7 @@ extension IntegrationTests {
             #expect(Array(units.dropFirst(sentence + 1).prefix(2)) == ["It ends the page.", "Figure 1: a caption."])
         }
 
-        /// Superscript footnote marks stay in the text (selection) but aren't read.
+        /// Superscript footnote marks (with their footnote on the page) stay in the text (selection) but aren't read.
         @Test func skipsFootnoteMarks() async throws {
             try await go(toPage: 5)
             let readable = try readable()
@@ -369,6 +469,28 @@ extension IntegrationTests {
             #expect(spoken.utf16.count == range.length + 7)
             #expect(selected?.contains("z") == true)
             #expect(!readable.isHighlighting)
+        }
+
+        /// With footnotes on the page, a superscript that isn't one's mark (an exponent) is read.
+        @Test func readsExponentOnPageWithFootnotes() async throws {
+            try await go(toPage: 17)
+            let readable = try readable()
+            let text = try #require(readable.fullText)
+            let range = (text as NSString).range(of: "An area of x2 has a mark3 here.")
+            try #require(range.location != NSNotFound, "\(text)")
+            readable.selection = Selection(range)
+            #expect(readable.selectedText == "An area of x2 has a mark\u{2060} here.")
+        }
+
+        /// Without footnotes on the page, no superscript is taken for a mark: all are read.
+        @Test func readsSuperscriptsOnPageWithoutFootnotes() async throws {
+            try await go(toPage: 18)
+            let readable = try readable()
+            let text = try #require(readable.fullText)
+            let range = (text as NSString).range(of: "An area of x2 has a mark3 here.", options: .backwards)
+            try #require(range.location != NSNotFound, "\(text)")
+            readable.selection = Selection(range)
+            #expect(readable.selectedText == "An area of x2 has a mark3 here.")
         }
 
         /// PDFKit selects within one leaf: a unit spanning two is selected piece by piece as speech reaches each.
@@ -388,6 +510,34 @@ extension IntegrationTests {
             // The piece selected isn't taken for a new selection by the user.
             #expect(readable.selection == unit)
             #expect(readable.didReach(30) == nil)
+        }
+
+        /// A re-layout that shifts leaf indices (an earlier page loaded) keeps the pieces on the unit's text.
+        @Test func piecesFollowRelayout() async throws {
+            try await go(toPage: 2)
+            let readable = try readable()
+            let text = try #require(readable.fullText)
+            readable.selection = Selection((text as NSString).range(of: "It runs on to the next page, where it ends."))
+            readable.setWindow(0..<5)
+            #expect(readable.didReach("It runs on to the ".utf16.count) != nil)
+            #expect(selected == "next page, where it ends.")
+        }
+
+        /// Each layout covers every loaded page, so reading on cuts the window back.
+        @Test func windowStaysBoundedWhileReadingOn() throws {
+            let readable = try readable()
+            var largest = 0
+            var unit = ""
+            var steps = 0
+            while steps < 400, unit != "Page 25 opens here." {
+                unit = try next(readable)
+                largest = max(largest, readable.loadedPageCount)
+                steps += 1
+            }
+            #expect(unit == "Page 25 opens here.")
+            #expect(readable.loadedPageCount <= PDFReadableElement.maxLoadedPages)
+            // Plus pages 10–12: nothing readable on them, so the window runs on across them.
+            #expect(largest <= PDFReadableElement.maxLoadedPages + 3)
         }
 
         /// While reading, the selection follows speech from piece to piece.

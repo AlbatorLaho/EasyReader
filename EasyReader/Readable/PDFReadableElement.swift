@@ -1,7 +1,8 @@
 import Cocoa
+import Defaults
 
 /// A PDF in PDFKit's `PDFView` (Preview): the `AXGroup` holding an `AXPage` per page, down to `AXStaticText` leaves.
-/// Text = leaves of a window of loaded pages, joined into blocks; headers, footers and footnotes left out.
+/// Text = leaves of a window of loaded pages, joined into blocks; headers, footers and footnotes left out (`cleanUpPDFText`).
 final class PDFReadableElement: ReadableElement {
     /// A leaf as laid out in `text`.
     private struct Leaf {
@@ -29,11 +30,39 @@ final class PDFReadableElement: ReadableElement {
         /// The nearest ancestor with several children (the paragraph in tagged PDFs).
         let group: AXElement?
         let info: LeafInfo
+        /// The size most of the leaf is in (`font(of:units:)`), for telling small print.
+        let bodySize: CGFloat?
+        /// Begins with a footnote mark.
+        let isMarked: Bool
+        /// A frameless header/footer candidate kept: left out once its key is confirmed (`confirmedMarginKeys`).
+        let marginKey: String?
+    }
+
+    /// A text leaf found depth first.
+    private struct StaticText {
+        let element: AXElement
+        let value: String
+        /// Nearest ancestor with several children.
+        let group: AXElement?
+        let inHeading: Bool
+    }
+
+    /// Identifies an offset across layouts: leaf index in `pageLeaves[page]` plus offset in the leaf.
+    private struct Anchor {
+        let page: Int
+        let index: Int
+        let delta: Int
+    }
+
+    struct FontRun {
+        let range: NSRange
+        let fontSize: CGFloat?
     }
 
     struct LeafInfo {
         var text: String
         var fontSize: CGFloat?
+        var isBold: Bool?
         var isHeading = false
         var isSingleLine: Bool { !text.contains("\n") }
     }
@@ -94,6 +123,9 @@ final class PDFReadableElement: ReadableElement {
     private let scroller: ScrollBarScroller?
     /// nil until reading starts.
     private var loadedPages: Range<Int>?
+    /// More than this many loaded pages: the window is cut back around the tracked unit (each layout covers every loaded page).
+    static let maxLoadedPages = 12
+    var loadedPageCount: Int { loadedPages?.count ?? 0 }
     private var pageLeaves: [Int: [PageLeaf]] = [:]
     private var pageTexts: [Int: [PageText]] = [:]
     /// `.some(nil)`: the page has none that works.
@@ -110,11 +142,24 @@ final class PDFReadableElement: ReadableElement {
     private var pieces: [Piece] = []
     private var selectedPiece = 0
     private var markerCache: [AXElement: [NSRange]] = [:]
+    private var runCache: [AXElement: [FontRun]] = [:]
+    /// Footnote leaves left out of `text`, by page; pages the user selected in a footnote of keep them instead.
+    private var footnoteLeaves: [Int: [AXElement]] = [:]
+    private var pagesReadingFootnotes: Set<Int> = []
+    /// The marks (`footnoteLabels(ofLine:)`) the footnotes on each page start with; empty if the body has none of them.
+    private var footnoteLabels: [Int: Set<String>] = [:]
+    /// Each page's possible running headers/footers, kept across windows.
+    private var pageMarginKeys: [Int: MarginKeys] = [:]
+    /// Keys confirmed in the margin by frame on any page so far: frameless candidates matching one are skipped.
+    private var confirmedMarginKeys: Set<String> = []
     private lazy var overlay = HighlightOverlay()
     private(set) var isHighlighting = false
+    /// `cleanUpPDFText` when made (each start): skip headers/footers, footnotes and their marks.
+    private let cleansUp: Bool
 
     required init(_ element: AXElement) {
         scroller = (try? element.parent(with: .scrollArea)).map(ScrollBarScroller.init)
+        cleansUp = Defaults[.cleanUpPDFText]
         super.init(element)
     }
 
@@ -216,7 +261,14 @@ final class PDFReadableElement: ReadableElement {
     private func extendAroundTracked() {
         guard let loaded = loadedPages else { return }
         let page = tracked.flatMap { leaf(containing: $0.lowerBound)?.page } ?? loaded.lowerBound
-        setWindow(min(loaded.lowerBound, max(page - 1, 0))..<max(loaded.upperBound, min(page + 2, pages.count)))
+        let near = max(page - 1, 0)..<min(page + 2, pages.count)
+        var window = min(loaded.lowerBound, near.lowerBound)..<max(loaded.upperBound, near.upperBound)
+        if window.count > Self.maxLoadedPages {
+            let isBehindLarger = near.lowerBound - window.lowerBound >= window.upperBound - near.upperBound
+            window = isBehindLarger ? near.lowerBound..<window.upperBound : window.lowerBound..<near.upperBound
+            if window.count > Self.maxLoadedPages { window = near }
+        }
+        setWindow(window)
         for _ in 0..<20 {
             guard let loaded = loadedPages, loaded.upperBound < pages.count, let tracked,
                 !hasText(in: min(tracked.upperBound, textLength)..<textLength)
@@ -260,8 +312,8 @@ final class PDFReadableElement: ReadableElement {
         setWindow(page..<page + 1)
     }
 
-    /// Re-lays out the text, keeping `tracked` on the same text.
-    private func setWindow(_ window: Range<Int>) {
+    /// Re-lays out the text, keeping `tracked` and its pieces on the same text.
+    func setWindow(_ window: Range<Int>) {
         guard window != loadedPages else { return }
         let anchors = tracked.map { (anchor(at: $0.lowerBound), anchor(at: $0.upperBound)) }
         for page in window where pageLeaves[page] == nil {
@@ -271,18 +323,25 @@ final class PDFReadableElement: ReadableElement {
         pageTexts = pageTexts.filter { window.contains($0.key) }
         loadedPages = window
         layout()
-        if let (lower, upper) = anchors, let lower = lower.flatMap(offset(of:)) {
-            tracked = Selection(lower..<max(lower, upper.flatMap(offset(of:)) ?? lower))
+        if let (lower, upper) = anchors, let lower = lower.map(offset(of:)) {
+            tracked = Selection(lower..<max(lower, upper.map(offset(of:)) ?? lower))
+        }
+        // Their parts index the old `leaves`
+        if !pieces.isEmpty {
+            let rebuilt = tracked.flatMap(pieces(for:)) ?? []
+            pieces = rebuilt.count == pieces.count ? rebuilt : []
         }
     }
 
-    private func anchor(at offset: Int) -> (page: Int, index: Int, delta: Int)? {
+    private func anchor(at offset: Int) -> Anchor? {
         guard let leaf = leaf(containing: offset) else { return nil }
-        return (leaf.page, leaf.index, min(offset - leaf.offset, leaf.length))
+        return Anchor(page: leaf.page, index: leaf.index, delta: min(offset - leaf.offset, leaf.length))
     }
 
-    private func offset(of anchor: (page: Int, index: Int, delta: Int)) -> Int? {
-        leaves.first { $0.page == anchor.page && $0.index == anchor.index }.map { $0.offset + anchor.delta }
+    private func offset(of anchor: Anchor) -> Int {
+        if let leaf = leaves.first(where: { $0.page == anchor.page && $0.index == anchor.index }) { return leaf.offset + anchor.delta }
+        // Its leaf was left out since (a header confirmed later): the next leaf's start
+        return leaves.first { ($0.page, $0.index) > (anchor.page, anchor.index) }?.offset ?? textLength
     }
 
     // MARK: Text
@@ -320,9 +379,13 @@ final class PDFReadableElement: ReadableElement {
 
         for page in loadedPages ?? 0..<0 {
             for (index, leaf) in (pageLeaves[page] ?? []).enumerated() {
+                if let key = leaf.marginKey, confirmedMarginKeys.contains(key) {
+                    Log.accessibility.debug("pdf: page \(page): skipping header/footer confirmed since \(leaf.info.text)")
+                    continue
+                }
                 // Deferring stops at the page after the open sentence's.
                 if let previous, Self.runsOn(previous.info), page <= previousPage + 1 {
-                    if Self.isSmaller(leaf.info.fontSize, than: previous.info.fontSize) {
+                    if Self.isSmaller(leaf.bodySize, than: previous.bodySize) {
                         deferred.append((page, index))
                         continue
                     }
@@ -360,13 +423,71 @@ final class PDFReadableElement: ReadableElement {
         }
     }
 
-    /// Depth first, without headers and footers (a single short line in the top or bottom margin).
+    /// Depth first, without running headers/footers (a frameless one must match one confirmed by frame on any page).
     private func leaves(ofPage page: Int) -> ([PageLeaf], [PageText]) {
         guard pages.indices.contains(page) else { return ([], []) }
-        let pageFrame = try? pages[page].attribute(.frame)
+        let statics = staticTexts(ofPage: page)
+        let candidates = cleansUp ? marginCandidates(statics, page: page) : [:]
+        var nearbyKeys: Set<String> = []
+        if cleansUp {
+            setMarginKeys(MarginKeys(candidates, statics: statics), ofPage: page)
+            let nearby = (max(page - 2, 0)...min(page + 2, pages.count - 1)).filter { $0 != page }.map(marginKeys(ofPage:))
+            nearbyKeys = Set(nearby.flatMap(\.all))
+        }
         var leaves: [PageLeaf] = []
         var texts: [PageText] = []
-        // (element, nearest ancestor with several children, parent is a heading)
+        for (index, staticText) in statics.enumerated() {
+            let (element, value, group, inHeading) = (staticText.element, staticText.value, staticText.group, staticText.inHeading)
+            let isSettable = element.isSettable(.selectedTextRange)
+            texts.append(PageText(element: element, value: value, isSettable: isSettable))
+            let (flat, lineBreaks) = Self.flattened(value)
+            let rule = Self.ruleLength(value)
+            var units = Array(flat.utf16)
+            units.replaceSubrange(..<rule, with: repeatElement(0x20, count: rule))
+            guard units.contains(where: { !Self.isBlank($0) }) else { continue }
+            if let candidate = candidates[index], (candidate.inMargin ? nearbyKeys : confirmedMarginKeys).contains(candidate.key) {
+                Log.accessibility.debug("pdf: page \(page): skipping header/footer \(flat)")
+                continue
+            }
+            Self.dehyphenate(&units, lineBreaks: lineBreaks, isWord: Self.isWord)
+            if let lineBreak = Self.headingEnd(of: element, units: units, lineBreaks: lineBreaks) { units[lineBreak] = 0x0A }
+            let font = Self.font(of: element, units: units)
+            let text = String(repeating: " ", count: rule) + (String(value.utf16.dropFirst(rule)) ?? "")
+            leaves.append(
+                PageLeaf(
+                    element: element, units: units, lineBreaks: lineBreaks,
+                    isSettable: isSettable, group: group,
+                    info: LeafInfo(text: text, fontSize: font.size, isBold: font.isBold, isHeading: inHeading),
+                    bodySize: font.bodySize, isMarked: font.startsSuperscript || Self.startsWithMark(text),
+                    marginKey: candidates[index].flatMap { $0.inMargin ? nil : $0.key }))
+        }
+        guard cleansUp else { return (leaves, texts) }
+        let pageFrame = try? pages[page].attribute(.frame)
+        let footnotes = Self.footnoteStart(leaves.map { ($0.bodySize, $0.units.count, $0.isMarked) }) { index in
+            guard let pageFrame, let frame = try? leaves[index].element.attribute(.frame), !frame.isEmpty, frame.minY.isFinite
+            else { return nil }
+            return frame.minY > pageFrame.midY
+        }
+        let labels = Set(
+            leaves[footnotes...].flatMap { leaf in
+                leaf.info.text.split(whereSeparator: \.isNewline).enumerated().flatMap { line, text in
+                    (line == 0 && leaf.isMarked) || Self.startsWithMark(String(text)) ? Self.footnoteLabels(ofLine: String(text)) : []
+                }
+            })
+        // Small print that only looks marked (table rows, numbered steps) has no matching mark in the body
+        let isConfirmed = footnotes < leaves.count && hasMark(in: leaves[..<footnotes], labels: labels)
+        footnoteLabels[page] = isConfirmed ? labels : []
+        if isConfirmed, !pagesReadingFootnotes.contains(page) {
+            footnoteLeaves[page] = leaves[footnotes...].map(\.element)
+            Log.accessibility.debug("pdf: page \(page): skipping \(leaves.count - footnotes) footnote leaves")
+            leaves.removeSubrange(footnotes...)
+        }
+        return (leaves, texts)
+    }
+
+    /// Text leaves depth first.
+    private func staticTexts(ofPage page: Int) -> [StaticText] {
+        var statics: [StaticText] = []
         var stack: [(AXElement, AXElement?, Bool)] = [(pages[page], nil, false)]
         while let (element, group, inHeading) = stack.popLast() {
             let role = try? element.role()
@@ -376,44 +497,130 @@ final class PDFReadableElement: ReadableElement {
                 stack += children.reversed().map { ($0, childGroup, role == .heading) }
                 continue
             }
-            let value: String = (try? element.attribute(.value)) ?? ""
-            let isSettable = element.isSettable(.selectedTextRange)
-            texts.append(PageText(element: element, value: value, isSettable: isSettable))
-            let (flat, lineBreaks) = Self.flattened(value)
-            guard flat.utf16.contains(where: { !Self.isBlank($0) }) else { continue }
-            if lineBreaks.isEmpty, flat.count <= 80, let pageFrame, let frame = try? element.attribute(.frame),
-                Self.isInMargin(frame, of: pageFrame)
-            {
-                Log.accessibility.debug("pdf: page \(page): skipping header/footer \(flat)")
-                continue
-            }
-            var units = Array(flat.utf16)
-            Self.dehyphenate(&units, lineBreaks: lineBreaks, isWord: Self.isWord)
-            leaves.append(
-                PageLeaf(
-                    element: element, units: units, lineBreaks: lineBreaks,
-                    isSettable: isSettable, group: group,
-                    info: LeafInfo(text: value, fontSize: Self.fontSize(of: element, length: units.count), isHeading: inHeading)))
+            statics.append(StaticText(element: element, value: (try? element.attribute(.value)) ?? "", group: group, inHeading: inHeading))
         }
-        let footnotes = Self.footnoteStart(leaves.map { ($0.info.fontSize, $0.units.count) }) { index in
-            guard let pageFrame, let frame = try? leaves[index].element.attribute(.frame), !frame.isEmpty, frame.minY.isFinite
-            else { return nil }
-            return frame.minY > pageFrame.midY
-        }
-        if footnotes < leaves.count {
-            Log.accessibility.debug("pdf: page \(page): skipping \(leaves.count - footnotes) footnote leaves")
-            leaves.removeSubrange(footnotes...)
-        }
-        return (leaves, texts)
+        return statics
     }
 
-    /// Where the trailing leaves in a font smaller than the page's body text start, unless `isLow` says they're in the
-    /// upper half (nil: unknown). `leaves.count` if none.
-    nonisolated static func footnoteStart(_ leaves: [(fontSize: CGFloat?, length: Int)], isLow: (Int) -> Bool?) -> Int {
-        guard let body = dominantSize(leaves) else { return leaves.count }
+    /// Possible running headers/footers by index in `statics`: single short lines in the top or bottom margin, or
+    /// (no frame) among the page's first or last two lines.
+    private func marginCandidates(_ statics: [StaticText], page: Int) -> [Int: (key: String, inMargin: Bool)] {
+        let pageFrame = try? pages[page].attribute(.frame)
+        let nonBlank = statics.indices.filter { statics[$0].value.contains { !$0.isWhitespace } }
+        let edges = Set(nonBlank.prefix(2) + nonBlank.suffix(2))
+        var candidates: [Int: (key: String, inMargin: Bool)] = [:]
+        for index in nonBlank {
+            let value = statics[index].value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.contains(where: \.isNewline), value.count <= 80 else { continue }
+            if let pageFrame, let frame = try? statics[index].element.attribute(.frame), !frame.isEmpty, frame.minY.isFinite {
+                if Self.isInMargin(frame, of: pageFrame) { candidates[index] = (Self.marginKey(value), true) }
+            } else if edges.contains(index) {
+                candidates[index] = (Self.marginKey(value), false)
+            }
+        }
+        return candidates
+    }
+
+    /// A page's margin candidates' keys: all, and those confirmed in the margin by their frame.
+    private struct MarginKeys {
+        var all: Set<String> = []
+        var confirmed: Set<String> = []
+        /// A candidate that had no frame (page off screen): the keys are computed again once it has one.
+        var frameless: AXElement?
+
+        init(_ candidates: [Int: (key: String, inMargin: Bool)], statics: [StaticText]) {
+            for (index, candidate) in candidates {
+                all.insert(candidate.key)
+                if candidate.inMargin { confirmed.insert(candidate.key) } else { frameless = statics[index].element }
+            }
+        }
+    }
+
+    private func marginKeys(ofPage page: Int) -> MarginKeys {
+        if let keys = pageMarginKeys[page], !(keys.frameless.map(Self.hasFrame) ?? false) { return keys }
+        let statics = staticTexts(ofPage: page)
+        let keys = MarginKeys(marginCandidates(statics, page: page), statics: statics)
+        setMarginKeys(keys, ofPage: page)
+        return keys
+    }
+
+    private func setMarginKeys(_ keys: MarginKeys, ofPage page: Int) {
+        pageMarginKeys[page] = keys
+        confirmedMarginKeys.formUnion(keys.confirmed)
+    }
+
+    private static func hasFrame(_ element: AXElement) -> Bool {
+        guard let frame = try? element.attribute(.frame) else { return false }
+        return !frame.isEmpty && frame.minY.isFinite
+    }
+
+    /// Page numbers (digits, roman numerals) normalized, so "Page 3 of 9" and "xii" match on other pages.
+    nonisolated static func marginKey(_ text: String) -> String {
+        var key = text.lowercased()
+        for pattern in [#"\d+"#, #"\b[ivxlcdm]{1,6}\b"#] {
+            key = key.replacingOccurrences(of: pattern, with: "#", options: .regularExpression)
+        }
+        return key.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// Where the footnotes start: the first marked leaf among the trailing leaves in a font smaller than the page's
+    /// body text, unless `isLow` says it's in the upper half (nil: unknown). `leaves.count` if none.
+    nonisolated static func footnoteStart(_ leaves: [(fontSize: CGFloat?, length: Int, isMarked: Bool)], isLow: (Int) -> Bool?) -> Int {
+        guard let body = dominantSize(leaves.map { ($0.fontSize, $0.length) }) else { return leaves.count }
         var start = leaves.count
-        while start > 0, isSmaller(leaves[start - 1].fontSize, than: body), isLow(start - 1) != false { start -= 1 }
-        return start
+        while start > 0, isSmaller(leaves[start - 1].fontSize, than: body) { start -= 1 }
+        return leaves.indices[start...].first { leaves[$0].isMarked && isLow($0) != false } ?? leaves.count
+    }
+
+    /// The mark a footnote starts with, digits as ASCII: "12. Text" → "12", "[3]" → "3", "¹Text" → "1", "a Jer." → "a",
+    /// "†Text" → "†".
+    nonisolated static func footnoteLabel(_ text: String) -> String? {
+        let start = text.drop { $0.isWhitespace || $0 == "[" || $0 == "(" }
+        let digits = start.prefix { $0.wholeNumberValue != nil }
+        if !digits.isEmpty { return digits.map { String($0.wholeNumberValue!) }.joined() }
+        let symbols = start.prefix { "*†‡§¶".contains($0) }
+        if !symbols.isEmpty { return String(symbols) }
+        return start.first.flatMap { $0.isLowercase ? String($0) : nil }
+    }
+
+    /// `footnoteLabel`, and for scripture ("19 a Text", "1 1a Text") the letter too: the body marks are letters.
+    nonisolated static func footnoteLabels(ofLine text: String) -> [String] {
+        guard let label = footnoteLabel(text) else { return [] }
+        let verse = #"^\s*\d{1,3}\s*\d{0,3}\s*([a-z])(?:\s|$)"#
+        guard let match = text.range(of: verse, options: .regularExpression) else { return [label] }
+        let letter = text[match].last { $0.isLetter }.map(String.init)
+        return [label] + (letter.map { [$0] } ?? [])
+    }
+
+    /// Whether a footnote label is a mark in the body: glued to the text, a leaf of its own, else a small font run.
+    private func hasMark(in body: ArraySlice<PageLeaf>, labels: Set<String>) -> Bool {
+        if body.contains(where: { leaf in labels.contains { Self.hasGluedMark($0, in: leaf.info.text) } }) { return true }
+        if body.contains(where: { labels.contains($0.info.text.trimmingCharacters(in: .whitespacesAndNewlines)) }) { return true }
+        return body.contains { leaf in
+            leaf.isSettable
+                && !Self.markerRanges(fontRuns(of: leaf.element, length: leaf.units.count), in: leaf.info.text, labels: labels).isEmpty
+        }
+    }
+
+    /// A digit or symbol label glued to a word's end: "ruling.12 Next", "boxes*", not "Form 1212" (letters can't be told).
+    nonisolated static func hasGluedMark(_ label: String, in text: String) -> Bool {
+        guard !label.isEmpty, !label.contains(where: \.isLetter) else { return false }
+        let superscripts = Array("⁰¹²³⁴⁵⁶⁷⁸⁹")
+        let ascii = String(text.map { char in superscripts.firstIndex(of: char).map { Character(String($0)) } ?? char })
+        let pattern = #"(?<=[\p{L}.,;:?!)\]”’"])"# + NSRegularExpression.escapedPattern(for: label) + #"(?=[\s\p{P}\p{S}]|$)"#
+        return ascii.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    /// UTF-16 length of the rule lines ("——————", "____") a leaf starts with, as before footnotes: no words to read.
+    nonisolated static func ruleLength(_ text: String) -> Int {
+        let rule = #"^(?:\s*(?:[-‐‑‒–—―⸺⸻_─━][ \t]*){2,}(?:\R|$))+"#
+        return text.range(of: rule, options: .regularExpression).map { text.utf16.distance(from: text.startIndex, to: $0.upperBound) } ?? 0
+    }
+
+    /// "1 Text", "12. Text", "[3]", "(4)", "a Jer. 5:3", "*Text", "¹Text".
+    nonisolated static func startsWithMark(_ text: String) -> Bool {
+        let mark = #"^\s*(?:(?:\d{1,3}|[a-z]|\[\d{1,3}\]|\(\d{1,3}\))[.):]?(?:\s|$)|[*†‡§¶¹²³⁰⁴-⁹])"#
+        return text.range(of: mark, options: .regularExpression) != nil
     }
 
     /// The font size most characters have.
@@ -430,24 +637,32 @@ final class PDFReadableElement: ReadableElement {
     /// In-leaf ranges of footnote marks; only selectable leaves have font info.
     private func markers(of leaf: Leaf) -> [NSRange] {
         if let cached = markerCache[leaf.element] { return cached }
-        var runs: [(range: NSRange, fontSize: CGFloat?)] = []
-        if leaf.isSettable,
-            let string = try? leaf.element.attribute(.attributedStringForRange, for: CFRange(location: 0, length: leaf.length))?
-                .string
-        {
-            string.enumerateAttribute(NSAttributedString.Key("AXFont"), in: NSRange(location: 0, length: string.length)) {
-                font, range, _ in
-                runs.append((range, (font as? [String: Any]).flatMap(Self.fontSize(in:))))
-            }
-        }
-        let markers = runs.isEmpty ? [] : Self.markerRanges(runs, in: string(in: Selection(leaf.offset..<leaf.end)))
+        let labels = footnoteLabels[leaf.page] ?? []
+        let runs = leaf.isSettable && !labels.isEmpty ? fontRuns(of: leaf.element, length: leaf.length) : []
+        let markers = runs.isEmpty ? [] : Self.markerRanges(runs, in: string(in: Selection(leaf.offset..<leaf.end)), labels: labels)
         if markerCache.count > 2000 { markerCache = [:] }
         markerCache[leaf.element] = markers
         return markers
     }
 
+    /// A leaf's font sizes by run (one AX call, ~50 ms), cached.
+    private func fontRuns(of element: AXElement, length: Int) -> [FontRun] {
+        if let cached = runCache[element] { return cached }
+        var runs: [FontRun] = []
+        if let string = try? element.attribute(.attributedStringForRange, for: CFRange(location: 0, length: length))?.string {
+            string.enumerateAttribute(.axFont, in: NSRange(location: 0, length: string.length)) {
+                font, range, _ in
+                runs.append(FontRun(range: range, fontSize: (font as? [String: Any]).flatMap(Self.fontSize(in:))))
+            }
+        }
+        if runCache.count > 2000 { runCache = [:] }
+        runCache[element] = runs
+        return runs
+    }
+
     /// Runs of 1–3 alphanumerics or `*†‡§¶` under 75% of the leaf's dominant font size, trimmed.
-    nonisolated static func markerRanges(_ runs: [(range: NSRange, fontSize: CGFloat?)], in text: String) -> [NSRange] {
+    /// Only marks matching one of `labels` (the page's footnotes) count: exponents, units and endnote numbers are read.
+    nonisolated static func markerRanges(_ runs: [FontRun], in text: String, labels: Set<String>) -> [NSRange] {
         guard let body = dominantSize(runs.map { ($0.fontSize, $0.range.length) }) else { return [] }
         let text = text as NSString
         let markChars = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "*†‡§¶"))
@@ -455,7 +670,9 @@ final class PDFReadableElement: ReadableElement {
             guard let size = run.fontSize, size < body * 0.75, NSMaxRange(run.range) <= text.length else { return nil }
             let mark = text.substring(with: run.range)
             let trimmed = mark.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard (1...3).contains(trimmed.count), trimmed.unicodeScalars.allSatisfy(markChars.contains) else { return nil }
+            guard (1...3).contains(trimmed.count), trimmed.unicodeScalars.allSatisfy(markChars.contains),
+                footnoteLabel(trimmed).map(labels.contains) == true
+            else { return nil }
             let inner = (mark as NSString).range(of: trimmed)
             return NSRange(location: run.range.location + inner.location, length: inner.length)
         }
@@ -467,15 +684,59 @@ final class PDFReadableElement: ReadableElement {
         return frame.maxY <= pageFrame.minY + margin || frame.minY >= pageFrame.maxY - margin
     }
 
-    /// The larger of the middle and first characters' sizes (one may be a superscript).
-    private static func fontSize(of element: AXElement, length: Int) -> CGFloat? {
-        [length / 2, 0].compactMap { index -> CGFloat? in
-            guard let string = try? element.attribute(.attributedStringForRange, for: CFRange(location: index, length: 1))?.string,
-                string.length > 0,
-                let font = string.attribute(NSAttributedString.Key("AXFont"), at: 0, effectiveRange: nil) as? [String: Any]
+    /// Size: max of first/middle char; body size: median with the last; bold: all three; superscript: first <75% of middle.
+    private static func font(of element: AXElement, units: [UInt16])
+        -> (size: CGFloat?, bodySize: CGFloat?, isBold: Bool?, startsSuperscript: Bool)
+    {
+        let fonts = [units.count / 2, 0, units.lastIndex { !isBlank($0) } ?? 0].map { font(of: element, at: $0) }
+        let startsSuperscript = fonts[1]?.size.map { first in fonts[0]?.size.map { first < $0 * 0.75 } ?? false } ?? false
+        return (fonts.prefix(2).compactMap { $0?.size }.max(), bodySize(fonts.map { $0?.size }), isBold(fonts), startsSuperscript)
+    }
+
+    /// The median of the middle, first and last characters' sizes; else the middle's.
+    nonisolated static func bodySize(_ sizes: [CGFloat?]) -> CGFloat? {
+        let known = sizes.compactMap { $0 }.sorted()
+        return known.count == 3 ? known[1] : sizes.first.flatMap { $0 } ?? known.first
+    }
+
+    private static func font(of element: AXElement, at index: Int) -> (size: CGFloat?, name: String?)? {
+        guard let string = try? element.attribute(.attributedStringForRange, for: CFRange(location: index, length: 1))?.string,
+            string.length > 0,
+            let font = string.attribute(.axFont, at: 0, effectiveRange: nil) as? [String: Any]
+        else { return nil }
+        return (fontSize(in: font), font["AXFontName"] as? String)
+    }
+
+    /// nil if any font name is unknown.
+    private static func isBold(_ fonts: [(size: CGFloat?, name: String?)?]) -> Bool? {
+        let names = fonts.map { $0?.name }
+        return names.contains(nil) ? nil : names.allSatisfy { isBold(fontName: $0!) }
+    }
+
+    /// The line break ending a heading the leaf starts with: up to 3 lines bold (start and end) or larger, before a
+    /// line that isn't and starts with a capital.
+    private static func headingEnd(of element: AXElement, units: [UInt16], lineBreaks: [Int]) -> Int? {
+        var lineStart = 0
+        for lineBreak in lineBreaks.prefix(3) {
+            guard let lineEnd = units[lineStart..<lineBreak].lastIndex(where: { !isBlank($0) }),
+                let next = units[(lineBreak + 1)...].firstIndex(where: { !isBlank($0) }),
+                Unicode.Scalar(units[next]).map(CharacterSet.uppercaseLetters.contains) == true
             else { return nil }
-            return fontSize(in: font)
-        }.max()
+            let line = [lineStart, lineEnd].map { font(of: element, at: $0) }
+            let after = font(of: element, at: next)
+            let lineSize = line.compactMap { $0?.size }.min()
+            if isSmaller(after?.size, than: lineSize) || (isBold(line) == true && isBold([after]) == false) { return lineBreak }
+            // Only a bold heading runs on to more lines
+            guard isBold(line) == true, isBold([after]) == true else { return nil }
+            lineStart = lineBreak + 1
+        }
+        return nil
+    }
+
+    /// PostScript names carry the weight: "Arial-BoldMT", "ABCDEF+Inter-SemiBold", "Arial-Black".
+    nonisolated static func isBold(fontName: String) -> Bool {
+        let name = fontName.lowercased()
+        return ["bold", "black", "heavy"].contains { name.contains($0) }
     }
 
     // PDFKit vends AXFontSize as a string ("10.296")
@@ -519,14 +780,18 @@ final class PDFReadableElement: ReadableElement {
         }
     }
 
-    /// Continues when `previous` ends mid-sentence in about the same font, unless it's a heading (`AXHeading`, or one
-    /// title-case line before a capital).
+    /// Continues when `previous` ends mid-sentence in about the same font, unless it's a heading (`AXHeading`, one
+    /// title-case line, or bold before regular text; each before a capital).
     nonisolated static func join(_ previous: LeafInfo, _ next: LeafInfo, isWord: (String) -> Bool) -> Join {
         guard !previous.isHeading, endsMidSentence(previous.text),
             !isSmaller(next.fontSize, than: previous.fontSize), !isSmaller(previous.fontSize, than: next.fontSize),
             let first = next.text.unicodeScalars.first(where: { !CharacterSet.whitespacesAndNewlines.contains($0) })
         else { return .none }
-        if previous.isSingleLine, isTitleCase(previous.text), CharacterSet.uppercaseLetters.contains(first) { return .none }
+        if CharacterSet.uppercaseLetters.contains(first),
+            (previous.isSingleLine && isTitleCase(previous.text)) || (previous.isBold == true && next.isBold == false)
+        {
+            return .none
+        }
         let end = previous.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if end.hasSuffix("-"), CharacterSet.lowercaseLetters.contains(first) {
             let before = end.dropLast().reversed().prefix { $0.isLetter }
@@ -620,8 +885,8 @@ final class PDFReadableElement: ReadableElement {
         var parts: [Part] = []
         for (index, leaf) in leaves.enumerated().dropFirst(first) {
             guard leaf.offset < selection.upperBound || parts.isEmpty else { break }
-            let lower = min(max(selection.lowerBound, leaf.offset), leaf.end)
-            let upper = min(max(selection.upperBound, lower), leaf.end)
+            let lower = selection.lowerBound.clamped(to: leaf.offset...leaf.end)
+            let upper = selection.upperBound.clamped(to: lower...leaf.end)
             guard upper > lower || parts.isEmpty else { continue }
             parts.append(
                 Part(leaf: index, element: leaf.element, lineBreaks: leaf.lineBreaks, range: CFRange(location: lower - leaf.offset, length: upper - lower)))
@@ -677,7 +942,7 @@ final class PDFReadableElement: ReadableElement {
     }
 
     /// From the visible leaf reporting a selected range, else where `report` first occurs on the visible pages.
-    private func locate(_ report: String) -> Selection? {
+    private func locate(_ report: String, inFootnotes: Bool = true) -> Selection? {
         let visible = visiblePages()
         for page in visible {
             ensureLoaded(page: page)
@@ -689,6 +954,9 @@ final class PDFReadableElement: ReadableElement {
                 return Selection(start..<Self.end(of: report, in: text, from: start))
             }
         }
+        if inFootnotes, let page = footnotePages(on: visible, where: Self.reportsSelection).first {
+            return readFootnotes(on: page, locating: report)
+        }
         // Our text differs where lines and leaves are joined: search for the first line
         let firstLine = report.prefix { !$0.isNewline && $0 != "-" }
         let needle = firstLine.isEmpty ? report : String(firstLine)
@@ -697,20 +965,51 @@ final class PDFReadableElement: ReadableElement {
         guard let lower = pageLeaves.first?.offset, let upper = pageLeaves.last?.end else { return nil }
         let found = (text as NSString).range(of: needle, options: .literal, range: NSRange(location: lower, length: upper - lower))
         guard found.location != NSNotFound else {
+            let needle = Self.comparable(report)
+            // A short or repeated text is more likely a stale selection elsewhere in the document
+            if inFootnotes, Self.isDistinctive(report) {
+                let pages = footnotePages(on: visible, where: { Self.comparable(try $0.attribute(.value) ?? "").contains(needle) })
+                if pages.count == 1 { return readFootnotes(on: pages[0], locating: report) }
+            }
             Log.accessibility.debug("pdf: user selection not found on visible pages \(visible)")
             return nil
         }
         return Selection(found.location..<Self.end(of: report, in: text, from: found.location))
     }
 
+    /// The page of each skipped footnote leaf on the visible pages matching `predicate`.
+    private func footnotePages(on visible: [Int], where predicate: (AXElement) throws -> Bool) -> [Int] {
+        visible.flatMap { page in (footnoteLeaves[page] ?? []).filter { (try? predicate($0)) == true }.map { _ in page } }
+    }
+
+    /// At least 2 words and 12 letters.
+    nonisolated static func isDistinctive(_ report: String) -> Bool {
+        report.split { !$0.isLetter && !$0.isNumber }.count >= 2 && report.filter(\.isLetter).count >= 12
+    }
+
+    /// Non-selectable (tagged) leaves report a range regardless; PDFKit reports none as `NSNotFound`.
+    private static func reportsSelection(_ leaf: AXElement) throws -> Bool {
+        guard leaf.isSettable(.selectedTextRange), let range = try leaf.attribute(.selectedTextRange) else { return false }
+        return range.location != kCFNotFound && range.location != NSNotFound
+    }
+
+    /// Puts the page's footnotes in the text, then locates the user's selection again.
+    private func readFootnotes(on page: Int, locating report: String) -> Selection? {
+        Log.accessibility.debug("pdf: user selected in a footnote on page \(page): reading the page's footnotes")
+        pagesReadingFootnotes.insert(page)
+        footnoteLeaves[page] = nil
+        pageLeaves[page] = nil
+        if let window = loadedPages {
+            loadedPages = nil
+            setWindow(window)
+        }
+        return locate(report, inFootnotes: false)
+    }
+
     /// Selects the first piece (the rest follow in `didReach(_:)`), else highlights.
     private func apply(_ selection: Selection) {
         pieces = []
-        let parts = parts(of: selection).filter { part in
-            part.range.length == 0
-                || hasText(in: leaves[part.leaf].offset + part.range.location..<leaves[part.leaf].offset + part.range.location + part.range.length)
-        }
-        guard !parts.isEmpty, let pieces = pieces(of: parts, in: selection) else {
+        guard let pieces = pieces(for: selection) else {
             highlight(selection.isEmpty ? nil : selection)
             return
         }
@@ -721,6 +1020,16 @@ final class PDFReadableElement: ReadableElement {
         } else {
             highlight(selection.isEmpty ? nil : selection)
         }
+    }
+
+    /// nil if it has no text or a page can't select.
+    private func pieces(for selection: Selection) -> [Piece]? {
+        let parts = parts(of: selection).filter { part in
+            part.range.length == 0
+                || hasText(in: leaves[part.leaf].offset + part.range.location..<leaves[part.leaf].offset + part.range.location + part.range.length)
+        }
+        guard !parts.isEmpty else { return nil }
+        return pieces(of: parts, in: selection)
     }
 
     /// A selectable leaf's part alone; consecutive non-selectable ones on a page together. nil if a page can't select.
@@ -848,7 +1157,8 @@ final class PDFReadableElement: ReadableElement {
     }
 
     private func highlight(_ selection: Selection?) {
-        guard let selection, case let parts = parts(of: selection), !parts.isEmpty else {
+        let parts = selection.map { self.parts(of: $0) } ?? []
+        guard !parts.isEmpty else {
             isHighlighting = false
             overlay.hide()
             return
@@ -880,4 +1190,8 @@ final class PDFReadableElement: ReadableElement {
             return rect
         }
     }
+}
+
+extension NSAttributedString.Key {
+    fileprivate static let axFont = Self("AXFont")
 }

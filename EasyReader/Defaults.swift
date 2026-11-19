@@ -59,6 +59,7 @@ extension Defaults.Keys {
     static let scrollSelectionIntoView = Key<Bool>("ScrollSelectionIntoView", default: true, suite: .app)
     static let scrollPadding = Key<Int>("ScrollPadding", default: 16, suite: .app)
     static let scrollDuration = Key<Double>("ScrollDuration", default: 0.3, suite: .app)
+    static let cleanUpPDFText = Key<Bool>("CleanUpPDFText", default: true, suite: .app)
     static let readSelectedTextFallback = Key<Bool>("ReadSelectedTextFallback", default: false, suite: .app)
     static let readerOpensNewWindows = Key<Bool>("ReaderOpensNewWindows", default: true, suite: .app)
     static let readerDarkBackground = Key<Bool>("ReaderDarkBackground", default: true, suite: .app)

@@ -14,6 +14,7 @@ struct SettingsReadingView: View {
     @Default(.scrollSelectionIntoView) private var scrollSelectionIntoView
     @Default(.scrollPadding) private var scrollPadding
     @Default(.scrollDuration) private var scrollDuration
+    @Default(.cleanUpPDFText) private var cleanUpPDFText
 
     private var unit: String { selectionUnit == .paragraph ? "paragraph" : "sentence" }
 
@@ -165,6 +166,18 @@ struct SettingsReadingView: View {
                             "Chromium browsers can take up to half a second per skip, so short intervals skip as fast as they can there."
                         )
                     }
+
+                    HStack(spacing: 4) {
+                        Toggle("Try cleaning up PDF text", isOn: $cleanUpPDFText)
+                        InfoButton(
+                            "In PDFs, skip page numbers, running headers and footnotes.",
+                            title: "Try Cleaning Up PDF Text",
+                            "On: in PDFs (like in Preview), EasyReader tries to skip running headers and footers (page numbers, titles repeated on each page), footnotes at the bottom of a page, and the small footnote marks in the text.",
+                            "These are guesses and can now and then skip real text. If something seems missing, turn this off. Selecting text inside a footnote reads it either way.",
+                            "Some cleanup always happens: lines are joined into sentences across line, column and page breaks, words split by a hyphen at a line end are read whole, and headings are read on their own.",
+                            "A change applies the next time you start reading."
+                        )
+                    }
                 }
             } label: {
                 Label("Playback", systemImage: "text.alignleft")
@@ -224,6 +237,7 @@ struct SettingsReadingView: View {
                         .scrollSelectionIntoView,
                         .scrollPadding,
                         .scrollDuration,
+                        .cleanUpPDFText,
                     ])
             }
         }

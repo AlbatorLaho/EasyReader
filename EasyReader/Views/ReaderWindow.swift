@@ -1,9 +1,10 @@
 import AppKit
 import Defaults
+import PDFKit
 import UniformTypeIdentifiers
 import WebKit
 
-/// A text window to read files, web pages or pasted text in, through the same AX path as any other app's text area.
+/// A window to read files, web pages, PDFs or pasted text in, through the same AX path as any other app's text area.
 @MainActor
 final class ReaderWindow: NSObject, NSWindowDelegate {
     nonisolated static let windowID = "ReaderWindow"
@@ -16,20 +17,27 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
 
     let window: NSWindow
     let textView: NSTextView
+    let textScrollView: NSScrollView
+    private let readerPDFView = ReaderPDFView()
+    /// Shown instead of the text view for PDFs.
+    var pdfView: PDFView { readerPDFView }
     private let loadingView = LoadingView()
     private var loadTask: Task<Void, Never>?
+    /// Counts loads, so one replaced by a newer load leaves the window to it.
+    private var loadCount = 0
     private var darkBackgroundTask: Task<Void, Never>?
 
     private static let font = NSFont.systemFont(ofSize: 18)
 
     static let contentTypes: [UTType] =
-        [.text, .rtfd, .flatRTFD, .webArchive]
+        [.text, .rtfd, .flatRTFD, .webArchive, .pdf]
         + ["org.openxmlformats.wordprocessingml.document", "com.microsoft.word.doc", "org.oasis-open.opendocument.text"].compactMap(UTType.init)
 
     private override init() {
         let scrollView = ReaderTextView.scrollableTextView()
         let textView = scrollView.documentView as! ReaderTextView
         self.textView = textView
+        textScrollView = scrollView
         window = NSWindow(
             contentRect: NSRect(origin: .zero, size: Self.defaultContentSize()), styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: true)
@@ -42,6 +50,11 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         textView.isIncrementalSearchingEnabled = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
+        readerPDFView.onDrop = { [weak self] url in self?.open(url) }
+        pdfView.autoresizingMask = [.width, .height]
+        pdfView.autoScales = true
+        pdfView.displayMode = .singlePageContinuous
+        pdfView.displaysPageBreaks = true
 
         let contentView = NSView()
         scrollView.frame = contentView.bounds
@@ -58,6 +71,7 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         ])
 
         window.identifier = NSUserInterfaceItemIdentifier(Self.windowID)
+        window.setAccessibilityIdentifier(UUID().uuidString)
         window.title = "Reader"
         window.contentView = contentView
         window.contentMinSize = NSSize(width: 320, height: 200)
@@ -122,12 +136,16 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         return reused ?? make()
     }
 
-    var isEmpty: Bool { textView.string.isEmpty && loadTask == nil }
+    var isEmpty: Bool { textView.string.isEmpty && pdfView.document == nil && loadTask == nil }
+
+    /// The view showing the content: the PDF view while it has a document, else the text view.
+    var documentView: NSView { pdfView.document != nil ? pdfView : textView }
 
     // Dark mode maps the document's colors like TextEdit's "Use Dark Background for Windows"; off, the text area stays light.
     private func applyDarkBackground(_ darkBackground: Bool) {
         textView.usesAdaptiveColorMappingForDarkAppearance = darkBackground
-        textView.enclosingScrollView?.appearance = darkBackground ? nil : NSAppearance(named: .aqua)
+        textScrollView.appearance = darkBackground ? nil : NSAppearance(named: .aqua)
+        pdfView.appearance = darkBackground ? nil : NSAppearance(named: .aqua)
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -197,24 +215,30 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
     func open(_ url: URL, thenRead: Bool = false) {
         loadTask?.cancel()
         let previousTitle = window.title
-        if !url.isFileURL {
-            loadingView.show("Loading \(url.host ?? url.absoluteString)…")
+        let isPage = Self.loadsAsPage(url)
+        if isPage {
+            loadingView.show("Loading \(Self.name(of: url))…")
             if isEmpty { window.title = "Loading…" }
             present { [weak self] in self?.loadingView.focusCancel() }
         }
+        loadCount += 1
+        let load = loadCount
         loadTask = Task {
             defer {
-                if loadingView.hasFocus { window.makeFirstResponder(textView) }
-                loadingView.isHidden = true
-                loadTask = nil
+                if load == loadCount {
+                    if loadingView.hasFocus { window.makeFirstResponder(documentView) }
+                    loadingView.isHidden = true
+                    loadTask = nil
+                }
             }
             do {
-                if url.isFileURL {
-                    try loadFile(url)
-                } else {
+                if isPage {
                     try await loadPage(url)
+                } else {
+                    try loadFile(url)
                 }
             } catch {
+                guard load == loadCount else { return }
                 if window.title == "Loading…" { window.title = previousTitle }
                 if !Task.isCancelled, (error as? URLError)?.code != .cancelled {
                     present()
@@ -228,7 +252,22 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Web pages and local HTML: fetched and imported like a page (out of process, media stripped, cancellable).
+    nonisolated static func loadsAsPage(_ url: URL) -> Bool {
+        !url.isFileURL || (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)?.conforms(to: .html) == true
+    }
+
+    private nonisolated static func name(of url: URL) -> String {
+        url.isFileURL ? url.lastPathComponent : url.host ?? url.absoluteString
+    }
+
     func loadFile(_ url: URL) throws {
+        if (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)?.conforms(to: .pdf) == true {
+            guard let document = PDFDocument(url: url) else { throw CocoaError(.fileReadCorruptFile, userInfo: [NSURLErrorKey: url]) }
+            show(document, title: url.lastPathComponent)
+            window.representedURL = url
+            return
+        }
         var attributes: NSDictionary?
         let text = try NSMutableAttributedString(url: url, options: [:], documentAttributes: &attributes)
         let documentAttributes = attributes as? [NSAttributedString.DocumentAttributeKey: Any] ?? [:]
@@ -239,12 +278,19 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         window.representedURL = url
     }
 
-    /// Also takes file URLs (tests).
+    /// Also takes file URLs.
     func loadPage(_ url: URL) async throws {
         let (data, response) = try await Self.fetch(url)
         try Task.checkCancellation()
         if let status = (response as? HTTPURLResponse)?.statusCode, !(200..<300).contains(status) {
             throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: "The server returned HTTP status \(status)."])
+        }
+        if response.mimeType == "application/pdf" || data.starts(with: Data("%PDF".utf8)) {
+            guard let document = PDFDocument(data: data) else { throw CocoaError(.fileReadCorruptFile) }
+            let name = (response.url ?? url).lastPathComponent
+            show(document, title: Self.pdfTitle(of: document) ?? (name.isEmpty || name == "/" ? Self.name(of: url) : name))
+            if url.isFileURL { window.representedURL = url }
+            return
         }
         let isHTML = response.mimeType?.contains("html") ?? true
         var encoding: String.Encoding?
@@ -262,35 +308,44 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         ]
         if let encoding { options[.characterEncoding] = encoding.rawValue }
         let text: NSAttributedString
+        var documentAttributes: [NSAttributedString.DocumentAttributeKey: Any] = [:]
         if isHTML, #available(macOS 12.0, *) {
             // Out of process: the main thread (and Cancel) stays responsive.
-            text = try await Self.importHTML(Self.withoutMedia(data, encoding: encoding), options: options)
+            (text, documentAttributes) = try await Self.importHTML(Self.withoutMedia(data, encoding: encoding), options: options)
             try Task.checkCancellation()
         } else if isHTML {
-            text = try NSAttributedString(data: Self.withoutMedia(data, encoding: encoding), options: options, documentAttributes: nil)
+            var attributes: NSDictionary?
+            text = try NSAttributedString(data: Self.withoutMedia(data, encoding: encoding), options: options, documentAttributes: &attributes)
+            documentAttributes = attributes as? [NSAttributedString.DocumentAttributeKey: Any] ?? [:]
         } else {
             let plain = try NSMutableAttributedString(data: data, options: options, documentAttributes: nil)
             plain.addAttribute(.font, value: Self.font, range: NSRange(location: 0, length: plain.length))
             text = plain
         }
         let title = isHTML ? Self.pageTitle(in: data, encoding: encoding) : nil
-        show(text, title: title ?? url.host ?? url.absoluteString)
+        show(text, title: title ?? Self.name(of: url), documentAttributes: documentAttributes)
+        if url.isFileURL { window.representedURL = url }
     }
 
     @available(macOS 12.0, *)
-    private static func importHTML(_ data: Data, options: [NSAttributedString.DocumentReadingOptionKey: Any]) async throws -> NSAttributedString {
+    private static func importHTML(
+        _ data: Data, options: [NSAttributedString.DocumentReadingOptionKey: Any]
+    ) async throws -> (NSAttributedString, [NSAttributedString.DocumentAttributeKey: Any]) {
         // Called back on main, where the caller is.
-        struct Result: @unchecked Sendable { let text: NSAttributedString }
-        return try await withCheckedThrowingContinuation { continuation in
-            NSAttributedString.loadFromHTML(data: data, options: options) { text, _, error in
+        struct Result: @unchecked Sendable {
+            let text: NSAttributedString
+            let attributes: [NSAttributedString.DocumentAttributeKey: Any]
+        }
+        let result = try await withCheckedThrowingContinuation { continuation in
+            NSAttributedString.loadFromHTML(data: data, options: options) { text, attributes, error in
                 if let text {
-                    continuation.resume(returning: Result(text: text))
+                    continuation.resume(returning: Result(text: text, attributes: attributes ?? [:]))
                 } else {
                     continuation.resume(throwing: error ?? CocoaError(.fileReadCorruptFile))
                 }
             }
         }
-        .text
+        return (result.text, result.attributes)
     }
 
     /// Images and embeds aren't read, and HTML import would wait for each one.
@@ -349,11 +404,9 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
     }
 
     func show(_ text: NSAttributedString, title: String, documentAttributes: [NSAttributedString.DocumentAttributeKey: Any] = [:]) {
-        if let reader = Self.reader, reader.state != .stopped, let readable = reader.readable as? ReadableElement,
-            readable.appDomain == Bundle.main.bundleIdentifier, readable.title == window.title
-        {
-            _ = reader.stop()
-        }
+        stopReadingThisWindow()
+        install(textScrollView)
+        pdfView.document = nil
         let (text, background) = Self.separatingPageBackground(text, documentAttributes: documentAttributes)
         textView.backgroundColor = background ?? .textBackgroundColor
         textView.textStorage?.setAttributedString(text)
@@ -363,6 +416,39 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         window.title = title
         window.representedURL = nil
         fitWidth(Self.preferredWidth(of: text, documentAttributes: documentAttributes))
+    }
+
+    /// Shows a PDF from its first page, in place of the text view.
+    func show(_ document: PDFDocument, title: String) {
+        stopReadingThisWindow()
+        pdfView.document = document
+        install(pdfView)
+        textView.textStorage?.setAttributedString(NSAttributedString())
+        textView.undoManager?.removeAllActions()
+        window.title = title
+        window.representedURL = nil
+    }
+
+    nonisolated static func pdfTitle(of document: PDFDocument) -> String? {
+        let title = (document.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title?.isEmpty == false ? title : nil
+    }
+
+    /// Puts the text's scroll view or the PDF view in the window, under the loading view.
+    private func install(_ view: NSView) {
+        guard let contentView = window.contentView, view.superview !== contentView else { return }
+        for other in [textScrollView, pdfView] where other !== view { other.removeFromSuperview() }
+        view.frame = contentView.bounds
+        contentView.addSubview(view, positioned: .below, relativeTo: loadingView)
+    }
+
+    private func stopReadingThisWindow() {
+        if let reader = Self.reader, reader.state != .stopped, let readable = reader.readable as? ReadableElement,
+            readable.appDomain == Bundle.main.bundleIdentifier,
+            (try? readable.handle.attribute(.window)?.attribute(.identifier)) == window.accessibilityIdentifier()
+        {
+            _ = reader.stop(immediately: true)
+        }
     }
 
     /// The page's background (the document's, else the one behind most of the text), removed from the text: HTML import leaves it in stripes.
@@ -436,15 +522,15 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
     private func present(then action: (@MainActor () -> Void)? = nil) {
         SettingsOpener.present(window) { [weak self] in
             guard let self else { return }
-            window.makeFirstResponder(textView)
+            window.makeFirstResponder(documentView)
             action?()
         }
     }
 
-    /// Reads the text view through AX: the app's focused element, so the window must be key.
+    /// Reads the text or PDF view through AX: the app's focused element, so the window must be key.
     private func startReading() -> Bool {
         guard let reader = Self.reader else { return false }
-        window.makeFirstResponder(textView)
+        window.makeFirstResponder(documentView)
         return reader.start(reading: .element(.application(pid: getpid()), fromFocused: true))
     }
 
@@ -463,9 +549,10 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
     static func content(of pasteboard: NSPasteboard, allowText: Bool) -> PasteboardContent? {
         if let url = (pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL])?.first {
             if url.isFileURL {
-                if let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType, contentTypes.contains(where: type.conforms(to:)) {
-                    return .url(url)
-                }
+                // Not its text: that's the file's path or name.
+                guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType, contentTypes.contains(where: type.conforms(to:))
+                else { return nil }
+                return .url(url)
             } else if webURL(url.absoluteString) != nil {
                 return .url(url)
             }
@@ -476,6 +563,13 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
             ?? pasteboard.string(forType: .string).map(plainText)
         guard let text, !text.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return .text(text)
+    }
+
+    /// Hands a dropped file or web link to `onDrop`; nil for other drops.
+    static func openDrop(_ sender: NSDraggingInfo, with onDrop: ((URL) -> Void)?) -> Bool? {
+        guard case .url(let url) = content(of: sender.draggingPasteboard, allowText: false) else { return nil }
+        onDrop?(url)
+        return true
     }
 
     static func plainText(_ string: String) -> NSAttributedString {
@@ -553,11 +647,27 @@ private final class ReaderTextView: NSTextView {
     var onDrop: ((URL) -> Void)?
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard case .url(let url) = ReaderWindow.content(of: sender.draggingPasteboard, allowText: false) else {
-            return super.performDragOperation(sender)
-        }
-        onDrop?(url)
-        return true
+        ReaderWindow.openDrop(sender, with: onDrop) ?? super.performDragOperation(sender)
+    }
+}
+
+/// Opens dropped files and web links, like the text view.
+private final class ReaderPDFView: PDFView {
+    var onDrop: ((URL) -> Void)?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        registerForDraggedTypes([.fileURL, .URL])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        ReaderWindow.content(of: sender.draggingPasteboard, allowText: false) != nil ? .copy : super.draggingEntered(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        ReaderWindow.openDrop(sender, with: onDrop) ?? super.performDragOperation(sender)
     }
 }
 

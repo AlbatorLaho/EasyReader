@@ -1,6 +1,8 @@
+import AVFoundation
 import AppKit
 import Defaults
 import Foundation
+import PDFKit
 import Testing
 
 @testable import EasyReader
@@ -88,6 +90,50 @@ extension IntegrationTests {
             throw ReaderTextAreaNotFound()
         }
 
+        private func readable(in reader: ReaderWindow) throws -> ReadableElement {
+            let app = AXElement.application(pid: getpid())
+            let windows = try #require(try app.attribute(.windows))
+            var queue = windows.filter { (try? $0.attribute(.identifier)) == reader.window.accessibilityIdentifier() }
+            while !queue.isEmpty {
+                let element = queue.removeFirst()
+                if let readable = try element.readableElement() { return readable }
+                queue += (try? element.attribute(.children)) ?? []
+            }
+            throw ReaderTextAreaNotFound()
+        }
+
+        /// New content stops reading its window, and only that one, even when another has the same title.
+        @Test func newContentStopsReadingOnlyItsWindow() async throws {
+            Defaults[.readerOpensNewWindows] = true
+            let recorder = StateRecorder()
+            let easyReader = EasyReader()
+            easyReader.delegate = recorder
+            easyReader.textSelector = NLTextSelector(unit: .paragraph)
+            ReaderWindow.reader = easyReader
+            Teardown.add {
+                easyReader.stop()
+                ReaderWindow.reader = nil
+                for readerWindow in ReaderWindow.windows { readerWindow.window.close() }
+            }
+            let text = NSAttributedString(string: Array(repeating: "Some words to read for a while.", count: 40).joined(separator: " "))
+            let first = ReaderWindow.current
+            first.show(text, title: "Same")
+            first.window.makeKeyAndOrderFront(nil)
+            let second = ReaderWindow.forNewContent()
+            #expect(second !== first)
+            second.show(text, title: "Same")
+            second.window.makeKeyAndOrderFront(nil)
+            await settle(0.3)
+            let reading = recorder.expect(.reading)
+            #expect(easyReader.start(reading: try readable(in: second)))
+            try await reading.wait(timeout: 5)
+            first.show(text, title: "Same")
+            #expect(easyReader.state == .reading)
+            let stopped = recorder.expect(.stopped)
+            second.show(text, title: "Same")
+            try await stopped.wait(timeout: 5)
+        }
+
         /// Fixed-width HTML tables (and the ODT made from them) wrap to the window instead of running past it.
         @Test(arguments: ["html", "odt"])
         func wrapsWideDocumentsToWindow(format: String) async throws {
@@ -144,7 +190,7 @@ extension IntegrationTests {
             #expect(reader.textView.enclosingScrollView?.appearance == nil)
         }
 
-        /// With "Open files in new windows", each file gets a window (the empty front one first); without, one window takes the first file.
+        /// With "Open each document in a new window", each file gets a window (the empty front one first); without, one window takes the first file.
         @Test(arguments: [false, true])
         func opensFilesPerWindowSetting(opensNewWindows: Bool) async throws {
             Defaults[.readerOpensNewWindows] = opensNewWindows
@@ -189,8 +235,7 @@ extension IntegrationTests {
 
         enum CancelInput: String, CaseIterable { case click, space, escape, commandPeriod }
 
-        /// Cancel (focused, so Space presses it; also Esc and ⌘.) stops a page load that's still waiting for the server,
-        /// and the window goes back to its title with the text view focused.
+        /// Cancel (Space while focused, Esc, ⌘.) stops a page load waiting for the server; the title and text view focus come back.
         @Test(arguments: CancelInput.allCases)
         func cancelStopsPageLoad(input: CancelInput) async throws {
             URLProtocol.registerClass(StallingURLProtocol.self)
@@ -234,6 +279,151 @@ extension IntegrationTests {
             guard let view else { return nil }
             if let button = view as? NSButton, button.title == title { return button }
             return view.subviews.lazy.compactMap { button(title, in: $0) }.first
+        }
+
+        private func writePDF(_ name: String = "Document.pdf") throws -> URL {
+            let url = directory.appendingPathComponent(name)
+            try PDFReadableElementTests.makePDF().write(to: url)
+            return url
+        }
+
+        private func writeText(_ text: String = "Some text.") throws -> URL {
+            let url = directory.appendingPathComponent("Text.txt")
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        }
+
+        private func showsPDF(_ reader: ReaderWindow) -> Bool {
+            reader.documentView === reader.pdfView && reader.pdfView.superview === reader.window.contentView
+                && reader.textScrollView.superview == nil
+        }
+
+        private func showsText(_ reader: ReaderWindow) -> Bool {
+            reader.documentView === reader.textView && reader.textScrollView.superview === reader.window.contentView
+                && reader.pdfView.superview == nil && reader.pdfView.document == nil
+        }
+
+        @Test func loadsPDFFileInPDFView() throws {
+            let url = try writePDF()
+            let reader = ReaderWindow.current
+            try reader.loadFile(url)
+            #expect(showsPDF(reader))
+            #expect(reader.pdfView.document?.pageCount == PDFReadableElementTests.pageCount)
+            #expect(reader.pdfView.document?.page(at: 0)?.string?.contains("Page 0 opens here.") == true)
+            #expect(reader.window.title == "Document.pdf")
+            #expect(reader.window.representedURL == url)
+            #expect(reader.textView.string.isEmpty)
+            #expect(!reader.isEmpty)
+        }
+
+        /// A web page that turns out to be a PDF shows in the PDF view too.
+        @Test func loadsPDFPage() async throws {
+            let reader = ReaderWindow.current
+            try await reader.loadPage(try writePDF("Paper.pdf"))
+            #expect(showsPDF(reader))
+            #expect(reader.window.title == "Paper.pdf")
+        }
+
+        /// With one window, opening text after a PDF swaps the text view back in, and the other way round.
+        @Test func swapsViewsBetweenPDFAndText() async throws {
+            Defaults[.readerOpensNewWindows] = false
+            let pdf = try writePDF()
+            let text = try writeText()
+            let reader = ReaderWindow.current
+            reader.window.makeKeyAndOrderFront(nil)
+            Teardown.add { for readerWindow in ReaderWindow.windows { readerWindow.window.close() } }
+            ReaderWindow.open([pdf])
+            await settle(0.5)
+            #expect(ReaderWindow.front === reader)
+            #expect(showsPDF(reader))
+            #expect(reader.window.firstResponder === reader.pdfView)
+            ReaderWindow.open([text])
+            await settle(0.5)
+            #expect(ReaderWindow.front === reader)
+            #expect(showsText(reader))
+            #expect(reader.textView.string == "Some text.")
+            #expect(reader.window.firstResponder === reader.textView)
+            ReaderWindow.open([pdf])
+            await settle(0.5)
+            #expect(showsPDF(reader))
+        }
+
+        /// A PDF counts as content: with "Open each document in a new window", the next file gets its own window.
+        @Test func pdfWindowIsNotEmpty() async throws {
+            Defaults[.readerOpensNewWindows] = true
+            let front = ReaderWindow.current
+            try front.loadFile(try writePDF())
+            front.window.makeKeyAndOrderFront(nil)
+            Teardown.add { for readerWindow in ReaderWindow.windows { readerWindow.window.close() } }
+            await settle(0.1)
+            #expect(ReaderWindow.forNewContent() !== front)
+        }
+
+        /// A PDF dropped or found in an Open panel is a reader window file.
+        @Test func pdfIsReaderContent() throws {
+            let url = try writePDF()
+            let pasteboard = NSPasteboard(name: NSPasteboard.Name("EasyReaderTests-\(UUID().uuidString)"))
+            Teardown.add { pasteboard.releaseGlobally() }
+            pasteboard.clearContents()
+            pasteboard.writeObjects([url as NSURL])
+            guard case .url(let found) = ReaderWindow.content(of: pasteboard, allowText: false) else {
+                Issue.record("PDF not taken")
+                return
+            }
+            #expect(found == url)
+        }
+
+        /// An unsupported file isn't read as text (its path, which a drag may carry as a string).
+        @Test func unsupportedFileIsNotReaderContent() throws {
+            let url = directory.appendingPathComponent("Archive.zip")
+            try Data([0x50, 0x4B, 0x05, 0x06] + Array(repeating: 0, count: 18)).write(to: url)
+            let pasteboard = NSPasteboard(name: NSPasteboard.Name("EasyReaderTests-\(UUID().uuidString)"))
+            Teardown.add { pasteboard.releaseGlobally() }
+            pasteboard.clearContents()
+            pasteboard.writeObjects([url as NSURL])
+            pasteboard.addTypes([.string], owner: nil)
+            pasteboard.setString(url.path, forType: .string)
+            #expect(ReaderWindow.content(of: pasteboard, allowText: true) == nil)
+        }
+
+        enum StartPath: String, CaseIterable { case toolbarStart, readService }
+
+        /// The toolbar's Start, and Read with EasyReader on a PDF file, read the PDF from its first page through AX.
+        @Test(arguments: StartPath.allCases)
+        func readsPDFFromStart(path: StartPath) async throws {
+            Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
+            Defaults[.readerOpensNewWindows] = false
+            let recorder = StateRecorder()
+            let easyReader = EasyReader()
+            easyReader.delegate = recorder
+            easyReader.textSelector = NLTextSelector(unit: .sentence)
+            ReaderWindow.reader = easyReader
+            Teardown.add {
+                easyReader.stop()
+                ReaderWindow.reader = nil
+                for readerWindow in ReaderWindow.windows { readerWindow.window.close() }
+            }
+            let url = try writePDF()
+            let reading = recorder.expect(.reading)
+            switch path {
+                case .toolbarStart:
+                    ReaderWindow.open([url])
+                    await settle(1.5)  // shown once the window is key (up to 1 s)
+                    let reader = try #require(ReaderWindow.front)
+                    let start = try #require(reader.window.toolbar?.items.first { $0.itemIdentifier.rawValue == PlaybackControl.startStop.rawValue })
+                    #expect(NSApp.sendAction(try #require(start.action), to: start.target, from: start))
+                case .readService:
+                    let pasteboard = NSPasteboard(name: NSPasteboard.Name("EasyReaderTests-\(UUID().uuidString)"))
+                    Teardown.add { pasteboard.releaseGlobally() }
+                    pasteboard.clearContents()
+                    pasteboard.writeObjects([url as NSURL])
+                    #expect(ReaderWindow.read(pasteboard))
+            }
+            try await reading.wait(timeout: 10)
+            let reader = try #require(ReaderWindow.front)
+            #expect(showsPDF(reader))
+            #expect(easyReader.readable is PDFReadableElement)
+            #expect(easyReader.readable?.selectedText?.trimmingCharacters(in: .whitespacesAndNewlines) == "Page 0 opens here.")
         }
 
         @Test func loadingMissingFileThrows() {
