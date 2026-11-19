@@ -10,6 +10,18 @@ struct NLTextSelectorTests {
         }
     }
 
+    /// Every sentence, stepping from the start (forward) or the end (backward), in text order; at most 10.
+    private func units(_ direction: Selection.Direction, in string: String) -> [String] {
+        let selector = NLTextSelector(unit: .sentence)
+        var units: [String] = []
+        var current = direction == .forward ? Selection() : Selection(string.utf16.count..<string.utf16.count)
+        while case let next = selector.select(direction, from: current, in: string), !next.isEmpty, units.count < 10 {
+            units.append(text(of: next, in: string) ?? "")
+            current = next
+        }
+        return direction == .forward ? units : units.reversed()
+    }
+
     @Test func forwardSentences() {
         let string = "First sentence. Second sentence. Third one."
         let selector = NLTextSelector(unit: .sentence)
@@ -105,21 +117,25 @@ struct NLTextSelectorTests {
     @Test func citationsStayWithTheirSentence() {
         let string = "The city was founded in 1850.[2] It grew fast.[3][4]\nHistory\nThe first settlers came.[5]"
         let expected = ["The city was founded in 1850.[2]", "It grew fast.[3][4]", "History", "The first settlers came.[5]"]
-        let selector = NLTextSelector(unit: .sentence)
-        var forward: [String] = []
-        var current = Selection()
-        while case let next = selector.select(.forward, from: current, in: string), !next.isEmpty, forward.count < 10 {
-            forward.append(text(of: next, in: string) ?? "")
-            current = next
-        }
-        #expect(forward == expected)
-        var backward: [String] = []
-        current = Selection(string.utf16.count..<string.utf16.count)
-        while case let next = selector.select(.backward, from: current, in: string), !next.isEmpty, backward.count < 10 {
-            backward.insert(text(of: next, in: string) ?? "", at: 0)
-            current = next
-        }
-        #expect(backward == expected)
+        #expect(units(.forward, in: string) == expected)
+        #expect(units(.backward, in: string) == expected)
+    }
+
+    /// NaturalLanguage makes a list number its own sentence ("81. " + "^ Bromley…"); it's read with the item, both ways.
+    @Test func listLabelsStayWithTheirItem() {
+        let string = "Notes end here.\n81. ^ Bromley, Allan G. (1990). Engines.\n82. ^ Collier, Bruce.\n3.\nNext line."
+        let expected = ["Notes end here.", "81. ^ Bromley, Allan G. (1990).", "Engines.", "82. ^ Collier, Bruce.", "3.", "Next line."]
+        #expect(units(.forward, in: string) == expected)
+        #expect(units(.backward, in: string) == expected)
+    }
+
+    @Test(
+        arguments: [
+            ("81. ", true), (" iv) ", true), ("b. ", true), ("•", true), ("12345. ", false), ("Done. ", false), ("p. 34.", false),
+            ("3.\n", false),
+        ] as [(String, Bool)])
+    func isListLabel(text: String, expected: Bool) {
+        #expect(NLTextSelector.isListLabel(Substring(text)) == expected)
     }
 
     @Test(

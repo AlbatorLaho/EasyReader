@@ -18,17 +18,24 @@ enum WebTestPage {
         </style>
         </head>
         <body>
+        <header><nav><a href="https://example.com">Home</a> <a href="https://example.com">About</a></nav></header>
+        <main>
         <h1>EasyReader test page</h1>
         <p>This page tests reading web content. Select a sentence, then press the start shortcut.
         Reading should continue sentence by sentence, with <a href="https://example.com">links</a>,
         <b>bold</b> and <i>italic</i> text read inline.</p>
         <p>Emoji take two UTF-16 code units 😀, so offsets must not drift 🚀. This sentence comes after them.</p>
         <p style="width: 0">Narrow <a href="https://example.com">link</a> wraps here.</p>
+        <ul style="display: flex; gap: 1em; list-style: none; padding: 0"><li>First item</li><li>Second item</li></ul>
+        <ul><li>Bulleted one</li><li>Bulleted <b>two</b></li></ul>
+        <table><tr><td>Row one</td><td>cell B</td></tr><tr><td>Row two</td><td>cell D</td></tr></table>
         <h2>A text area inside the page</h2>
         <textarea>Text area sentence one. Text area sentence two.</textarea>
         <h2>Scrolling</h2>
         \((1...40).map { "<p>Paragraph \($0) of filler text to make the page scroll. It has two sentences.</p>" }.joined(separator: "\n"))
         <p>The end of the test page.</p>
+        </main>
+        <footer>Page footer.</footer>
         </body>
         </html>
         """

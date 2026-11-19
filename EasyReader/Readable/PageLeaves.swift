@@ -1,7 +1,7 @@
 import Cocoa
 
 /// Chromium: the page's `AXStaticText` leaves in document order, each located lazily in the page text next to a
-/// neighbor (only the first is measured through markers, which is slow).
+/// neighbor. Only seeds are measured through markers (slow, O(offset)): a binary search for the first lookup, again beyond 20k.
 @MainActor
 final class PageLeaves {
     struct Leaf {
@@ -20,6 +20,9 @@ final class PageLeaves {
     private let measure: (AXElement) -> Int?
     private var forms: [[Form]?]
     private var starts: [Int?]
+    private var items: [Int: AXElement] = [:]
+    private var itemsLookedUp: Set<Int> = []
+    private lazy var indices = Dictionary(elements.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
     /// The last leaf looked up: the next one is usually close by.
     private var cursor: Int?
 
@@ -75,13 +78,60 @@ final class PageLeaves {
         return result
     }
 
+    /// The innermost list item or table row holding the leaf, if any.
+    func item(of index: Int) -> AXElement? {
+        if itemsLookedUp.contains(index) { return items[index] }
+        var item: AXElement?
+        var current = elements[index]
+        var role: AXRole? = .staticText
+        for _ in 0..<16 {
+            guard let parent = try? current.parent() else { break }
+            let parentRole = try? parent.role()
+            if role == .row || parentRole == .list {
+                item = current
+                break
+            }
+            if parentRole == .webArea { break }
+            current = parent
+            role = parentRole
+        }
+        itemsLookedUp.insert(index)
+        items[index] = item
+        return item
+    }
+
+    /// The part of `block` in the same list item or table row as the leaf at `offset` (Chromium can make a whole list one paragraph).
+    func itemPart(of block: Selection, containing offset: Int) -> Selection {
+        guard let here = leaf(containing: offset), here.range.lowerBound < block.upperBound else { return block }
+        let item = item(of: here.index)
+        var lower = block.lowerBound
+        var upper = block.upperBound
+        var index = here.index
+        while index > 0, here.index - index < 200, let previous = leaf(at: index - 1), previous.range.upperBound > block.lowerBound {
+            if self.item(of: previous.index) != item {
+                lower = max(lower, previous.range.upperBound)
+                break
+            }
+            index -= 1
+        }
+        index = here.index
+        while index - here.index < 200, let next = leaf(at: index + 1), next.range.lowerBound < block.upperBound {
+            if self.item(of: next.index) != item {
+                upper = min(upper, next.range.lowerBound)
+                break
+            }
+            index += 1
+        }
+        return lower <= offset && offset < upper ? Selection(lower..<upper) : block
+    }
+
     func moveCursor(to element: AXElement) {
         if let index = index(of: element), start(of: index) != nil { cursor = index }
     }
 
     func index(of element: AXElement) -> Int? {
         if let cursor, elements[cursor] == element { return cursor }
-        return elements.firstIndex(of: element)
+        return indices[element]
     }
 
     // Chromium clips leaf frames to the viewport (zero height outside), so a binary search works.

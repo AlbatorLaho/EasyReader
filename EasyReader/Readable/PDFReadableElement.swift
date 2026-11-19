@@ -1164,10 +1164,15 @@ final class PDFReadableElement: ReadableElement {
             return
         }
         isHighlighting = true
-        overlay.show { [weak self] in
-            guard let self, app?.isActive != false else { return nil }
-            return parts.flatMap(Self.lineRects(of:))
-        }
+        overlay.show(
+            { [weak self] in
+                guard let self, app?.isActive != false else { return nil }
+                return parts.flatMap(Self.lineRects(of:))
+            },
+            probe: { [weak self] in
+                guard let self, app?.isActive != false, let first = parts.first else { return nil }
+                return try? first.element.attribute(.boundsForRange, for: CFRange(location: first.range.location, length: 1))
+            })
     }
 
     func highlightRects(for selection: Selection) -> [CGRect] {

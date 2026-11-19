@@ -20,6 +20,8 @@ class ReadableElement: Readable {
     var fullText: String? { nil }
     var selectedText: String? { nil }
     var selection: Selection?
+    var contentStart: Int { 0 }
+    var contentEnd: Int? { nil }
     // Observe only while someone listens, so readables dropped during a search hold no AX observer.
     var onInvalidate: (() -> Void)? {
         didSet {
@@ -52,6 +54,19 @@ class ReadableElement: Readable {
         handle = element
         app = (try? handle.pid()).flatMap(NSRunningApplication.init(processIdentifier:))
         Log.accessibility.debug("\(Self.self) for \(app?.bundleIdentifier ?? "unknown app")")
+    }
+
+    /// Highlights with `overlay` while the app is active; the first character's bounds (element, index) are the probe.
+    func show(_ overlay: HighlightOverlay, rects: @escaping () -> [CGRect]?, firstCharacter: @escaping () -> (AXElement, Int)?) {
+        overlay.show(
+            { [weak self] in
+                guard let self, app?.isActive != false else { return nil }
+                return rects()
+            },
+            probe: { [weak self] in
+                guard let self, app?.isActive != false, let (element, index) = firstCharacter() else { return nil }
+                return try? element.attribute(.boundsForRange, for: CFRange(location: index, length: 1))
+            })
     }
 
     func scroll(to selection: Selection, options: ScrollOptions) {}

@@ -152,6 +152,19 @@ extension IntegrationTests {
             #expect(string(mixed, in: text).hasSuffix("text read inline."))
         }
 
+        /// List items (with their bullet) and table rows are blocks of their own, also inline ones (Chromium makes each cell a paragraph).
+        @Test(arguments: [("First item", "Second item"), ("Bulleted one", "Bulleted two"), ("Row one", "Row two")] as [(String, String)])
+        func itemsAreBlocks(item: String, next: String) async throws {
+            let readable = try await readable()
+            let text = try #require(readable.fullText)
+            func block(of string: String) throws -> String {
+                let block = try #require(readable.textBlock(containing: try selection(of: string, in: text).lowerBound + 1))
+                return self.string(block, in: text).replacingOccurrences(of: "• ", with: "")
+            }
+            #expect(try block(of: item) == item)
+            #expect(try block(of: next).hasPrefix(next.prefix(9)))
+        }
+
         /// Sentences stop at block ends: the heading is read on its own.
         @Test func sentencesStayInBlocks() async throws {
             let readable = try await readable()
@@ -229,6 +242,18 @@ extension IntegrationTests {
             #expect(start.isEmpty)
             #expect(start.lowerBound > (try selection(of: "Paragraph 10 ", in: text)).lowerBound)
             #expect(start.lowerBound <= (try selection(of: "Paragraph 30 ", in: text)).lowerBound)
+        }
+
+        /// Without a page selection, reading starts at the main content, past the page's navigation, and ends before its footer.
+        @Test func startsAtMainContent() async throws {
+            let page = try await readable()
+            let text = try #require(page.fullText)
+            let heading = try selection(of: "EasyReader test page", in: text).lowerBound
+            #expect(page.contentStart == heading)
+            let end = try #require(page.contentEnd)
+            #expect((try selection(of: "The end of the test page.", in: text)).upperBound <= end)
+            #expect(end <= (try selection(of: "Page footer.", in: text)).lowerBound)
+            #expect(page.selection == Selection(heading..<heading))
         }
 
         @Test func readerAdvancesWithHighlight() async throws {

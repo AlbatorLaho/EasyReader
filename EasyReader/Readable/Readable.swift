@@ -10,6 +10,10 @@ protocol Readable: AnyObject {
     var selectedText: String? { get }
     var selection: Selection? { get set }
     var onInvalidate: (() -> Void)? { get set }
+    /// Where reading the text from its start begins (a web page's main content, past its header and navigation).
+    var contentStart: Int { get }
+    /// Where reading from inside the main content ends (before a web page's footer); nil = the text's end.
+    var contentEnd: Int? { get }
 
     func scroll(to selection: Selection, options: ScrollOptions)
 
@@ -26,6 +30,8 @@ protocol Readable: AnyObject {
 }
 
 extension Readable {
+    var contentStart: Int { 0 }
+    var contentEnd: Int? { nil }
     func textBlock(containing offset: Int) -> Selection? { nil }
     func didReach(_ offset: Int) -> Selection? { nil }
     func beginReading() {}

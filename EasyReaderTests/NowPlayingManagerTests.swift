@@ -8,12 +8,11 @@ import Testing
 extension IntegrationTests {
     @MainActor
     struct NowPlayingManagerTests {
-        private let reader = EasyReader()
+        private let reader = makeSilentReader()
         private let manager: NowPlayingManager
         private let readable = MockReadable("First sentence. Second sentence.")
 
         init() {
-            Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
             let manager = NowPlayingManager(reader: reader)
             self.manager = manager
             let reader = reader
@@ -124,11 +123,18 @@ extension IntegrationTests {
             #expect(Defaults[.speechRate] == AVSpeechUtteranceMaximumSpeechRate)
         }
 
+        /// Now Playing publishes `SpeechRate.multiplier(forRate:)`; the rate command must map it back.
+        @Test(arguments: [Float(0.4), 0.7])
+        func rateRoundTrips(rate: Float) {
+            Defaults[.speechRate] = rate
+            #expect(manager.perform(.changePlaybackRate(SpeechRate.multiplier(forRate: rate))) == .success)
+            #expect(isClose(Defaults[.speechRate], rate))
+        }
+
         /// Holding ⏭ skips on begin and every interval until the end event; slowest rate so units don't finish meanwhile.
         @Test func holdingNextSkipsRepeatedlyUntilReleased() async {
             Defaults[.speechRate] = AVSpeechUtteranceMinimumSpeechRate
             let readable = MockReadable(longText)
-            reader.textSelector = NLTextSelector(unit: .sentence)
             reader.readable = readable
             Defaults[.repeatingSkipInterval] = 0.2
             let interval = EasyReader.repeatingSkipInterval
@@ -138,7 +144,7 @@ extension IntegrationTests {
             await settle(interval * 2.5)
             #expect(manager.perform(.seek(.forward, begin: false)) == .success)
             let skips = readable.history.count - before
-            #expect(skips == 3)
+            #expect((3...4).contains(skips), "one now, then at 0.2 and 0.4 s (0.6 s if the wait ran late)")
 
             await settle(interval * 2)
             #expect(readable.history.count - before == skips, "no skips after release")
@@ -147,10 +153,11 @@ extension IntegrationTests {
         @Test func stoppingEndsRepeatingSkip() async {
             Defaults[.speechRate] = AVSpeechUtteranceMinimumSpeechRate
             let readable = MockReadable(longText)
-            reader.textSelector = NLTextSelector(unit: .sentence)
             reader.readable = readable
 
+            let before = readable.history.count
             #expect(manager.perform(.seek(.forward, begin: true)) == .success)
+            #expect(readable.history.count > before, "skipped on begin")
             reader.stop()
             manager.update(readable: readable, state: .stopped)
             let count = readable.history.count
@@ -159,16 +166,48 @@ extension IntegrationTests {
         }
 
         @Test func togglePlayPauseStartsReading() {
-            reader.textSelector = NLTextSelector(unit: .sentence)
             reader.readable = readable
             #expect(manager.perform(.togglePlayPause) == .success)
             #expect(readable.history.last.flatMap(readable.text(of:)) == "First sentence.")
         }
 
+        /// Reads `readable` to its end, as the manager sees it.
+        private func finish(_ readable: MockReadable, recorder: StateRecorder) async throws {
+            reader.delegate = recorder
+            manager.isEnabled = true
+            let stopped = recorder.expect(.stopped)
+            #expect(reader.start(reading: readable))
+            try await stopped.wait(timeout: 15)
+            try #require(reader.hasFinished)
+            manager.update(readable: readable, state: .stopped, hasFinished: true)
+        }
+
+        /// With "same text", play (or play/pause) after finishing reads the text again from its start.
+        @Test(arguments: [NowPlayingManager.Action.play, .togglePlayPause])
+        func playAfterFinishingRereadsSameText(action: NowPlayingManager.Action) async throws {
+            Defaults[.playWhenFinished] = .sameText
+            let recorder = StateRecorder()
+            let readable = MockReadable("One. Two.")
+            try await finish(readable, recorder: recorder)
+            let reading = recorder.expect(.reading)
+            #expect(manager.perform(action) == .success)
+            try await reading.wait(timeout: 10)
+            #expect(readable.selectedUnit == "One.")
+        }
+
+        /// With "same app", play after finishing does nothing while another app is in front.
+        @Test func playAfterFinishingNeedsSameAppInFront() async throws {
+            Defaults[.playWhenFinished] = .sameApp
+            let recorder = StateRecorder()
+            let readable = MockReadable("One. Two.", appDomain: "com.example.not-running")
+            try await finish(readable, recorder: recorder)
+            #expect(manager.perform(.play) == .commandFailed)
+            #expect(reader.state == .stopped)
+        }
+
         @Test func playWhileReadingKeepsReading() async throws {
             let recorder = StateRecorder()
             reader.delegate = recorder
-            reader.textSelector = NLTextSelector(unit: .sentence)
             let reading = recorder.expect(.reading)
             #expect(reader.start(reading: MockReadable(longText)))
             try await reading.wait(timeout: 10)
@@ -182,7 +221,6 @@ extension IntegrationTests {
         @Test func playWhilePausedFollowsResumeUnit() async throws {
             let recorder = StateRecorder()
             reader.delegate = recorder
-            reader.textSelector = NLTextSelector(unit: .sentence)
             let long = Array(repeating: "word", count: 200).joined(separator: " ")
             let reading = recorder.expect(.reading)
             #expect(reader.start(reading: MockReadable("\(long). Second sentence.")))

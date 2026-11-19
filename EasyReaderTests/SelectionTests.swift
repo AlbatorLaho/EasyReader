@@ -4,7 +4,7 @@ import Testing
 @testable import EasyReader
 
 struct SelectionTests {
-    @Test func emptyDefault() {
+    @Test func defaultIsEmptyAtStart() {
         let selection = Selection()
         #expect(selection.lowerBound == 0)
         #expect(selection.upperBound == 0)
@@ -26,7 +26,7 @@ struct SelectionTests {
     }
 
     @Test(arguments: [(1, false), (2, true), (3, true), (4, false)])
-    func contains(offset: Int, expected: Bool) {
+    func containsOffsetsInsideRange(offset: Int, expected: Bool) {
         #expect(Selection(2..<4).contains(offset) == expected)
     }
 
@@ -58,19 +58,5 @@ struct SelectionTests {
         let string = "a😀b"
         #expect(Selection(2..<2).startIndex(in: string).utf16Offset(in: string) == 1)
         #expect(Selection(0..<2).endIndex(in: string).utf16Offset(in: string) == 1)
-    }
-}
-
-struct WebAreaLocateTests {
-    @Test(
-        arguments: [
-            ("bold", 10, Selection(8..<12)),  // two past: snaps back
-            ("bold", 8, Selection(8..<12)),  // exact
-            ("bold", 6, Selection(8..<12)),  // two before
-            ("nope", 8, Selection(8..<12)),  // not found: kept as measured
-            ("", 3, Selection(3..<3)),
-        ] as [(String, Int, Selection)])
-    func locatesNearestOccurrence(string: String, offset: Int, expected: Selection) {
-        #expect(WebAreaReadableElement.locate(string, near: offset, in: "Second  bold text", tolerance: 4) == expected)
     }
 }

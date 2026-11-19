@@ -18,25 +18,9 @@ extension IntegrationTests {
 
         init() async throws {
             Defaults[.pronunciations] = rules
-            window = NSWindow(
-                contentRect: NSRect(x: 100, y: 100, width: 800, height: 500),
-                styleMask: [.titled],
-                backing: .buffered,
-                defer: false
-            )
-            window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: SettingsPronunciationsView())
-            window.makeKeyAndOrderFront(nil)
-            let window = window
-            Teardown.add { window.close() }
+            window = makeTestWindow(NSHostingView(rootView: SettingsPronunciationsView()), frame: NSRect(x: 100, y: 100, width: 800, height: 500))
             await settle(0.3)
-            tableView = try #require(Self.first(NSTableView.self, in: window.contentView))
-        }
-
-        private static func first<T: NSView>(_ type: T.Type, in view: NSView?) -> T? {
-            guard let view else { return nil }
-            if let match = view as? T { return match }
-            return view.subviews.lazy.compactMap { first(type, in: $0) }.first
+            tableView = try #require(firstSubview(NSTableView.self, in: window.contentView))
         }
 
         private var tableFrame: NSRect {

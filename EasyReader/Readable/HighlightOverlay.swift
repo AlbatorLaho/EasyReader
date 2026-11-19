@@ -6,19 +6,34 @@ final class HighlightOverlay {
     private var window: NSWindow?
     private var refresh: Task<Void, Never>?
     private var rects: (() -> [CGRect]?)?
+    private var probe: (() -> CGRect?)?
     private var shown: [CGRect] = []
+
+    /// Rects are re-polled this often (several AX calls per line), the probe (one) every tick.
+    private static let refreshInterval = 0.25
+    private static let probeInterval = 1.0 / 30
 
     var isVisible: Bool { window?.isVisible == true }
 
-    /// `rects`: screen coordinates, top-left origin as in AX; nil hides.
-    func show(_ rects: @escaping () -> [CGRect]?) {
+    /// `rects`: screen coordinates, top-left origin as in AX; nil hides. `probe`: a cheap rect (e.g. of the first
+    /// character) that moves with the text, so a scroll is followed within a tick.
+    func show(_ rects: @escaping () -> [CGRect]?, probe: (() -> CGRect?)? = nil) {
         self.rects = rects
+        self.probe = probe
         update()
         guard refresh == nil else { return }
-        refresh = Task { @MainActor [weak self] in
+        refresh = Task { [weak self] in
+            var lastProbe = self?.probe?()
+            var sinceUpdate = 0.0
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 250_000_000)
+                let interval = self?.probe == nil ? Self.refreshInterval : Self.probeInterval
+                try? await Task.sleep(seconds: interval)
                 guard let self, !Task.isCancelled else { return }
+                sinceUpdate += interval
+                let probed = probe?()
+                guard probed != lastProbe || sinceUpdate >= Self.refreshInterval - 0.001 else { continue }
+                lastProbe = probed
+                sinceUpdate = 0
                 update()
             }
         }
@@ -28,6 +43,7 @@ final class HighlightOverlay {
         refresh?.cancel()
         refresh = nil
         rects = nil
+        probe = nil
         shown = []
         window?.orderOut(nil)
     }

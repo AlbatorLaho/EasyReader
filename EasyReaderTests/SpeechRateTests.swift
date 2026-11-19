@@ -3,10 +3,6 @@ import Testing
 
 @testable import EasyReader
 
-func isClose(_ a: Float, _ b: Float, tolerance: Float = 0.001) -> Bool {
-    abs(a - b) <= tolerance
-}
-
 struct SpeechRateTests {
     @Test(
         arguments: [

@@ -27,7 +27,9 @@ extension IntegrationTests {
                 ReaderWindow.reader = previousReader
                 NSApp.servicesProvider = previousServicesProvider
             }
-            await settle(0.3)  // let the Defaults.updates loops subscribe
+            // The loops start in order; the Now Playing one acting on its initial value means all have subscribed.
+            try? await waitUntil(timeout: 2, "settings loops") { app.nowPlayingManager.isEnabled }
+            await settle(0.05)
             return app
         }
 
@@ -47,28 +49,21 @@ extension IntegrationTests {
             let menu = app.statusMenu
             let index = try #require(menu.items.firstIndex { $0.action == #selector(SettingsOpener.open) })
             menu.performActionForItem(at: index)
-            await settle(1)
+            try await waitUntil(timeout: 5, "Settings window") { SettingsOpener.window?.isVisible == true }
             let settings = try #require(SettingsOpener.window)
             #expect(settings.isVisible)
-            let other = NSWindow(
-                contentRect: NSRect(x: 100, y: 100, width: 300, height: 200), styleMask: [.titled], backing: .buffered,
-                defer: false)
-            other.isReleasedWhenClosed = false
-            Teardown.add { other.close() }
-            other.makeKeyAndOrderFront(nil)
-            await settle(0.3)
+            let other = makeTestWindow(frame: NSRect(x: 100, y: 100, width: 300, height: 200))
+            try? await waitUntil(timeout: 2) { !settings.isKeyWindow }
             #expect(!settings.isKeyWindow)
             menu.performActionForItem(at: index)
-            await settle(0.5)
+            try? await waitUntil(timeout: 3) { NSApp.isActive && settings.isKeyWindow && NSApp.orderedWindows.first == settings }
             #expect(NSApp.isActive)
             #expect(settings.isKeyWindow)
             #expect(NSApp.orderedWindows.first == settings)
         }
 
         private func pasteboard(_ write: (NSPasteboard) -> Void) -> NSPasteboard {
-            let pasteboard = NSPasteboard(name: NSPasteboard.Name("EasyReaderTests-\(UUID().uuidString)"))
-            Teardown.add { pasteboard.releaseGlobally() }
-            pasteboard.clearContents()
+            let pasteboard = uniquePasteboard()
             write(pasteboard)
             return pasteboard
         }
@@ -77,7 +72,7 @@ extension IntegrationTests {
         /// with Start and Resume told apart.
         @Test func readServiceReadsTextInReaderWindow() async throws {
             let app = await launch()
-            Teardown.add { for readerWindow in ReaderWindow.windows { readerWindow.window.close() } }
+            Teardown.add { closeReaderWindows() }
             let reading = recorder.expect(.reading)
             #expect(ReaderWindow.read(pasteboard { $0.setString(longText, forType: .string) }))
             try await reading.wait(timeout: 10)
@@ -105,7 +100,7 @@ extension IntegrationTests {
         /// Read with EasyReader on a file in Finder opens it in the reader window and reads it.
         @Test func readServiceReadsFile() async throws {
             _ = await launch()
-            Teardown.add { for readerWindow in ReaderWindow.windows { readerWindow.window.close() } }
+            Teardown.add { closeReaderWindows() }
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("ReadService-\(UUID().uuidString).txt")
             try longText.write(to: url, atomically: true, encoding: .utf8)
             Teardown.add { try? FileManager.default.removeItem(at: url) }
@@ -119,16 +114,11 @@ extension IntegrationTests {
 
         /// A window whose text field (an `AXTextField`: nothing readable) has "Beta two. Gamma three." selected.
         private func selectionSource() async throws -> NSWindow {
-            Teardown.add { for readerWindow in ReaderWindow.windows { readerWindow.window.close() } }
+            Teardown.add { closeReaderWindows() }
             let text = "Alpha one. Beta two. Gamma three."
             let field = NSTextField(string: text)
-            let source = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 400, height: 60), styleMask: [.titled], backing: .buffered, defer: false)
-            source.isReleasedWhenClosed = false
-            source.title = "Selection Source \(UUID().uuidString)"
-            source.contentView = field
-            source.makeKeyAndOrderFront(nil)
+            let source = makeTestWindow(field, title: "Selection Source", frame: NSRect(x: 200, y: 200, width: 400, height: 60))
             source.makeFirstResponder(field)
-            Teardown.add { source.close() }
             await settle()
             try #require(field.currentEditor()).selectedRange = (text as NSString).range(of: "Beta two. Gamma three.")
             await settle()
@@ -168,6 +158,33 @@ extension IntegrationTests {
             #expect(ReaderWindow.windows.allSatisfy { !$0.window.isVisible })
         }
 
+        /// ⌘Q with windows open only closes them in menu bar mode (unless turned off); in the Dock it quits.
+        @Test(
+            arguments: [
+                (AppDelegate.Presence.menuBar, true, false), (.menuBar, false, true), (.both, true, true), (.dock, true, true),
+            ] as [(AppDelegate.Presence, Bool, Bool)])
+        func quitWithWindowsOpen(presence: AppDelegate.Presence, closesWindows: Bool, quits: Bool) {
+            Defaults[.appPresence] = presence
+            Defaults[.quitClosesWindows] = closesWindows
+            let window = makeTestWindow()
+            #expect(AppDelegate().applicationShouldTerminate(NSApp) == (quits ? .terminateNow : .terminateCancel))
+            #expect(window.isVisible == quits)
+        }
+
+        @Test func quitWithoutWindowsQuits() {
+            Defaults[.appPresence] = .menuBar
+            for window in NSApp.windows where window.isVisible && window.styleMask.contains(.titled) { window.close() }
+            #expect(AppDelegate().applicationShouldTerminate(NSApp) == .terminateNow)
+        }
+
+        /// Opening the app again with no window open opens Settings.
+        @Test func reopenWithoutWindowsOpensSettings() async throws {
+            Teardown.add { SettingsOpener.window?.close() }
+            #expect(AppDelegate().applicationShouldHandleReopen(NSApp, hasVisibleWindows: true))
+            #expect(!AppDelegate().applicationShouldHandleReopen(NSApp, hasVisibleWindows: false))
+            try await waitUntil(timeout: 5, "Settings window") { SettingsOpener.window?.isVisible == true }
+        }
+
         @Test func readServiceRefusesBlankText() async {
             _ = await launch()
             #expect(!ReaderWindow.read(pasteboard { $0.setString(" \n", forType: .string) }))
@@ -197,7 +214,7 @@ extension IntegrationTests {
             Defaults[.appPresence] = .dock
             await settle(0.1)
             Defaults[.appPresence] = .both
-            await settle(0.1)
+            await settle(0.1)  // a live loop would have recreated the item by now
             #expect(app.statusItem == nil)
         }
 
@@ -220,37 +237,22 @@ extension IntegrationTests {
 
         @Test func speechSettingChangeRestartsReading() async throws {
             let app = await launch()
-            let readable = try await startReading(app.easyReader)
-            let reads = readable.selectedTextReads
+            _ = try await startReading(app.easyReader)
+            let restarted = recorder.expectUtteranceStart()
             Defaults[.speechPitch] = 1.2
-            await settle(0.5)
-            #expect(readable.selectedTextReads > reads, "changing a speech setting should restart the utterance")
+            try await restarted.wait(timeout: 5)
         }
 
         /// A change while not reading must not end the speech-settings loop.
         @Test func speechSettingChangeWhileStoppedStillRestartsLater() async throws {
             let app = await launch()
             Defaults[.speechPitch] = 1.1  // while stopped
-            await settle(0.3)
-            let readable = try await startReading(app.easyReader)
-            let reads = readable.selectedTextReads
+            await settle(0.3)  // the loop sees it
+            _ = try await startReading(app.easyReader)
+            let restarted = recorder.expectUtteranceStart()
             Defaults[.speechPitch] = 1.2
-            await settle(0.5)
-            #expect(readable.selectedTextReads > reads)
+            try await restarted.wait(timeout: 5)
         }
 
-        /// Now Playing publishes `SpeechRate.multiplier(forRate:)`; the rate command must map it back.
-        @Test(arguments: [Float(0.4), 0.7])
-        func nowPlayingRateRoundTrips(rate: Float) {
-            Defaults[.speechRate] = rate
-            let published = SpeechRate.multiplier(forRate: rate)  // NowPlayingManager.playbackInfo
-            NowPlayingManager.setSpeechRate(fromPlaybackRate: published)
-            #expect(isClose(Defaults[.speechRate], rate))
-        }
-
-        @Test func rateChangesClampAtWriteSite() {
-            NowPlayingManager.setSpeechRate(fromPlaybackRate: 10)
-            #expect(Defaults[.speechRate] == AVSpeechUtteranceMaximumSpeechRate)
-        }
     }
 }

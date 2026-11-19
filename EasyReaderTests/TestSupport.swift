@@ -1,3 +1,4 @@
+import AVFoundation
 import AppKit
 import Defaults
 import Testing
@@ -63,6 +64,15 @@ extension Trait where Self == TeardownTrait {
     static var teardown: Self { Self() }
 }
 
+// MARK: - Traits
+
+extension Trait where Self == ConditionTrait {
+    /// For suites driving another process through AX (the test host is trusted only with the Debug app's grant).
+    static var axTrusted: Self {
+        .enabled(if: AXIsProcessTrusted(), "needs Accessibility permission for the test host (Debug EasyReader)")
+    }
+}
+
 // MARK: - Known crashes
 
 extension Trait where Self == ConditionTrait {
@@ -120,9 +130,12 @@ final class StateRecorder: EasyReader.Delegate {
     private(set) var events: [EasyReader.State] = []
     private(set) var progressAtStarts: [EasyReader.Progress?] = []
     private var pending: [Expectation] = []
+    private var pendingStarts: [Expectation] = []
 
     func easyReaderDidStartUtterance(_ reader: EasyReader) {
         progressAtStarts.append(reader.progress)
+        for expectation in pendingStarts { expectation.fulfill(order: progressAtStarts.count - 1) }
+        pendingStarts.removeAll()
     }
 
     func easyReader(_ reader: EasyReader, didChangeState state: EasyReader.State) {
@@ -134,6 +147,13 @@ final class StateRecorder: EasyReader.Delegate {
     func expect(_ state: EasyReader.State) -> Expectation {
         let expectation = Expectation(state: state)
         pending.append(expectation)
+        return expectation
+    }
+
+    /// The next utterance start (also restarts and resumes, which stay `.reading`); `order` indexes `progressAtStarts`.
+    func expectUtteranceStart() -> Expectation {
+        let expectation = Expectation(state: .reading)
+        pendingStarts.append(expectation)
         return expectation
     }
 }
@@ -151,6 +171,8 @@ final class MockReadable: Readable {
         didSet { if let selection { history.append(selection) } }
     }
     var onInvalidate: (() -> Void)?
+    var contentStart = 0
+    var contentEnd: Int?
     private(set) var history: [Selection] = []
     private(set) var scrolls: [Selection] = []
     /// EasyReader reads `selectedText` once per utterance it starts.
@@ -169,6 +191,9 @@ final class MockReadable: Readable {
         self.selection = selection
         self.appDomain = appDomain
     }
+
+    /// The selected unit, trimmed.
+    var selectedUnit: String? { selection.flatMap(text(of:)) }
 
     func text(of selection: Selection) -> String? {
         guard let fullText, let range = Range(selection, in: fullText) else { return nil }
@@ -190,4 +215,166 @@ let longText = Array(repeating: "This is a fairly long sentence to keep speaking
 /// Suspends the test so the main run loop keeps running (AX, AppKit and speech callbacks).
 func settle(_ seconds: TimeInterval = 0.1) async {
     try? await Task.sleep(seconds: seconds)
+}
+
+struct WaitTimeout: Error, CustomStringConvertible {
+    let what: String
+    let timeout: TimeInterval
+    var description: String { "timed out after \(timeout)s waiting for \(what)" }
+}
+
+/// Polls `condition` (every `interval`, run loop running) until it holds; throws once `timeout` has passed.
+@MainActor
+func waitUntil(
+    timeout: TimeInterval, interval: TimeInterval = 0.05, _ what: String = "condition", _ condition: () throws -> Bool
+) async throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    while try !condition() {
+        guard Date() < deadline else { throw WaitTimeout(what: what, timeout: timeout) }
+        await settle(interval)
+    }
+}
+
+/// Closes every reader window, newest first: the oldest is the one kept for reuse, so windows made by a test are dropped.
+@MainActor
+func closeReaderWindows() {
+    for readerWindow in ReaderWindow.windows.reversed() { readerWindow.window.close() }
+}
+
+func isClose(_ a: Float, _ b: Float, tolerance: Float = 0.001) -> Bool {
+    abs(a - b) <= tolerance
+}
+
+struct NotFound: Error, CustomStringConvertible {
+    let what: String
+    var description: String { "\(what) not found" }
+}
+
+extension Selection {
+    /// Where `string` first occurs in `text` (last with `.backwards`).
+    init(of string: String, in text: String, options: NSString.CompareOptions = []) throws {
+        let range = (text as NSString).range(of: string, options: options)
+        try #require(range.location != NSNotFound, "\(string.debugDescription) not in \(text.prefix(200).debugDescription)")
+        self.init(range)
+    }
+}
+
+// MARK: - Readers, windows, AX
+
+/// A silent reader (volume 0 from `Teardown.begin`, maximum rate) reporting to `recorder`; stopped at teardown (waiting for it with a recorder).
+@MainActor
+func makeSilentReader(recorder: StateRecorder? = nil, unit: Selection.Unit = .sentence) -> EasyReader {
+    Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
+    let reader = EasyReader()
+    reader.delegate = recorder
+    reader.textSelector = NLTextSelector(unit: unit)
+    Teardown.add {
+        // Also cancels an utterance that hasn't started yet (synchronous tests)
+        guard let recorder, reader.state != .stopped else {
+            reader.stop()
+            return
+        }
+        let stopped = recorder.expect(.stopped)
+        reader.stop()
+        do { try await stopped.wait(timeout: 5) } catch { Issue.record(error) }
+    }
+    return reader
+}
+
+/// A titled window showing `content`, key and in front, closed at teardown; `axWindow(of:)` finds it by its accessibility identifier.
+@MainActor
+func makeTestWindow(
+    _ content: NSView? = nil, title: String = "Test", frame: NSRect = NSRect(x: 200, y: 200, width: 400, height: 200)
+) -> NSWindow {
+    let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.title = "\(title) \(UUID().uuidString)"
+    window.setAccessibilityIdentifier(UUID().uuidString)
+    if let content { window.contentView = content }
+    window.makeKeyAndOrderFront(nil)
+    Teardown.add { window.close() }
+    return window
+}
+
+/// `window`'s element in the host's AX tree.
+@MainActor
+func axWindow(of window: NSWindow) throws -> AXElement {
+    let windows = try #require(try AXElement.application(pid: getpid()).attribute(.windows))
+    let identifier = window.accessibilityIdentifier()
+    return try #require(windows.first { (try? $0.attribute(.identifier)) == identifier }, "window \(window.title) not in the AX tree")
+}
+
+/// The first readable element in `window`, breadth-first.
+@MainActor
+func readableElement<T: ReadableElement>(in window: NSWindow, as type: T.Type = T.self) throws -> T {
+    var queue = [try axWindow(of: window)]
+    while !queue.isEmpty {
+        let element = queue.removeFirst()
+        if let readable = try element.readableElement() { return try #require(readable as? T, "found \(Swift.type(of: readable))") }
+        queue += (try? element.attribute(.children)) ?? []
+    }
+    throw NotFound(what: "readable element in \(window.title)")
+}
+
+/// Breadth-first, at most 5000 elements (web pages).
+@MainActor
+func findElement(role: AXRole, in root: AXElement, where predicate: (AXElement) -> Bool = { _ in true }) -> AXElement? {
+    var queue = [root]
+    var visited = 0
+    while !queue.isEmpty, visited < 5000 {
+        let element = queue.removeFirst()
+        visited += 1
+        if (try? element.role()) == role, predicate(element) { return element }
+        queue += (try? element.attribute(.children)) ?? []
+    }
+    return nil
+}
+
+@MainActor
+func firstSubview<T: NSView>(_ type: T.Type, in view: NSView?, where predicate: (T) -> Bool = { _ in true }) -> T? {
+    guard let view else { return nil }
+    if let match = view as? T, predicate(match) { return match }
+    for subview in view.subviews {
+        if let match = firstSubview(type, in: subview, where: predicate) { return match }
+    }
+    return nil
+}
+
+/// A pasteboard of its own, released at teardown.
+@MainActor
+func uniquePasteboard() -> NSPasteboard {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("EasyReaderTests-\(UUID().uuidString)"))
+    Teardown.add { pasteboard.releaseGlobally() }
+    pasteboard.clearContents()
+    return pasteboard
+}
+
+// MARK: - Web pages (WebKit and Chromium suites)
+
+enum WebPageChecks {
+    /// Without a page selection, reading starts at the main content, past the page's navigation, and ends before its footer.
+    @MainActor
+    static func startsAtMainContent(_ page: WebAreaReadableElement) throws {
+        let text = try #require(page.fullText)
+        let heading = try Selection(of: "EasyReader test page", in: text).lowerBound
+        #expect(page.contentStart == heading)
+        let end = try #require(page.contentEnd)
+        #expect(try Selection(of: "The end of the test page.", in: text).upperBound <= end)
+        #expect(end <= (try Selection(of: "Page footer.", in: text)).lowerBound)
+        #expect(page.selection == Selection(heading..<heading))
+    }
+
+    /// Without a page selection, reading starts at the first visible text, not the top of the page.
+    @MainActor
+    static func startsAtVisibleTop(_ page: WebAreaReadableElement) async throws {
+        let text = try #require(page.fullText)
+        let target = try Selection(of: "Paragraph 30 ", in: text)
+        page.scroll(to: target, options: ScrollOptions(padding: 16, duration: 0))
+        await settle(0.5)
+        let fresh = try #require(try page.handle.readableElement() as? WebAreaReadableElement)
+        let start = try #require(fresh.selection)
+        #expect(start.isEmpty)
+        #expect(start.lowerBound > (try Selection(of: "Paragraph 10 ", in: text)).lowerBound)
+        #expect(start.lowerBound <= target.lowerBound)
+    }
 }

@@ -12,7 +12,8 @@ final class NLTextSelector: TextSelector {
     }
 
     func select(_ direction: Selection.Direction, from selection: Selection, in string: String) -> Selection {
-        tagger.string = string
+        // Setting it, even to the same string, discards the analysis
+        if tagger.string != string { tagger.string = string }
         let startIndex: String.Index
         let endIndex: String.Index
         switch direction {
@@ -20,21 +21,27 @@ final class NLTextSelector: TextSelector {
                 startIndex = selection.endIndex(in: string)
                 var tagRange: Range<String.Index>?
                 tagger.enumerateTags(in: startIndex..<string.endIndex, unit: taggerUnit, scheme: .lexicalClass) { tag, range in
-                    guard tag != .paragraphBreak else { return true }
+                    guard tag != .paragraphBreak else { return tagRange == nil }
                     tagRange = range
-                    return false
+                    // A list label ("81. ") is read with the unit after it
+                    return Self.isListLabel(string[startIndex..<range.upperBound])
                 }
                 endIndex = tagRange.map { Self.skippingCitations(from: $0.upperBound, in: string) } ?? string.endIndex
             case .backward:
                 endIndex = selection.startIndex(in: string)
                 var tagStart: String.Index?
                 tagger.enumerateTagsReversed(in: string.startIndex..<endIndex, unit: taggerUnit, scheme: .lexicalClass) { tag, range in
-                    guard tag != .paragraphBreak else { return true }
+                    guard tag != .paragraphBreak else { return tagStart == nil }
                     let start = Self.skippingCitations(from: range.lowerBound, in: string)
                     // Only a citation's tail ("2] ") between the two boundaries: belongs to the unit before
                     guard start < endIndex else { return true }
+                    // A list label right before the unit ("81. ") belongs to it
+                    if let found = tagStart {
+                        if Self.isListLabel(string[start..<found]) { tagStart = start }
+                        return false
+                    }
                     tagStart = start
-                    return false
+                    return !Self.isListLabel(string[start..<endIndex])
                 }
                 startIndex = tagStart ?? string.startIndex
         }
@@ -42,6 +49,16 @@ final class NLTextSelector: TextSelector {
         Log.selector.debug("\(taggerUnit.rawValue) \(direction) from \(selection) → \(result)")
         return result
     }
+
+    /// Only a list item's label: "81. ", "iv) ", "b. ", "•" (NaturalLanguage makes a numbered one a sentence of its own).
+    static func isListLabel(_ text: Substring) -> Bool {
+        let string = String(text)
+        return listLabel.firstMatch(in: string, range: NSRange(string.startIndex..., in: string)) != nil
+    }
+
+    // `\z`: unlike `$`, not before a final newline
+    private static let listLabel = try! NSRegularExpression(
+        pattern: #"^[ \t ]*([0-9]{1,4}|[ivxlc]{1,6}|[IVXLC]{1,6}|[A-Za-z])[.)][ \t ]*\z|^[ \t ]*[•◦▪‣–-][ \t ]*\z"#)
 
     /// NaturalLanguage ends sentences inside citations ("1850.[" + "2] It…"): moves such a boundary past them and the space after.
     static func skippingCitations(from boundary: String.Index, in string: String) -> String.Index {

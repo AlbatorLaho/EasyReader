@@ -37,6 +37,8 @@ struct AXRole: RawRepresentable, Hashable {
     static let webArea = AXRole("AXWebArea")
     static let staticText = AXRole(kAXStaticTextRole)
     static let listMarker = AXRole("AXListMarker")
+    static let list = AXRole(kAXListRole)
+    static let row = AXRole(kAXRowRole)
     static let group = AXRole(kAXGroupRole)
     static let heading = AXRole("AXHeading")
 }
@@ -171,8 +173,13 @@ extension AXParameterizedAttribute where Parameter == Int, Value == AXTextMarker
 }
 
 extension AXParameterizedAttribute where Parameter == CGRect, Value == AXTextMarker {
-    /// Safari only.
+    /// Safari only (not `WKWebView`).
     static var startTextMarkerForBounds: Self { Self("AXStartTextMarkerForBounds") }
+}
+
+extension AXParameterizedAttribute where Parameter == CGPoint, Value == AXTextMarker {
+    /// The text at a screen point (top-left origin), else the nearest.
+    static var textMarkerForPosition: Self { Self("AXTextMarkerForPosition") }
 }
 
 extension AXParameterizedAttribute where Parameter == AXElement, Value == AXTextMarkerRange {

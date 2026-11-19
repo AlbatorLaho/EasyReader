@@ -173,6 +173,8 @@ struct AXSearchPredicate: AXEncodable {
     let searchKey: String
 
     static let staticText = AXSearchPredicate(searchKey: "AXStaticTextSearchKey")
+    static let landmark = AXSearchPredicate(searchKey: "AXLandmarkSearchKey")
+    static let article = AXSearchPredicate(searchKey: "AXArticleSearchKey")
 
     var axValue: AnyObject {
         let predicate: [String: Any] = [

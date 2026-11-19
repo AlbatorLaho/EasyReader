@@ -45,33 +45,14 @@ extension IntegrationTests {
         private let tableView: NSTableView
 
         init() async throws {
-            window = NSWindow(
-                contentRect: NSRect(x: 200, y: 200, width: 320, height: 200),
-                styleMask: [.titled],
-                backing: .buffered,
-                defer: false
-            )
-            window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: Harness(model: model))
-            window.makeKeyAndOrderFront(nil)
-            let window = window
-            Teardown.add { window.close() }
+            window = makeTestWindow(NSHostingView(rootView: Harness(model: model)), frame: NSRect(x: 200, y: 200, width: 320, height: 200))
             await settle()
-            tableView = try #require(Self.first(NSTableView.self, in: window.contentView))
-        }
-
-        private static func first<T: NSView>(_ type: T.Type, in view: NSView?) -> T? {
-            guard let view else { return nil }
-            if let match = view as? T { return match }
-            for subview in view.subviews {
-                if let match = first(type, in: subview) { return match }
-            }
-            return nil
+            tableView = try #require(firstSubview(NSTableView.self, in: window.contentView))
         }
 
         private func textField(row: Int) throws -> NSTextField {
             let cell = try #require(tableView.view(atColumn: 0, row: row, makeIfNecessary: true))
-            return try #require(Self.first(NSTextField.self, in: cell))
+            return try #require(firstSubview(NSTextField.self, in: cell))
         }
 
         private func mouseEvent(_ type: NSEvent.EventType, at windowLocation: NSPoint, timestamp: TimeInterval) -> NSEvent? {
@@ -236,7 +217,7 @@ extension IntegrationTests {
         /// Other controls respond to the first click, without selecting their row.
         @Test func checkboxTogglesOnFirstClick() async throws {
             let cell = try #require(tableView.view(atColumn: 1, row: 1, makeIfNecessary: true))
-            let checkbox = try #require(Self.first(NSButton.self, in: cell))
+            let checkbox = try #require(firstSubview(NSButton.self, in: cell))
             try click(checkbox)
             await settle()
             #expect(model.rows[1].on)
