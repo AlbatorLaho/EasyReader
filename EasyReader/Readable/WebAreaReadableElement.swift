@@ -18,7 +18,7 @@ final class WebAreaReadableElement: ReadableElement {
         }
     }
 
-    // Only for the current main-actor turn: read several times per unit, but the page may change between units.
+    /// Only for the current main-actor turn: read several times per unit, but the page may change between units.
     private var cachedText: String?
     private var cachedContent: (text: String, range: Range<Int>?)?
     private var cachedLastIndex: (text: String, index: Int)?
@@ -52,8 +52,7 @@ final class WebAreaReadableElement: ReadableElement {
     /// The text offset minus the `AXIndexForTextMarker` index near the last paragraph (Chromium) or marker found.
     private var indexDrift = 0
 
-    // Chromium/Electron build their full AX tree only for assistive apps. The flags can affect window animations,
-    // hence only while reading.
+    // Chromium/Electron build their full AX tree only for assistive apps; only while reading: the flags can affect window animations.
     override func beginReading() {
         if enabledAppFlags.isEmpty, let pid = try? handle.pid(), pid != getpid() {
             enabledAppFlags = AppAccessibility.enable(pid: pid)
@@ -67,7 +66,7 @@ final class WebAreaReadableElement: ReadableElement {
         enabledAppFlags += flags.filter { !enabledAppFlags.contains($0) }
     }
 
-    // Brave turns `AXEnhancedUserInterface` back off once it's active (dropping its character bounds)
+    // Brave turns `AXEnhancedUserInterface` back off once it's active (dropping its character bounds).
     private func watchAppFlags() {
         guard appFlagsWatch == nil, !enabledAppFlags.isEmpty, let pid = try? handle.pid() else { return }
         appFlagsWatch = Task { [weak self] in
@@ -104,7 +103,7 @@ final class WebAreaReadableElement: ReadableElement {
 
     override var selectedText: String? {
         guard let text = fullText, let selection else { return nil }
-        return substring(selection, of: text)
+        return selection.substring(of: text)
     }
 
     override var selection: Selection? {
@@ -113,7 +112,7 @@ final class WebAreaReadableElement: ReadableElement {
             let reported = report(in: text)
             if var tracked = trackedSelection {
                 if let trackedText, trackedText != text {
-                    tracked = Self.locate(substring(tracked, of: trackedText), near: tracked.lowerBound, in: text, tolerance: 64)
+                    tracked = Self.locate(tracked.substring(of: trackedText), near: tracked.lowerBound, in: text, tolerance: 64)
                     Log.accessibility.debug("web area: page text changed; selection moved to \(tracked)")
                     track(tracked, in: text)
                 }
@@ -139,7 +138,7 @@ final class WebAreaReadableElement: ReadableElement {
                 if canSelectByTextOperation, select(newValue, in: text) {
                     highlight(nil)
                 } else {
-                    // Chromium ignores `AXSelectedTextMarkerRange` on page text
+                    // Chromium ignores `AXSelectedTextMarkerRange` on page text.
                     _ = leaves(for: text)
                     highlight(newValue.isEmpty ? nil : newValue)
                 }
@@ -167,7 +166,7 @@ final class WebAreaReadableElement: ReadableElement {
     /// Whether `reported` isn't a selection by the user.
     private func isUnchanged(_ reported: Report, tracked: Selection, in text: String) -> Bool {
         let known = [baseline, reportAfterSet].compactMap { $0 }
-        return Self.isUnchanged(reported, known: known, tracked: Report(selection: tracked, string: substring(tracked, of: text)))
+        return Self.isUnchanged(reported, known: known, tracked: Report(selection: tracked, string: tracked.substring(of: text)))
     }
 
     /// A known report or the tracked unit (same text within 64 chars), or overlapping the unit.
@@ -199,7 +198,7 @@ final class WebAreaReadableElement: ReadableElement {
         }
         guard let text = fullText, let start = marker(at: selection.lowerBound, in: text) else { return }
         let bounds = markerRange(for: selection, in: text).flatMap { try? handle.attribute(.boundsForTextMarkerRange, for: $0) }
-        // WebKit: scroll bars and a document-sized frame, so scroll like a text area
+        // WebKit: scroll bars and a document-sized frame, so scroll like a text area.
         if let bounds, bounds.size != .zero, let scroller = pageScroller, let scrollFrame = scroller.frame,
             let pageFrame = try? handle.attribute(.frame), pageFrame.height > scrollFrame.height
         {
@@ -227,8 +226,7 @@ final class WebAreaReadableElement: ReadableElement {
     private var startMarker: AXTextMarker? { try? handle.attribute(.startTextMarker) }
     private var endMarker: AXTextMarker? { try? handle.attribute(.endTextMarker) }
 
-    /// The UTF-16 length of the page text before `marker`; `near`: where it likely is. `strict`: nil instead of 0 when
-    /// the text before it isn't a prefix of `text`.
+    /// The UTF-16 length of the page text before `marker`; `near`: where it likely is; `strict`: nil, not 0, if that text isn't a prefix of `text`.
     func offset(of marker: AXTextMarker, in text: String, near hint: Int? = nil, strict: Bool = false) -> Int? {
         let anchors = anchors(for: text)
         if let exact = anchors.first(where: { $0.marker == marker }) { return exact.offset }
@@ -240,7 +238,7 @@ final class WebAreaReadableElement: ReadableElement {
             return found
         }
         guard let start = startMarker, let before = string(from: start, to: marker) else { return nil }
-        // Markers before the document start (Safari's skip links) give the text between them, not a prefix
+        // Markers before the document start (Safari's skip links) give the text between them, not a prefix.
         guard text.utf16.starts(with: before.utf16) else { return strict ? nil : 0 }
         remember(marker, at: before.utf16.count, in: text)
         return before.utf16.count
@@ -256,7 +254,7 @@ final class WebAreaReadableElement: ReadableElement {
             if abs(nearest.offset - target) <= Self.maxSteps, let marker = step(from: nearest, to: target, in: text) { return marker }
         }
 
-        // `AXTextMarkerForIndex` drifts from offsets, but slowly: correct the guess by the error
+        // `AXTextMarkerForIndex` drifts from offsets, but slowly: correct the guess by the error.
         var guess = target - indexDrift
         let lastIndex = lastIndex(in: text)
         var best: Anchor?
@@ -265,7 +263,7 @@ final class WebAreaReadableElement: ReadableElement {
             let index = min(max(0, guess), lastIndex)
             guard index != tried, let marker = indexMarker(index) else { break }
             tried = index
-            // Some can't be measured (ranges to them hold other text): try a neighbor
+            // Some can't be measured (ranges to them hold other text): try a neighbor.
             guard let found = self.offset(of: marker, in: text, near: target, strict: true) else {
                 guess = index + 16
                 continue
@@ -283,7 +281,7 @@ final class WebAreaReadableElement: ReadableElement {
         return step(from: best, to: target, in: text) ?? best.marker
     }
 
-    // Indices run behind offsets; past the last one, markers are the page start or end
+    // Indices run behind offsets; past the last one, markers are the page start or end.
     private func lastIndex(in text: String) -> Int {
         if let cachedLastIndex, cachedLastIndex.text == text { return cachedLastIndex.index }
         let index = endMarker.flatMap { try? handle.attribute(.indexForTextMarker, for: $0) } ?? Int.max
@@ -291,7 +289,7 @@ final class WebAreaReadableElement: ReadableElement {
         return index
     }
 
-    // Index markers can sit in collapsed whitespace, where ranges to them hold the wrong text: step out and back
+    // Index markers can sit in collapsed whitespace, where ranges to them hold the wrong text: step out and back.
     private func indexMarker(_ index: Int) -> AXTextMarker? {
         guard let marker = try? handle.attribute(.textMarkerForIndex, for: index) else { return nil }
         return (try? handle.attribute(.nextTextMarkerForTextMarker, for: marker))
@@ -306,13 +304,13 @@ final class WebAreaReadableElement: ReadableElement {
         let marker: AXTextMarker
     }
 
-    // Measuring from the page start costs O(offset) (150 ms at the end of Wikipedia), from a nearby anchor O(distance)
+    // Measuring from the page start costs O(offset) (150 ms at the end of Wikipedia), from a nearby anchor O(distance).
     private var anchorList: (text: String, anchors: [Anchor])?
     private static let maxAnchors = 64
     /// Stepping a character costs ~0.1 ms; `AXTextMarkerForIndex` alone ~50 ms on a long page.
     private static let maxSteps = 600
 
-    // Chromium has its own paths (leaves), with markers anchored on different elements
+    // Chromium has its own paths (leaves), with markers anchored on different elements.
     private func anchors(for text: String) -> [Anchor] {
         guard !isChromium else { return [] }
         if let anchorList, anchorList.text == text { return anchorList.anchors }
@@ -334,14 +332,11 @@ final class WebAreaReadableElement: ReadableElement {
         let length = between.utf16.count
         guard length > 0 else { return anchor }
         let utf16 = text.utf16
-        func matches(at start: Int) -> Bool {
-            guard start >= 0, start + length <= utf16.count else { return false }
-            return utf16[utf16.index(utf16.startIndex, offsetBy: start)...].starts(with: between.utf16)
-        }
+        func matches(at start: Int) -> Bool { utf16.matches(between.utf16, at: start) }
         return [anchor + length, anchor - length].filter { matches(at: min($0, anchor)) }.min { abs($0 - hint) < abs($1 - hint) }
     }
 
-    // Steps are characters, not UTF-16 units: jump, then walk one character at a time once past `target`
+    // Steps are characters, not UTF-16 units: jump, then walk one character at a time once past `target`.
     private func step(from anchor: Anchor, to target: Int, in text: String) -> AXTextMarker? {
         var current = anchor
         var best = anchor
@@ -357,7 +352,7 @@ final class WebAreaReadableElement: ReadableElement {
             current = Anchor(offset: found, marker: marker)
             remember(marker, at: found, in: text)
             if abs(found - target) < abs(best.offset - target) { best = current }
-            // No marker at `target` (inside a character or collapsed whitespace)
+            // No marker at `target` (inside a character or collapsed whitespace).
             if crossed, count == 1 { break }
             count = crossed ? 1 : abs(target - found)
         }
@@ -391,11 +386,7 @@ final class WebAreaReadableElement: ReadableElement {
         let utf16 = text.utf16
         let count = utf16.count
         let offset = offset.clamped(to: 0...count)
-        func matches(at start: Int) -> Bool {
-            guard start >= 0, start + length <= count else { return false }
-            let from = utf16.index(utf16.startIndex, offsetBy: start)
-            return utf16[from...].starts(with: string.utf16)
-        }
+        func matches(at start: Int) -> Bool { utf16.matches(string.utf16, at: start) }
         guard length > 0, !matches(at: offset) else { return Selection(offset..<min(offset + length, count)) }
         for distance in stride(from: 1, through: tolerance, by: 1) {
             for start in [offset - distance, offset + distance] where matches(at: start) {
@@ -413,7 +404,7 @@ final class WebAreaReadableElement: ReadableElement {
     /// The text of `<main>`, else of the first `<article>`; nil if the page has neither.
     private func content(in text: String) -> Range<Int>? {
         if let cachedContent, cachedContent.text == text { return cachedContent.range }
-        // Chromium: from the leaves where possible (measuring from the page start costs O(offset))
+        // Chromium: from the leaves where possible (measuring from the page start costs O(offset)).
         if isChromium { _ = leaves(for: text) }
         func measure(_ marker: AXTextMarker) -> Int? {
             leafOffset(of: marker, text: text) ?? offset(of: marker, in: text)
@@ -438,14 +429,14 @@ final class WebAreaReadableElement: ReadableElement {
             ?? elements(.article).lazy.first(where: hasContent)
     }
 
-    // Pages can hold empty ones (fetching the text instead costs 40 ms on Wikipedia)
+    // Pages can hold empty ones (fetching the text instead costs 40 ms on Wikipedia).
     private func hasContent(_ element: AXElement) -> Bool {
         (try? element.attribute(.children))?.isEmpty == false
     }
 
     // MARK: Visible area
 
-    // The web area's frame is the whole document (Safari) or the viewport (Chromium)
+    // The web area's frame is the whole document (Safari) or the viewport (Chromium).
     private func visibleFrame() -> CGRect? {
         guard var frame = try? handle.attribute(.frame) else { return nil }
         if let scrollFrame = try? scrollArea?.attribute(.frame) {
@@ -457,7 +448,7 @@ final class WebAreaReadableElement: ReadableElement {
         return frame.isNull || frame.isEmpty ? nil : frame
     }
 
-    // Only Safari has `AXStartTextMarkerForBounds`
+    // Only Safari has `AXStartTextMarkerForBounds`.
     private func visibleStartOffset(in text: String) -> Int? {
         if isChromium {
             guard let visible = visibleFrame(), let leaf = leaves(for: text)?.firstVisible(in: visible) else { return nil }
@@ -472,14 +463,14 @@ final class WebAreaReadableElement: ReadableElement {
 
     // MARK: Chromium leaves
 
-    // `AXTextOperation` selects nothing with web-area-anchored markers: they must be leaf-anchored
+    // `AXTextOperation` selects nothing with web-area-anchored markers: they must be leaf-anchored.
     private func select(_ selection: Selection, in text: String) -> Bool {
         guard let leaves = leaves(for: text) else { return false }
         var parts = leaves.leaves(in: selection)
         if selection.isEmpty, let leaf = leaves.leaf(containing: selection.lowerBound) {
             parts = [(leaf, selection)]
         }
-        // A DOM selection ending in a list marker ("a. ", "• ") widens to the whole list
+        // A DOM selection ending in a list marker ("a. ", "• ") widens to the whole list.
         while let first = parts.first, isListMarker(first.leaf.element) { parts.removeFirst() }
         while let last = parts.last, isListMarker(last.leaf.element) { parts.removeLast() }
         if parts.isEmpty, !selection.isEmpty, let last = lastLeafMarker {
@@ -496,9 +487,9 @@ final class WebAreaReadableElement: ReadableElement {
             Log.accessibility.debug("web area: no leaf markers for \(selection)")
             return false
         }
-        // Selects more than the unit (list markers): collapse it and let the overlay show the unit
+        // Selects more than the unit (list markers): collapse it and let the overlay show the unit.
         if let selected = try? handle.attribute(.stringForTextMarkerRange, for: range),
-            !Self.covers(substring(selection, of: text), selected)
+            !Self.covers(selection.substring(of: text), selected)
         {
             Log.accessibility.debug("web area: markers for \(selection) select other text")
             _ = textOperationSelect(self.range(from: start, to: start))
@@ -511,7 +502,7 @@ final class WebAreaReadableElement: ReadableElement {
         (try? element.role()) == .listMarker
     }
 
-    // Marker ranges can miss text outside leaves (Wikipedia's "^" back links), never add any
+    // Marker ranges can miss text outside leaves (Wikipedia's "^" back links), never add any.
     nonisolated static func covers(_ expected: String, _ selected: String) -> Bool {
         let expected = expected.trimmingCharacters(in: .whitespacesAndNewlines)
         let selected = selected.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -534,9 +525,9 @@ final class WebAreaReadableElement: ReadableElement {
 
     private typealias LeafMarkers = (start: AXTextMarker, end: AXTextMarker, length: Int, shift: Int)
 
-    // `shift`: where the leaf's page text starts in its range string, which can hold collapsed whitespace (Gutenberg)
+    // `shift`: where the leaf's page text starts in its range string, which can hold collapsed whitespace (Gutenberg).
     private func markers(of leaf: PageLeaves.Leaf, text: String) -> LeafMarkers? {
-        let pageText = substring(leaf.range, of: text)
+        let pageText = leaf.range.substring(of: text)
         guard let leafRange = try? handle.attribute(.textMarkerRangeForUIElement, for: leaf.element),
             let start = leafRange.start, let end = leafRange.end,
             let string = try? handle.attribute(.stringForTextMarkerRange, for: leafRange)
@@ -545,14 +536,14 @@ final class WebAreaReadableElement: ReadableElement {
         return (start, end, string.utf16.count, location == NSNotFound ? 0 : location)
     }
 
-    // Leaf-anchored markers can only be made by stepping from another one
+    // Leaf-anchored markers can only be made by stepping from another one.
     private func leafMarker(in leaf: PageLeaves.Leaf, at offset: Int, markers: LeafMarkers) -> AXTextMarker? {
         let (leafStart, leafEnd, length, shift) = markers
         let local = min(max(offset - leaf.range.lowerBound + shift, 0), length)
         var anchors: [(local: Int, marker: AXTextMarker)] = [(0, leafStart), (length, leafEnd)]
         if let last = lastLeafMarker, last.element == leaf.element { anchors.append((last.local, last.marker)) }
         var (position, marker) = anchors.min { abs($0.local - local) < abs($1.local - local) }!
-        // Steps are characters, not UTF-16 units: measure and correct
+        // Steps are characters, not UTF-16 units: measure and correct.
         for _ in 0..<6 where position != local {
             guard let next = stepped(marker, by: abs(local - position), forward: position < local) else { return nil }
             marker = next
@@ -566,7 +557,7 @@ final class WebAreaReadableElement: ReadableElement {
         return marker
     }
 
-    // Measured from the leaf: much faster than `offset(of:in:)` far down a page
+    // Measured from the leaf: much faster than `offset(of:in:)` far down a page.
     private func leafOffset(of marker: AXTextMarker, text: String) -> Int? {
         guard isChromium else { return nil }
         return leafOffset(of: marker, in: try? handle.attribute(.uiElementForTextMarker, for: marker), text: text)
@@ -596,15 +587,15 @@ final class WebAreaReadableElement: ReadableElement {
         return pageLeaves
     }
 
-    // Needs web-area-anchored markers (leaf ones stop at the leaf); located by text near index + learned drift
+    // Needs web-area-anchored markers (leaf ones stop at the leaf); located by text near index + learned drift.
     override func textBlock(containing offset: Int) -> Selection? {
         guard isChromium, let text = fullText else { return nil }
         var guess = offset - indexDrift
-        // The nearest paragraphs found before and after `offset`, with their AX index ranges
+        // The nearest paragraphs found before and after `offset`, with their AX index ranges.
         var before: (block: Selection, indices: Range<Int>)?
         var after: (block: Selection, indices: Range<Int>)?
         for _ in 0..<8 {
-            guard let marker = try? handle.attribute(.textMarkerForIndex, for: min(max(0, guess), lastIndex(in: text))),
+            guard let marker = try? handle.attribute(.textMarkerForIndex, for: max(0, guess)),
                 let paragraph = try? handle.attribute(.paragraphTextMarkerRangeForTextMarker, for: marker),
                 let string = try? handle.attribute(.stringForTextMarkerRange, for: paragraph), !string.isEmpty,
                 let start = paragraph.start,
@@ -617,11 +608,11 @@ final class WebAreaReadableElement: ReadableElement {
             if block.lowerBound <= offset, offset < block.upperBound { return leaves(for: text)?.itemPart(of: block, containing: offset) ?? block }
             if block.upperBound <= offset, before.map({ $0.block.upperBound < block.upperBound }) ?? true { before = (block, indices) }
             if block.lowerBound > offset, after.map({ $0.block.lowerBound > block.lowerBound }) ?? true { after = (block, indices) }
-            // Text in no paragraph (U+FFFC for an icon) between two paragraphs adjacent by index
+            // Text in no paragraph (U+FFFC for an icon) between two paragraphs adjacent by index.
             if let before, let after, before.indices.upperBound >= after.indices.lowerBound {
                 return Selection(before.block.upperBound..<after.block.lowerBound)
             }
-            // Got a neighbor: correct the guess by the new drift, or step over it
+            // Got a neighbor: correct the guess by the new drift, or step over it.
             let corrected = offset - indexDrift
             guess = corrected != guess ? corrected : (offset < block.lowerBound ? index - 1 : index + string.utf16.count)
         }
@@ -648,20 +639,20 @@ final class WebAreaReadableElement: ReadableElement {
             overlay.hide()
             return
         }
-        overlay.show(
-            { [weak self] in
-                guard let self, app?.isActive != false, isFrontWindow else { return nil }
+        show(
+            overlay,
+            rects: { [weak self] in
+                guard let self, isFrontWindow else { return nil }
                 return highlightRects(for: selection)
             },
-            probe: { [weak self] in
-                guard let self, app?.isActive != false, let leaf = pageLeaves?.leaf(containing: selection.lowerBound) else { return nil }
+            firstCharacter: { [weak self] in
+                guard let self, let leaf = pageLeaves?.leaf(containing: selection.lowerBound) else { return nil }
                 let lower = max(selection.lowerBound, leaf.range.lowerBound)
-                let local = valueRange(of: Selection(lower..<lower), in: leaf)
-                return try? leaf.element.attribute(.boundsForRange, for: CFRange(location: local.lowerBound, length: 1))
+                return (leaf.element, valueRange(of: Selection(lower..<lower), in: leaf).lowerBound)
             })
     }
 
-    // Another window of the browser may be in front of ours
+    // Another window of the browser may be in front of ours.
     private var isFrontWindow: Bool {
         guard let window, let pid = try? handle.pid(), let main = try? AXElement.application(pid: pid).attribute(.mainWindow) else { return true }
         return main == window
@@ -673,7 +664,7 @@ final class WebAreaReadableElement: ReadableElement {
         guard let leaves = pageLeaves ?? fullText.flatMap({ leaves(for: $0) }), let visible = visibleFrame() else { return nil }
         return leaves.leaves(in: selection).flatMap { leaf, part -> [CGRect] in
             let lines = HighlightOverlay.lineRects(of: leaf.element, valueRange(of: part, in: leaf))
-            // Some leaves have no character bounds (or none yet: see `watchAppFlags`)
+            // Some leaves have no character bounds (or none yet: see `watchAppFlags`).
             return lines.isEmpty ? (try? leaf.element.attribute(.frame)).map { [$0] } ?? [] : lines
         }
         .map { $0.intersection(visible) }
@@ -683,7 +674,7 @@ final class WebAreaReadableElement: ReadableElement {
     private func scrollLeaf(to selection: Selection, options: ScrollOptions) {
         guard let text = fullText, let leaves = leaves(for: text), let (leaf, part) = leaves.leaves(in: selection).first else { return }
         let local = valueRange(of: part, in: leaf)
-        // Leaf frames are clipped to the viewport (zero height outside), character bounds aren't
+        // Leaf frames are clipped to the viewport (zero height outside), character bounds aren't.
         if let leafFrame = try? leaf.element.attribute(.frame), leafFrame.height >= 1, let first = HighlightOverlay.lineRects(of: leaf.element, local).first,
             let visible = visibleFrame()
         {
@@ -716,8 +707,4 @@ final class WebAreaReadableElement: ReadableElement {
     private func string(from start: AXTextMarker, to end: AXTextMarker) -> String? {
         range(from: start, to: end).flatMap { try? handle.attribute(.stringForTextMarkerRange, for: $0) }
     }
-}
-
-private func substring(_ selection: Selection, of text: String) -> String {
-    String(text[selection.startIndex(in: text)..<selection.endIndex(in: text)])
 }

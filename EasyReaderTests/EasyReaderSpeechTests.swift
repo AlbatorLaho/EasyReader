@@ -8,25 +8,20 @@ import Testing
 extension IntegrationTests {
     @MainActor
     struct EasyReaderSpeechTests {
-        private let reader = EasyReader()
         private let recorder = StateRecorder()
+        private let reader: EasyReader
 
         init() {
-            Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            reader.delegate = recorder
-            reader.textSelector = NLTextSelector(unit: .sentence)
-            let reader = reader
-            let recorder = recorder
-            Teardown.add {
-                // Also cancels an utterance that hasn't started yet (synchronous tests)
-                guard reader.state != .stopped else {
-                    reader.stop()
-                    return
-                }
-                let stopped = recorder.expect(.stopped)
-                reader.stop()
-                do { try await stopped.wait(timeout: 5) } catch { Issue.record(error) }
-            }
+            reader = makeSilentReader(recorder: recorder)
+        }
+
+        private func pauseAndResume() async throws {
+            let paused = recorder.expect(.paused)
+            #expect(reader.pause())
+            try await paused.wait(timeout: 10)
+            let resumed = recorder.expect(.reading)
+            #expect(reader.togglePlayPause())
+            try await resumed.wait(timeout: 10)
         }
 
         @Test func readsEverySentenceThenStops() async throws {
@@ -61,7 +56,7 @@ extension IntegrationTests {
             let stopped = recorder.expect(.stopped)
             #expect(reader.start(reading: readable))
             try await reading.wait(timeout: 15)
-            readable.selection = Selection((text as NSString).range(of: "Three."))
+            readable.selection = try Selection(of: "Three.", in: text)
             let readsBefore = readable.selectedTexts.count
             try await stopped.wait(timeout: 15)
             let read = readable.history.compactMap(readable.text(of:)).filter { !$0.isEmpty }
@@ -75,13 +70,7 @@ extension IntegrationTests {
             #expect(reader.start(reading: readable))
             try await reading.wait(timeout: 10)
 
-            let paused = recorder.expect(.paused)
-            #expect(reader.pause())
-            try await paused.wait(timeout: 10)
-
-            let resumed = recorder.expect(.reading)
-            #expect(reader.togglePlayPause())
-            try await resumed.wait(timeout: 10)
+            try await pauseAndResume()
 
             let stopped = recorder.expect(.stopped)
             #expect(reader.stop())
@@ -92,11 +81,11 @@ extension IntegrationTests {
         @Test func skipForwardAndBackward() {
             let readable = MockReadable("First one here. Second one here. Third one here. Fourth one here.")
             #expect(reader.start(reading: readable))
-            #expect(readable.selection.flatMap(readable.text(of:)) == "First one here.")
+            #expect(readable.selectedUnit == "First one here.")
             #expect(reader.skip(.forward))
-            #expect(readable.selection.flatMap(readable.text(of:)) == "Second one here.")
+            #expect(readable.selectedUnit == "Second one here.")
             #expect(reader.skip(.backward))
-            #expect(readable.selection.flatMap(readable.text(of:)) == "First one here.")
+            #expect(readable.selectedUnit == "First one here.")
         }
 
         /// Skipping forward on the last unit is ignored: reading continues on the same unit.
@@ -185,7 +174,7 @@ extension IntegrationTests {
             #expect(reader.start(reading: other))
             try await readingOther.wait(timeout: 10)
             #expect(reader.readable === other)
-            #expect(other.selection.flatMap(other.text(of:)) == "Other text here.")
+            #expect(other.selectedUnit == "Other text here.")
         }
 
         @Test func stopWhenNotReadingFails() {
@@ -197,7 +186,7 @@ extension IntegrationTests {
             let readable = MockReadable("First one here. Second one here.")
             #expect(reader.start(reading: readable))
             #expect(reader.skip(.backward))
-            #expect(readable.selection.flatMap(readable.text(of:)) == "First one here.")
+            #expect(readable.selectedUnit == "First one here.")
         }
 
         /// A held skip backward restarts the first unit once, not at every repeat.
@@ -260,18 +249,18 @@ extension IntegrationTests {
             let stopped = recorder.expect(.stopped)
             #expect(reader.start(reading: readable))
             try await stopped.wait(timeout: 15)
-            readable.selection = Selection((text as NSString).range(of: "Two."))
+            readable.selection = try Selection(of: "Two.", in: text)
             let reading = recorder.expect(.reading)
             #expect(reader.rereadFinished())
             try await reading.wait(timeout: 15)
-            #expect(readable.selection.flatMap(readable.text(of:)) == "One.")
+            #expect(readable.selectedUnit == "One.")
         }
 
         /// Reading the text again starts at its main content (past a web page's navigation).
         @Test func rereadFinishedStartsAtContentStart() async throws {
             let text = "Home. About. Main one. Main two."
             let readable = MockReadable(text)
-            readable.contentStart = (text as NSString).range(of: "Main one.").location
+            readable.contentStart = try Selection(of: "Main one.", in: text).lowerBound
             readable.selection = Selection(readable.contentStart..<readable.contentStart)
             let stopped = recorder.expect(.stopped)
             #expect(reader.start(reading: readable))
@@ -279,15 +268,15 @@ extension IntegrationTests {
             let reading = recorder.expect(.reading)
             #expect(reader.rereadFinished())
             try await reading.wait(timeout: 15)
-            #expect(readable.selection.flatMap(readable.text(of:)) == "Main one.")
+            #expect(readable.selectedUnit == "Main one.")
         }
 
         /// Reading the main content stops at its end, before a web page's footer.
         @Test func finishesAtContentEnd() async throws {
             let text = "Home. Main one. Main two. Footer one."
             let readable = MockReadable(text)
-            readable.contentStart = (text as NSString).range(of: "Main one.").location
-            readable.contentEnd = (text as NSString).range(of: "Footer one.").location
+            readable.contentStart = try Selection(of: "Main one.", in: text).lowerBound
+            readable.contentEnd = try Selection(of: "Footer one.", in: text).lowerBound
             readable.selection = Selection(readable.contentStart..<readable.contentStart)
             let stopped = recorder.expect(.stopped)
             #expect(reader.start(reading: readable))
@@ -299,9 +288,9 @@ extension IntegrationTests {
         /// Like the last unit of the text: reading on by itself still finishes there.
         @Test func skipForwardIgnoredAtContentEnd() async throws {
             let text = "Home. Main one. Main two. Footer one."
-            let readable = MockReadable(text, selection: Selection((text as NSString).range(of: "Main two.")))
-            readable.contentStart = (text as NSString).range(of: "Main one.").location
-            readable.contentEnd = (text as NSString).range(of: "Footer one.").location
+            let readable = MockReadable(text, selection: try Selection(of: "Main two.", in: text))
+            readable.contentStart = try Selection(of: "Main one.", in: text).lowerBound
+            readable.contentEnd = try Selection(of: "Footer one.", in: text).lowerBound
             let reading = recorder.expect(.reading)
             #expect(reader.start(reading: readable))
             try await reading.wait(timeout: 10)
@@ -313,17 +302,17 @@ extension IntegrationTests {
         /// A selection past the main content reads on to the text's end.
         @Test func readsOnFromSelectionPastContentEnd() async throws {
             let text = "Main one. Footer one. Footer two."
-            let readable = MockReadable(text, selection: Selection((text as NSString).range(of: "Footer one.")))
-            readable.contentEnd = (text as NSString).range(of: "Footer one.").location
+            let readable = MockReadable(text, selection: try Selection(of: "Footer one.", in: text))
+            readable.contentEnd = try Selection(of: "Footer one.", in: text).lowerBound
             let stopped = recorder.expect(.stopped)
             #expect(reader.start(reading: readable))
             try await stopped.wait(timeout: 15)
             #expect(readable.selectedTexts.map { $0.trimmingCharacters(in: .whitespaces) } == ["Footer one.", "Footer two."])
         }
 
-        @Test func startingOnSelectionScrollsToIt() {
+        @Test func startingOnSelectionScrollsToIt() throws {
             let text = "First one here. Second one here."
-            let second = Selection((text as NSString).range(of: "Second one here."))
+            let second = try Selection(of: "Second one here.", in: text)
             let readable = MockReadable(text, selection: second)
             #expect(reader.start(reading: readable))
             #expect(readable.scrolls == [second])
@@ -362,17 +351,17 @@ extension IntegrationTests {
             #expect(reader.pronunciations(with: nil) == [])
         }
 
-        @Test func speaksSelectionWithPronunciations() {
+        @Test func speaksSelectionWithPronunciations() throws {
             Defaults[.pronunciations] = [
                 Pronunciation(search: "GUI", replace: "gooey", ignoreCase: false),
                 Pronunciation(search: "tomato", replace: "təˈmɑːtəʊ", isPhonetic: true),
             ]
             let readable = MockReadable("A GUI GUIDE with a tomato. Next.")
             #expect(reader.start(reading: readable))
-            let spoken = try? #require(reader.spokenText)
-            #expect(spoken?.original == "A GUI GUIDE with a tomato. ")
-            #expect(spoken?.text == "A gooey GUIDE with a tomato. ")
-            #expect(spoken?.hasPhonetics == true)
+            let spoken = try #require(reader.spokenText)
+            #expect(spoken.original == "A GUI GUIDE with a tomato. ")
+            #expect(spoken.text == "A gooey GUIDE with a tomato. ")
+            #expect(spoken.hasPhonetics)
         }
 
         /// Resuming maps the synthesizer's offset in the replaced text back to the original, then re-applies the pronunciations.
@@ -384,12 +373,7 @@ extension IntegrationTests {
             #expect(reader.start(reading: readable))
             try await reading.wait(timeout: 10)
             await settle(2)  // a long utterance's first `willSpeakRange` lags ~0.5–1.2 s
-            let paused = recorder.expect(.paused)
-            #expect(reader.pause())
-            try await paused.wait(timeout: 10)
-            let resumed = recorder.expect(.reading)
-            #expect(reader.togglePlayPause())
-            try await resumed.wait(timeout: 10)
+            try await pauseAndResume()
             let spoken = try #require(reader.spokenText)
             #expect(spoken.original.count < long.count, "resumed mid-sentence")
             #expect("\(long). ".hasSuffix(spoken.original))
@@ -416,12 +400,7 @@ extension IntegrationTests {
             #expect(reader.start(reading: readable))
             try await reading.wait(timeout: 10)
             let first = readable.selection
-            let paused = recorder.expect(.paused)
-            #expect(reader.pause())
-            try await paused.wait(timeout: 10)
-            let resumed = recorder.expect(.reading)
-            #expect(reader.togglePlayPause())
-            try await resumed.wait(timeout: 10)
+            try await pauseAndResume()
             #expect(readable.selection == first)
         }
 
@@ -436,12 +415,7 @@ extension IntegrationTests {
             try await reading.wait(timeout: 10)
             await settle(0.3)
             let first = readable.selection
-            let paused = recorder.expect(.paused)
-            #expect(reader.pause())
-            try await paused.wait(timeout: 10)
-            let resumed = recorder.expect(.reading)
-            #expect(reader.togglePlayPause())
-            try await resumed.wait(timeout: 10)
+            try await pauseAndResume()
             #expect(readable.selection == first)
             let stopped = recorder.expect(.stopped)
             #expect(reader.stop())
@@ -495,6 +469,83 @@ extension IntegrationTests {
             #expect(reader.hasFinished)
         }
 
+        /// With the selection boundary, stopping in a unit that isn't the last reads it to its end, then stops on the next one.
+        @Test func stopWithSelectionBoundaryStopsOnNextUnit() async throws {
+            Defaults[.speechStopBoundary] = .selection
+            let words = Array(repeating: "word", count: 40).joined(separator: " ")
+            let readable = MockReadable("\(words). Second sentence. Third.")
+            let reading = recorder.expect(.reading)
+            #expect(reader.start(reading: readable))
+            try await reading.wait(timeout: 10)
+            let stopped = recorder.expect(.stopped)
+            #expect(reader.stop())
+            #expect(reader.state == .reading)
+            try await stopped.wait(timeout: 15)
+            #expect(readable.selectedUnit == "Second sentence.")
+            #expect(!reader.hasFinished)
+        }
+
+        /// `resumeUnit = .selection` resumes from the unit's start, not from the word where it paused.
+        @Test func resumeFromSelectionRereadsWholeUnit() async throws {
+            Defaults[.resumeUnit] = .selection
+            let long = Array(repeating: "word", count: 200).joined(separator: " ")
+            let readable = MockReadable("\(long). Second sentence.")
+            let reading = recorder.expect(.reading)
+            #expect(reader.start(reading: readable))
+            try await reading.wait(timeout: 10)
+            await settle(2)  // a long utterance's first `willSpeakRange` lags ~0.5–1.2 s
+            try await pauseAndResume()
+            #expect(reader.spokenText?.original == "\(long). ")
+        }
+
+        /// The pause goes before units reading moves on to by itself, not before starting or skipping.
+        @Test func pausesBetweenUnitsOnlyWhenAdvancing() async throws {
+            Defaults[.pauseBetweenUnits] = 0.5
+            let readable = MockReadable("One. Two. Three. Four. Five.")
+            let started = recorder.expectUtteranceStart()
+            #expect(reader.start(reading: readable))
+            #expect(reader.currentUtterance?.preUtteranceDelay == 0)
+            try await started.wait(timeout: 10)
+            let advanced = recorder.expectUtteranceStart()
+            try await advanced.wait(timeout: 10)
+            #expect(readable.selectedUnit != "One.")
+            #expect(reader.currentUtterance?.preUtteranceDelay == 0.5)
+            #expect(reader.skip(.forward))
+            #expect(reader.currentUtterance?.preUtteranceDelay == 0)
+        }
+
+        /// Pausing ends a held skip.
+        @Test func pauseEndsRepeatingSkip() async throws {
+            let readable = MockReadable(longText)
+            let reading = recorder.expect(.reading)
+            #expect(reader.start(reading: readable))
+            try await reading.wait(timeout: 10)
+            Defaults[.repeatingSkipInterval] = 0.05
+            #expect(reader.beginRepeatingSkip(.forward, firstRepeatAfter: 0.05))
+            let paused = recorder.expect(.paused)
+            #expect(reader.pause())
+            try await paused.wait(timeout: 10)
+            let selections = readable.history.count
+            await settle(0.3)
+            #expect(readable.history.count == selections)
+        }
+
+        /// A held skip ends at the last unit: it doesn't skip on from a selection made there afterwards.
+        @Test func failedSkipEndsRepeatingSkip() async throws {
+            Defaults[.speechRate] = AVSpeechUtteranceMinimumSpeechRate  // the last unit lasts while the test waits
+            Defaults[.repeatingSkipInterval] = 0.05
+            let text = "One. Two. The last sentence takes a while to read."
+            let readable = MockReadable(text)
+            #expect(reader.start(reading: readable))
+            #expect(reader.beginRepeatingSkip(.forward, firstRepeatAfter: 0.05))
+            try await waitUntil(timeout: 5, "the last unit") { !reader.canSkipForward }
+            await settle(0.2)  // the next repeat fails
+            let first = try Selection(of: "One.", in: text)
+            readable.selection = first
+            await settle(0.3)
+            #expect(readable.selection == first)
+        }
+
         /// Whatever the stop boundary: the rest of a long unit isn't read, and it doesn't count as finished.
         @Test(arguments: [EasyReader.StopBoundary.immediate, .word, .selection])
         func stopsAndDropsReadableWhenInvalidated(boundary: EasyReader.StopBoundary) async throws {
@@ -533,7 +584,7 @@ extension IntegrationTests {
             #expect(reader.skip(.forward))
             #expect(reader.skip(.forward))
             await settle(0.5)
-            #expect(readable.selection.flatMap(readable.text(of:)) == sentences[2])
+            #expect(readable.selectedUnit == sentences[2])
             #expect(reader.state == .reading)
         }
     }

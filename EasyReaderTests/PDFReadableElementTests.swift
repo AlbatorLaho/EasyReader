@@ -31,29 +31,23 @@ extension IntegrationTests {
         }
 
         init() async throws {
+            PDFReadableElement.spellingLanguage = "en"
+            Teardown.add { PDFReadableElement.spellingLanguage = nil }
             pdfView = PDFView(frame: NSRect(x: 0, y: 0, width: 420, height: 500))
             pdfView.autoScales = true
-            pdfView.document = try #require(PDFDocument(data: Self.makePDF()))
-            window = NSWindow(
-                contentRect: NSRect(x: 200, y: 200, width: 420, height: 500),
-                styleMask: [.titled],
-                backing: .buffered,
-                defer: false
-            )
-            window.isReleasedWhenClosed = false
-            window.title = "AX PDF Test \(UUID().uuidString)"
-            window.contentView = pdfView
-            window.makeKeyAndOrderFront(nil)
+            pdfView.document = try #require(PDFDocument(data: try Self.makePDF()))
+            window = makeTestWindow(pdfView, title: "AX PDF Test", frame: NSRect(x: 200, y: 200, width: 420, height: 500))
             window.makeFirstResponder(pdfView)
-            let window = window
-            Teardown.add { window.close() }
             await settle(0.3)
         }
 
-        static func makePDF() -> Data {
+        static func makePDF() throws -> Data {
             let data = NSMutableData()
             var box = CGRect(x: 0, y: 0, width: 612, height: 792)
-            let context = CGContext(consumer: CGDataConsumer(data: data)!, mediaBox: &box, nil)!
+            let consumer = try #require(CGDataConsumer(data: data))
+            let context = try #require(CGContext(consumer: consumer, mediaBox: &box, nil))
+            let bold = try #require(NSFont(name: "Helvetica-Bold", size: 14))
+            let large = try #require(NSFont(name: "Helvetica", size: 18))
             for page in 0..<pageCount {
                 context.beginPDFPage(nil)
                 NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
@@ -124,9 +118,9 @@ extension IntegrationTests {
                 if page == 27 { draw("* A starred note.", size: 9, in: CGRect(x: 72, y: 80, width: 300, height: 20)) }
                 // Headings without a stop, not title case: bold in the paragraph's leaf (7) or its own (14), larger in the paragraph's (15).
                 let headings: [Int: (String, NSFont, CGFloat)] = [
-                    7: ("A bold heading without a stop", NSFont(name: "Helvetica-Bold", size: 14)!, 691),
-                    14: ("A bold heading on its own", NSFont(name: "Helvetica-Bold", size: 14)!, 715),
-                    15: ("A larger heading", NSFont(name: "Helvetica", size: 18)!, 693),
+                    7: ("A bold heading without a stop", bold, 691),
+                    14: ("A bold heading on its own", bold, 715),
+                    15: ("A larger heading", large, 693),
                 ]
                 if let (heading, font, y) = headings[page] {
                     NSAttributedString(string: heading, attributes: [.font: font]).draw(in: CGRect(x: 72, y: y, width: 300, height: 24))
@@ -147,35 +141,9 @@ extension IntegrationTests {
             return data as Data
         }
 
-        /// Silent reader, as in EasyReaderSpeechTests.
-        private func makeReader() -> EasyReader {
-            Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            let reader = EasyReader()
-            reader.delegate = recorder
-            reader.textSelector = NLTextSelector(unit: .sentence)
-            Teardown.add { reader.stop() }
-            return reader
-        }
+        private func makeReader() -> EasyReader { makeSilentReader(recorder: recorder) }
 
-        private func axWindow() throws -> AXElement {
-            let app = AXElement.application(pid: getpid())
-            let windows = try #require(try app.attribute(.windows))
-            return try #require(windows.first { (try? $0.attribute(.title) as String?) == window.title }, "test window not in AX tree")
-        }
-
-        private func readable() throws -> PDFReadableElement {
-            var queue = [try axWindow()]
-            while !queue.isEmpty {
-                let element = queue.removeFirst()
-                if let readable = try element.readableElement() {
-                    return try #require(readable as? PDFReadableElement)
-                }
-                queue += (try? element.attribute(.children)) ?? []
-            }
-            throw NotFound()
-        }
-
-        private struct NotFound: Error {}
+        private func readable() throws -> PDFReadableElement { try readableElement(in: window) }
 
         private var selected: String? {
             pdfView.currentSelection?.string?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -196,7 +164,7 @@ extension IntegrationTests {
                 }
                 stack += (try element.attribute(.children)) ?? []
             }
-            throw NotFound()
+            throw NotFound(what: "\(string.debugDescription) on page \(page)")
         }
 
         private func go(toPage index: Int) async throws {
@@ -214,7 +182,7 @@ extension IntegrationTests {
 
         @Test func findsPDFStartingFromWindow() throws {
             let reader = makeReader()
-            #expect(reader.start(reading: .element(try axWindow())))
+            #expect(reader.start(reading: .element(try axWindow(of: window))))
             #expect(reader.readable is PDFReadableElement)
         }
 
@@ -258,6 +226,45 @@ extension IntegrationTests {
             #expect(readable.selectedText == "A second paragraph on page 1.")
         }
 
+        /// Selecting the text taken before again, after reading moved on, starts there again.
+        @Test func readsSameUserSelectionAgain() throws {
+            try axSelect("It ends the page.", page: 0)
+            let readable = try readable()
+            #expect(readable.selectedText == "It ends the page.")
+            #expect(try next(readable) == "Page 1 opens here.")
+            try axSelect("It ends the page.", page: 0)
+            _ = readable.selection
+            #expect(readable.selectedText == "It ends the page.")
+        }
+
+        /// A user selection far away that isn't in the text (a running title) keeps the unit being read.
+        @Test func keepsUnitWhenUserSelectionIsNotInText() async throws {
+            let readable = try readable()
+            #expect(try next(readable) == "Page 0 opens here.")
+            try await go(toPage: 20)
+            try axSelect("Running Title", page: 20)
+            #expect(readable.selection != nil)
+            #expect(readable.selectedText?.trimmingCharacters(in: .whitespaces) == "Page 0 opens here.")
+        }
+
+        /// Wrapping around (the selection put at the text's start) reads from the document's start, not the window's.
+        @Test func contentStartIsDocumentStart() async throws {
+            try await go(toPage: 20)
+            let readable = try readable()
+            #expect(!(try #require(readable.fullText)).contains("Page 0 opens"))
+            let start = readable.contentStart
+            readable.selection = Selection(start..<start)
+            #expect(try next(readable) == "Page 0 opens here.")
+        }
+
+        /// With only the bottom margin of the first visible page on screen, reading starts on the next page.
+        @Test func startsOnNextPageBelowSliver() async throws {
+            let page = try #require(pdfView.document?.page(at: 0))
+            pdfView.go(to: PDFDestination(page: page, at: NSPoint(x: 0, y: 12)))
+            await settle(0.3)
+            #expect(try next(try readable()) == "Page 1 opens here.")
+        }
+
         /// Starting in the middle of a long PDF loads only pages near there; going back loads earlier ones.
         @Test func startsAtVisiblePageAndLoadsEarlierPages() async throws {
             try await go(toPage: 20)
@@ -274,9 +281,9 @@ extension IntegrationTests {
             let readable = try readable()
             for _ in 0..<12 { _ = try next(readable) }  // loads pages ahead of the visible one
             let text = try #require(readable.fullText)
-            let target = (text as NSString).range(of: "Page 1 opens here.")
+            let target = try Selection(of: "Page 1 opens here.", in: text)
             try await go(toPage: 25)
-            readable.selection = Selection(target)
+            readable.selection = target
             #expect(selected == "Page 1 opens here.")
         }
 
@@ -310,9 +317,7 @@ extension IntegrationTests {
             // A page number runs on into the next page's header (no stop ends it).
             #expect(lines.contains("18 Running Title"), "\(text)")
             #expect(lines.contains("3 The note."), "\(text)")
-            let range = (text as NSString).range(of: "An area of x2 has a mark3 here.")
-            try #require(range.location != NSNotFound, "\(text)")
-            readable.selection = Selection(range)
+            readable.selection = try Selection(of: "An area of x2 has a mark3 here.", in: text)
             #expect(readable.selectedText == "An area of x2 has a mark3 here.")
         }
 
@@ -389,9 +394,7 @@ extension IntegrationTests {
             let text = try #require(readable.fullText)
             #expect(!text.contains("The ruled note") && !text.contains("The verse note"), "\(text)")
             #expect(!text.contains("_"), "\(text)")
-            let range = (text as NSString).range(of: sentence)
-            try #require(range.location != NSNotFound, "\(text)")
-            readable.selection = Selection(range)
+            readable.selection = try Selection(of: sentence, in: text)
             #expect(readable.selectedText == spoken)
         }
 
@@ -461,12 +464,11 @@ extension IntegrationTests {
             try await go(toPage: 5)
             let readable = try readable()
             let text = try #require(readable.fullText)
-            let range = (text as NSString).range(of: "A second paragraph has a marked")
-            #expect(range.location != NSNotFound)
-            readable.selection = Selection(range.location..<range.location + range.length + 7)
+            let start = try Selection(of: "A second paragraph has a marked", in: text)
+            readable.selection = Selection(start.lowerBound..<start.upperBound + 7)
             let spoken = try #require(readable.selectedText)
             #expect(!spoken.contains("z"), "\(spoken.debugDescription)")
-            #expect(spoken.utf16.count == range.length + 7)
+            #expect(spoken.utf16.count == start.count + 7)
             #expect(selected?.contains("z") == true)
             #expect(!readable.isHighlighting)
         }
@@ -476,9 +478,7 @@ extension IntegrationTests {
             try await go(toPage: 17)
             let readable = try readable()
             let text = try #require(readable.fullText)
-            let range = (text as NSString).range(of: "An area of x2 has a mark3 here.")
-            try #require(range.location != NSNotFound, "\(text)")
-            readable.selection = Selection(range)
+            readable.selection = try Selection(of: "An area of x2 has a mark3 here.", in: text)
             #expect(readable.selectedText == "An area of x2 has a mark\u{2060} here.")
         }
 
@@ -487,9 +487,7 @@ extension IntegrationTests {
             try await go(toPage: 18)
             let readable = try readable()
             let text = try #require(readable.fullText)
-            let range = (text as NSString).range(of: "An area of x2 has a mark3 here.", options: .backwards)
-            try #require(range.location != NSNotFound, "\(text)")
-            readable.selection = Selection(range)
+            readable.selection = try Selection(of: "An area of x2 has a mark3 here.", in: text, options: .backwards)
             #expect(readable.selectedText == "An area of x2 has a mark3 here.")
         }
 
@@ -498,7 +496,7 @@ extension IntegrationTests {
             try await go(toPage: 2)
             let readable = try readable()
             let text = try #require(readable.fullText)
-            let unit = Selection((text as NSString).range(of: "It runs on to the next page, where it ends."))
+            let unit = try Selection(of: "It runs on to the next page, where it ends.", in: text)
             readable.selection = unit
             #expect(!readable.isHighlighting)
             let first = try #require(selected)
@@ -517,7 +515,7 @@ extension IntegrationTests {
             try await go(toPage: 2)
             let readable = try readable()
             let text = try #require(readable.fullText)
-            readable.selection = Selection((text as NSString).range(of: "It runs on to the next page, where it ends."))
+            readable.selection = try Selection(of: "It runs on to the next page, where it ends.", in: text)
             readable.setWindow(0..<5)
             #expect(readable.didReach("It runs on to the ".utf16.count) != nil)
             #expect(selected == "next page, where it ends.")
@@ -545,18 +543,13 @@ extension IntegrationTests {
             try await go(toPage: 2)
             let readable = try readable()
             let text = try #require(readable.fullText)
-            readable.selection = Selection((text as NSString).range(of: "It runs on to the next page, where it ends."))
+            readable.selection = try Selection(of: "It runs on to the next page, where it ends.", in: text)
             let reader = makeReader()
             Defaults[.speechRate] = AVSpeechUtteranceDefaultSpeechRate  // slow enough to see the pieces
             let reading = recorder.expect(.reading)
             #expect(reader.start(reading: readable))
             try await reading.wait(timeout: 10)
-            var waited = 0
-            while waited < 100, selected != "next page, where it ends." {
-                await settle(0.05)
-                waited += 1
-            }
-            #expect(selected == "next page, where it ends.")
+            try await waitUntil(timeout: 5, "selection on the second piece") { selected == "next page, where it ends." }
         }
 
         /// A word hyphenated at a line break is read whole; a hyphen that's part of the word stays.
@@ -565,7 +558,7 @@ extension IntegrationTests {
             let readable = try readable()
             let text = try #require(readable.fullText)
             #expect(text.contains("Words like hyph\u{2060}\u{2060}enated and self-\u{2060}aware are split."))
-            readable.selection = Selection((text as NSString).range(of: "Words like hyph\u{2060}\u{2060}enated and self-\u{2060}aware are split."))
+            readable.selection = try Selection(of: "Words like hyph\u{2060}\u{2060}enated and self-\u{2060}aware are split.", in: text)
             #expect(selected?.replacingOccurrences(of: "\n", with: "") == "Words like hyph-enated and self-aware are split.")
             #expect(!readable.isHighlighting)
         }
@@ -576,13 +569,8 @@ extension IntegrationTests {
             #expect(reader.start(reading: try readable()))
             try await reading.wait(timeout: 10)
             // Maximum rate: the first units go by fast, so only check that the selection moved on.
-            var waited = 0
-            while waited < 50, [nil, "Page 0 opens here."].contains(selected) {
-                await settle()
-                waited += 1
-            }
+            try await waitUntil(timeout: 5, "selection to move on") { ![nil, "Page 0 opens here."].contains(selected) }
             let unit = try #require(selected)
-            #expect(unit != "Page 0 opens here.")
             #expect(try #require(reader.readable?.fullText).contains(PDFReadableElement.flattened(unit).0))
         }
     }

@@ -1,7 +1,6 @@
 import Cocoa
 
-/// Chromium: the page's `AXStaticText` leaves in document order, each located lazily in the page text next to a
-/// neighbor. Only seeds are measured through markers (slow, O(offset)): a binary search for the first lookup, again beyond 20k.
+/// Chromium: the page's `AXStaticText` leaves in order, located lazily in the page text next to a neighbor; only seeds are measured via markers.
 @MainActor
 final class PageLeaves {
     struct Leaf {
@@ -222,7 +221,7 @@ final class PageLeaves {
         if matches(index, at: measured) {
             starts[index] = measured
         } else {
-            // Markers at node boundaries can be off by a char or so
+            // Markers at node boundaries can be off by a char or so.
             let near = (1...64).lazy.flatMap { [measured - $0, measured + $0] }.first { self.matches(index, at: $0) }
             guard let found = near else { return nil }
             starts[index] = found

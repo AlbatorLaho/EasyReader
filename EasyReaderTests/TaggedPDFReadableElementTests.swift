@@ -22,41 +22,14 @@ extension IntegrationTests {
         init() async throws {
             pdfView = PDFView(frame: NSRect(x: 0, y: 0, width: 500, height: 600))
             pdfView.autoScales = true
-            let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("TaggedPDF.pdf")
+            let url = try #require(Bundle(for: BundleToken.self).url(forResource: "TaggedPDF", withExtension: "pdf"))
             pdfView.document = try #require(PDFDocument(url: url))
-            window = NSWindow(
-                contentRect: NSRect(x: 200, y: 200, width: 500, height: 600),
-                styleMask: [.titled],
-                backing: .buffered,
-                defer: false
-            )
-            window.isReleasedWhenClosed = false
-            window.title = "AX Tagged PDF Test \(UUID().uuidString)"
-            window.contentView = pdfView
-            window.makeKeyAndOrderFront(nil)
+            window = makeTestWindow(pdfView, title: "AX Tagged PDF Test", frame: NSRect(x: 200, y: 200, width: 500, height: 600))
             window.makeFirstResponder(pdfView)
-            let window = window
-            Teardown.add { window.close() }
             await settle(0.3)
         }
 
-        private func container() throws -> AXElement {
-            let app = AXElement.application(pid: getpid())
-            let windows = try #require(try app.attribute(.windows))
-            var queue = [try #require(windows.first { (try? $0.attribute(.title) as String?) == window.title })]
-            while !queue.isEmpty {
-                let element = queue.removeFirst()
-                if try element.readableElement() is PDFReadableElement { return element }
-                queue += (try? element.attribute(.children)) ?? []
-            }
-            throw NotFound()
-        }
-
-        private struct NotFound: Error {}
-
-        private func readable() throws -> PDFReadableElement {
-            try #require(try container().readableElement() as? PDFReadableElement)
-        }
+        private func readable() throws -> PDFReadableElement { try readableElement(in: window) }
 
         /// The PDF view's selection, with line breaks as spaces.
         private var selected: String? {
@@ -98,7 +71,7 @@ extension IntegrationTests {
 
         /// The user's selection starts in a leaf that can't be selected through AX; that leaf reports it.
         @Test func readsUserSelectionStartingInLeafThatCantBeSelected() throws {
-            let page = try #require(try container().attribute(.children)?.first)
+            let page = try #require(try readable().handle.attribute(.children)?.first)
             var stack = [page]
             var heading: AXElement?
             while let element = stack.popLast(), heading == nil {
@@ -115,3 +88,6 @@ extension IntegrationTests {
         }
     }
 }
+
+/// Finds the test bundle (its resources).
+private final class BundleToken {}

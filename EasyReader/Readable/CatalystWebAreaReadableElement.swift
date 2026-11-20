@@ -1,7 +1,6 @@
 import Cocoa
 
-/// A Mac Catalyst web area: Apple Books' paginated chapters. `handle` is the window; a chapter is its web area, and
-/// offsets are its AX indices.
+/// A Mac Catalyst web area (Apple Books' paginated chapters): `handle` is the window, a chapter its web area, offsets its AX indices.
 final class CatalystWebAreaReadableElement: ReadableElement {
     /// A paragraph or heading with (part of) its text on the spread.
     private struct Leaf: Equatable {
@@ -53,7 +52,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         let text: String
     }
 
-    // Page Down/Up; arrows only turn while Books has key focus (else they scroll 40 px), so they're the fallback
+    // Page Down/Up; arrows only turn while Books' page controller has key focus (else they scroll 40 px), so they're the fallback.
     private static let pageKeys: (forward: CGKeyCode, back: CGKeyCode) = (121, 116)
     private static let arrowKeys: (forward: CGKeyCode, back: CGKeyCode) = (124, 123)
 
@@ -74,12 +73,11 @@ final class CatalystWebAreaReadableElement: ReadableElement {
     // Removed only by `endReading`, which EasyReader always calls: a deinit can't (isolated deinits are off-limits).
     private var mouseMonitor: Any?
     private var usesArrows = false
-    /// Right-to-left books.
-    private var isReversed = false
+    private var isRightToLeft = false
     /// What `spread()` read this main-actor turn; dropped by a posted key.
     private var cachedSpread: Spread?
 
-    // Catalyst elements have no `AXWindow`
+    // Catalyst elements have no `AXWindow`.
     required init(_ element: AXElement) {
         super.init((try? element.parent(with: .window)) ?? element)
     }
@@ -146,7 +144,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         mouseMonitor = nil
     }
 
-    // Books posts no `AXSelectedTextChanged`; this way the clipboard isn't touched per unit
+    // Books posts no `AXSelectedTextChanged`; this way the clipboard isn't touched per unit.
     private func watchMouse() {
         guard mouseMonitor == nil, let pid = try? handle.pid() else { return }
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
@@ -164,7 +162,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         let spread = spread()
         if let chapter {
             if let page = page(of: chapter, in: spread) { return (chapter, page) }
-            // Shown, but its text doesn't fit (yet): keep it rather than reloading on every read
+            // Shown, but its text doesn't fit (yet): keep it rather than reloading on every read.
             if spread.areas.contains(where: { $0.webArea == chapter.webArea }) { return (chapter, nil) }
         }
         guard let area = spread.areas.first(where: { !$0.leaves.isEmpty }), let loaded = loadChapter(area) else {
@@ -236,7 +234,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
                 paragraphs.append(Paragraph(element: leaf.element, range: range, visible: range))
                 continue
             }
-            // Split across spreads: `AXValue` isn't always the part on this one, so measure its lines on screen
+            // Split across spreads: `AXValue` isn't always the part on this one, so measure its lines on screen.
             if screen == nil { screen = try? handle.attribute(.frame) }
             let visible: Range<Int>
             if let screen, let lines = visibleLines(of: leaf, in: screen) {
@@ -278,7 +276,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
     }
 
     /// Where `value` (a paragraph's part on the spread) is in the whole `paragraph`; `fromEnd` for its tail.
-    // Books drops the last character of a tail
+    // Books drops the last character of a tail.
     nonisolated static func locate(_ value: String, in paragraph: String, fromEnd: Bool) -> Range<Int>? {
         let paragraph = paragraph as NSString
         let found = paragraph.range(of: value, options: fromEnd ? .backwards : [])
@@ -299,7 +297,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
     /// Each leaf's text at its AX index, gaps (paragraph breaks) as line breaks.
     private func loadChapter(_ area: Spread.Area) -> Chapter? {
         guard let leaf = area.leaves.first?.element, let first = span(of: leaf) else { return nil }
-        // The walk can meet an inline run (italics) before its paragraph: sort by start, longest first
+        // The walk can meet an inline run (italics) before its paragraph: sort by start, longest first.
         let spans = (walk(from: leaf, forward: false) + [first] + walk(from: leaf, forward: true)).sorted {
             ($0.range.lowerBound, -$0.range.count) < ($1.range.lowerBound, -$1.range.count)
         }
@@ -357,19 +355,19 @@ final class CatalystWebAreaReadableElement: ReadableElement {
             return nil
         }
         guard offset < page.visible.upperBound || offset >= tracked.upperBound else {
-            // Couldn't turn to it: don't try again on every word
+            // Couldn't turn to it: don't try again on every word.
             Log.accessibility.debug("catalyst: couldn't turn to \(offset)")
             pieceEnd = tracked.upperBound
             return nil
         }
-        // The paragraph holding `offset`, or the next one when it's in the line breaks between them
+        // The paragraph holding `offset`, or the next one when it's in the line breaks between them.
         let clamped = offset.clamped(to: page.visible.lowerBound...page.visible.upperBound)
         let paragraph = page.paragraphs.first(where: { clamped < $0.range.upperBound }) ?? page.paragraphs[page.paragraphs.count - 1]
         let start = clamped.clamped(to: paragraph.range.lowerBound...paragraph.range.upperBound)
         let end = max(start, min(tracked.upperBound, page.visible.upperBound, paragraph.range.upperBound))
         pieceEnd = end
         let range = CFRange(location: start - paragraph.range.lowerBound, length: end - start)
-        // WebKit scrolls toward the start of a paragraph that began on an earlier spread
+        // WebKit scrolls toward the start of a paragraph that began on an earlier spread.
         let continued = paragraph.range.lowerBound < paragraph.visible.lowerBound
         let webArea = continued ? chapter?.webArea : nil
         let frame = try? webArea?.attribute(.frame)
@@ -391,7 +389,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
             Thread.sleep(forTimeInterval: 0.03)
         }
         guard let shift, let pid = try? handle.pid() else { return }
-        // Content moved right: scrolled back
+        // Content moved right: scrolled back.
         Log.accessibility.debug("catalyst: selecting scrolled the page by \(shift), turning back")
         postKey(key(forward: shift > 0), to: pid)
         for _ in 0..<40 {
@@ -409,7 +407,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
 
     private func key(forward: Bool) -> CGKeyCode {
         let keys = usesArrows ? Self.arrowKeys : Self.pageKeys
-        return forward != isReversed ? keys.forward : keys.back
+        return forward != isRightToLeft ? keys.forward : keys.back
     }
 
     private func postKey(_ key: CGKeyCode, to pid: pid_t) {
@@ -422,23 +420,23 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         var spread = spread()
         guard var page = page(of: chapter, in: spread) else { return nil }
         var lastDirection: Bool?
-        // Each turn blocks main ~0.5 s
+        // Each turn blocks main ~0.5 s.
         let deadline = Date().addingTimeInterval(Self.maxTurningTime)
         for _ in 0..<200 where Date() < deadline {
             let visible = page.visible
             if visible.contains(offset) { return page }
             let forward = offset >= visible.upperBound
-            // Turned past it (it's between what two spreads report)
+            // Turned past it (it's between what two spreads report).
             if let lastDirection, lastDirection != forward { return page }
             lastDirection = forward
             guard let turned = turnPage(forward: forward, from: spread) else { return page }
             guard let next = self.page(of: chapter, in: turned) else {
-                // Out of the chapter: offsets are only valid in this one
+                // Out of the chapter: offsets are only valid in this one.
                 _ = turnPage(forward: !forward, from: turned)
                 return page
             }
             if forward ? next.visible.lowerBound < visible.lowerBound : next.visible.lowerBound > visible.lowerBound {
-                isReversed.toggle()
+                isRightToLeft.toggle()
                 Log.accessibility.debug("catalyst: page turn went the other way, swapping keys")
             }
             spread = turned
@@ -448,8 +446,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
     }
 
     /// Nil if the page didn't turn.
-    // Done once text changed and frames read equal twice (text updates before the animation ends; selecting
-    // mid-animation misaligns). Empty for a while between chapters.
+    // Done once text changed and frames read equal twice: text updates before the animation ends. Empty for a while between chapters.
     private func turnPage(forward: Bool, from spread: Spread) -> Spread? {
         guard let pid = try? handle.pid() else { return nil }
         postKey(key(forward: forward), to: pid)
@@ -485,7 +482,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         if let tracked, tracked.lowerBound <= found.lowerBound, found.upperBound <= tracked.upperBound { return }
         Log.accessibility.debug("catalyst: user selection \(found)")
         tracked = Selection(found)
-        // The user already selected it on this spread
+        // The user already selected it on this spread.
         pieceEnd = min(found.upperBound, page.visible.upperBound)
         lastReached = nil
     }
@@ -497,7 +494,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
     }
 
     /// Where `copied` is in `text`, starting on the spread showing `visible`.
-    // By first and last line: the copy's paragraph breaks needn't be the text's
+    // By first and last line: the copy's paragraph breaks needn't be the text's.
     nonisolated static func locate(copied: String, in text: NSString, on visible: Range<Int>) -> Range<Int>? {
         let lines = copied.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -523,13 +520,12 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         return Self.isChapterEnd(unit: tracked, in: chapter.nsText, spoken: spoken as NSString, reached: lastReached)
     }
 
-    /// Whether speech reached the last word of `unit`, the chapter's last; `reached` (nil: speech reported no word yet)
-    /// is an offset in `spoken`.
+    /// Whether speech reached the last word of `unit`, the chapter's last; `reached`: offset in `spoken` (nil: no word reported yet).
     nonisolated static func isChapterEnd(unit: Selection, in text: NSString, spoken: NSString, reached: Int?) -> Bool {
         guard !unit.isEmpty, unit.upperBound <= text.length else { return false }
         let blank = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{FFFC}"))
         guard text.substring(from: unit.upperBound).trimmingCharacters(in: blank).isEmpty else { return false }
-        // No words (punctuation, U+FFFC): speech reports none
+        // No words (punctuation, U+FFFC): speech reports none.
         guard let reached else { return spoken.rangeOfCharacter(from: .alphanumerics).location == NSNotFound }
         guard reached <= spoken.length else { return false }
         let unread = spoken.substring(from: reached).trimmingCharacters(in: blank)

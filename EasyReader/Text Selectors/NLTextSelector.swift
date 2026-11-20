@@ -12,7 +12,7 @@ final class NLTextSelector: TextSelector {
     }
 
     func select(_ direction: Selection.Direction, from selection: Selection, in string: String) -> Selection {
-        // Setting it, even to the same string, discards the analysis
+        // Setting it, even to the same string, discards the analysis.
         if tagger.string != string { tagger.string = string }
         let startIndex: String.Index
         let endIndex: String.Index
@@ -23,7 +23,7 @@ final class NLTextSelector: TextSelector {
                 tagger.enumerateTags(in: startIndex..<string.endIndex, unit: taggerUnit, scheme: .lexicalClass) { tag, range in
                     guard tag != .paragraphBreak else { return tagRange == nil }
                     tagRange = range
-                    // A list label ("81. ") is read with the unit after it
+                    // A list label ("81. ") is read with the unit after it.
                     return Self.isListLabel(string[startIndex..<range.upperBound])
                 }
                 endIndex = tagRange.map { Self.skippingCitations(from: $0.upperBound, in: string) } ?? string.endIndex
@@ -33,9 +33,9 @@ final class NLTextSelector: TextSelector {
                 tagger.enumerateTagsReversed(in: string.startIndex..<endIndex, unit: taggerUnit, scheme: .lexicalClass) { tag, range in
                     guard tag != .paragraphBreak else { return tagStart == nil }
                     let start = Self.skippingCitations(from: range.lowerBound, in: string)
-                    // Only a citation's tail ("2] ") between the two boundaries: belongs to the unit before
+                    // Only a citation's tail ("2] ") between the two boundaries: belongs to the unit before.
                     guard start < endIndex else { return true }
-                    // A list label right before the unit ("81. ") belongs to it
+                    // A list label right before the unit ("81. ") belongs to it.
                     if let found = tagStart {
                         if Self.isListLabel(string[start..<found]) { tagStart = start }
                         return false
@@ -56,7 +56,7 @@ final class NLTextSelector: TextSelector {
         return listLabel.firstMatch(in: string, range: NSRange(string.startIndex..., in: string)) != nil
     }
 
-    // `\z`: unlike `$`, not before a final newline
+    // `\z`: unlike `$`, not before a final newline.
     private static let listLabel = try! NSRegularExpression(
         pattern: #"^[ \t ]*([0-9]{1,4}|[ivxlc]{1,6}|[IVXLC]{1,6}|[A-Za-z])[.)][ \t ]*\z|^[ \t ]*[•◦▪‣–-][ \t ]*\z"#)
 
@@ -99,7 +99,7 @@ extension NLTagger {
             let previousIndex = string.index(before: currentIndex)
             let tags = tags(in: previousIndex..<currentIndex, unit: unit, scheme: scheme, options: options)
             guard let (tag, tagRange) = tags.last, tagRange.lowerBound < currentIndex else {
-                // Never seen, but always step back so the loop ends
+                // Never seen, but always step back so the loop ends.
                 currentIndex = previousIndex
                 continue
             }

@@ -1,5 +1,5 @@
-import Foundation
-import AVKit
+import AppKit
+import AVFoundation
 import Defaults
 import KeyboardShortcuts
 

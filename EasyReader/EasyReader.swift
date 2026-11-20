@@ -36,7 +36,7 @@ final class EasyReader: NSObject {
             textLength = nil
             forwardCache = nil
             hasFinished = false
-            // Stopping already ended it, unless its first utterance hasn't started yet
+            // Stopping already ended it, unless its first utterance hasn't started yet.
             if state != .stopped || currentUtterance != nil { oldValue?.endReading() }
             oldValue?.onInvalidate = nil
             readable?.onInvalidate = { [weak self] in
@@ -63,9 +63,9 @@ final class EasyReader: NSObject {
         }
     }
     private var reachedEnd = false
-    // Fetching `fullText` per utterance is slow on web pages
+    // Fetching `fullText` per utterance is slow on web pages.
     private var textLength: Int?
-    // `canSkipForward` runs on every menu/toolbar validation
+    // `canSkipForward` runs on every menu/toolbar validation.
     private var forwardCache: (readable: ObjectIdentifier, selection: Selection, text: String, next: Selection)?
     private var pronunciationCache: (stored: NSObject?, rules: [Pronunciation.Compiled])?
 
@@ -87,7 +87,7 @@ final class EasyReader: NSObject {
 
     @discardableResult
     func play(from unit: ResumeUnit) -> Bool {
-        // A speech-setting restart: Books would copy the selection again
+        // A speech-setting restart: Books would copy the selection again.
         if state != .reading { readable?.beginReading() }
         let started = resume(from: unit)
         if !started, state == .stopped { readable?.endReading() }
@@ -167,7 +167,7 @@ final class EasyReader: NSObject {
         stopAfterUnit = nil
         stopType = type
         let stopped = synthesizer.stopSpeaking(at: boundary == .immediate ? .immediate : .word)
-        // Not started yet: it may get no callback at all (queued behind an interrupted one), so stop it here
+        // Not started yet: it may get no callback at all (queued behind an interrupted one), so stop it here.
         guard currentUtterance == nil || hasCurrentUtteranceStarted else {
             currentUtterance = nil
             applyStopType()
@@ -185,8 +185,7 @@ final class EasyReader: NSObject {
         }
     }
 
-    /// Forward on the last unit (of the main content too) does nothing; reaching the end on its own still stops (`advance`).
-    /// Backward on the first unit restarts it, unless `restartingAtStart` is false.
+    /// Forward on the last unit (of the main content too) does nothing; backward on the first restarts it, unless `restartingAtStart` is false.
     @discardableResult
     func skip(_ direction: Selection.Direction, restartingAtStart: Bool = true) -> Bool {
         if direction == .forward, !canSkipForward {
@@ -258,7 +257,7 @@ final class EasyReader: NSObject {
 
     private func read(_ spoken: SpokenText, pausingFirst: Bool) {
         let utterance = AVSpeechUtterance(spoken)
-        // Pause after selecting the next unit, so a stop after the unit doesn't wait for it
+        // Pause after selecting the next unit, so a stop after the unit doesn't wait for it.
         if pausingFirst { utterance.preUtteranceDelay = Defaults[.pauseBetweenUnits] }
         Log.speech.debug(
             "speak \(spoken.text.utf16.count) chars (voice \(utterance.voice?.identifier ?? "default"), rate \(utterance.rate)): \(spoken.text.prefix(80).debugDescription)"
@@ -296,7 +295,7 @@ final class EasyReader: NSObject {
             return cache.next
         }
         var nextSelection = textSelector.select(direction, from: selection, in: fullText, blocks: { readable.textBlock(containing: $0) })
-        // Reading the main content ends with it (a user selection past it reads on to the text's end)
+        // Reading the main content ends with it (a user selection past it reads on to the text's end).
         if direction == .forward, let end = readable.contentEnd, selection.lowerBound < end, nextSelection.lowerBound >= end {
             Log.reader.debug("nextSelection(forward): past the main content's end at \(end)")
             nextSelection = Selection(length..<length)
@@ -434,7 +433,7 @@ extension EasyReader: @preconcurrency AVSpeechSynthesizerDelegate {
             case .continue: break
             case .pause: state = .paused
             case .cancel:
-                // Stopped before it started speaking: no state change ends reading
+                // Stopped before it started speaking: no state change ends reading.
                 if state == .stopped { readable?.endReading() }
                 state = .stopped
         }

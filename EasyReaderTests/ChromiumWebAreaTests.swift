@@ -24,17 +24,18 @@ enum ChromeForTesting {
 
     /// Opens `url` in a new instance with a temporary profile and `--enable-features=<features>`.
     static func launch(_ url: URL, features: [String] = []) throws -> (Process, profile: URL) {
+        let app = try #require(app, "no Chrome for Testing")
         let profile = FileManager.default.temporaryDirectory.appendingPathComponent("EasyReaderChrome-\(UUID().uuidString)")
         let process = Process()
-        process.executableURL = app!.appendingPathComponent("Contents/MacOS/Google Chrome for Testing")
-        process.arguments = [
+        process.executableURL = app.appendingPathComponent("Contents/MacOS/Google Chrome for Testing")
+        var arguments = [
             "--user-data-dir=\(profile.path)", "--no-first-run", "--no-default-browser-check", "--disable-sync",
             // Otherwise Chrome asks for the login keychain password (for "Chromium Safe Storage").
             "--use-mock-keychain", "--password-store=basic",
             "--window-position=100,100", "--window-size=900,700",
         ]
-        if !features.isEmpty { process.arguments! += ["--enable-features=\(features.joined(separator: ","))"] }
-        process.arguments! += [url.absoluteString]
+        if !features.isEmpty { arguments += ["--enable-features=\(features.joined(separator: ","))"] }
+        process.arguments = arguments + [url.absoluteString]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()
@@ -50,23 +51,10 @@ enum ChromeForTesting {
         Teardown.add {
             // SIGTERM only closes Chrome's windows
             kill(browser.processIdentifier, SIGKILL)
-            for _ in 0..<50 where browser.isRunning { await settle() }
+            try? await waitUntil(timeout: 5) { !browser.isRunning }
             try? FileManager.default.removeItem(at: profile)
         }
         return browser
-    }
-
-    @MainActor
-    static func find(role: String, in root: AXElement, where predicate: (AXElement) -> Bool = { _ in true }) -> AXElement? {
-        var queue = [root]
-        var visited = 0
-        while !queue.isEmpty, visited < 5000 {
-            let element = queue.removeFirst()
-            visited += 1
-            if (try? element.role())?.rawValue == role, predicate(element) { return element }
-            queue += (try? element.attribute(.children)) ?? []
-        }
-        return nil
     }
 
     @MainActor
@@ -74,25 +62,31 @@ enum ChromeForTesting {
         (try? AXElement.application(pid: browser.processIdentifier).attribute(.windows))?.first
     }
 
-    private struct Timeout: Error, CustomStringConvertible {
-        let what: String
-        var description: String { "timed out waiting for \(what)" }
-    }
-
     /// The test page's web area, once loaded (turns on Chromium's AX mode like `EasyReader`).
     @MainActor
     static func readable(in browser: Process) async throws -> WebAreaReadableElement {
-        for attempt in 0..<150 {
-            if attempt % 10 == 0 { _ = AppAccessibility.enable(pid: browser.processIdentifier) }
-            if let window = window(of: browser), let element = find(role: "AXWebArea", in: window),
-                let readable = try element.readableElement() as? WebAreaReadableElement,
-                readable.fullText?.contains("The end of the test page.") == true
-            {
-                return readable
+        var readable: WebAreaReadableElement?
+        var lastEnabled = Date.distantPast
+        var state = "no window"
+        do {
+            try await waitUntil(timeout: 20, interval: 0.1, "Chrome test page") {
+                if Date().timeIntervalSince(lastEnabled) >= 1 {
+                    _ = AppAccessibility.enable(pid: browser.processIdentifier)
+                    lastEnabled = Date()
+                }
+                guard let window = window(of: browser) else { return false }
+                guard let element = findElement(role: .webArea, in: window) else {
+                    state = "no web area in window \((try? window.attribute(.title)) ?? "?")"
+                    return false
+                }
+                readable = try element.readableElement() as? WebAreaReadableElement
+                state = "page text \(readable?.fullText?.utf16.count ?? -1) long"
+                return readable?.fullText?.contains("The end of the test page.") == true
             }
-            await settle()
+        } catch is WaitTimeout {
+            throw WaitTimeout(what: "Chrome test page (\(state))", timeout: 20)
         }
-        throw Timeout(what: "Chrome test page")
+        return try #require(readable)
     }
 }
 
@@ -100,7 +94,7 @@ extension IntegrationTests {
     /// `WebAreaReadableElement` against Chromium: overlay instead of selection, no block separators, leaf-based layout.
     @MainActor
     @Suite(
-        .enabled(if: AXIsProcessTrusted(), "needs Accessibility permission for the test host (Debug EasyReader)"),
+        .axTrusted,
         .enabled(if: ChromeForTesting.isAvailable, "needs Chrome for Testing: npx playwright install chromium")
     )
     struct ChromiumWebAreaTests {
@@ -111,22 +105,9 @@ extension IntegrationTests {
             browser = try ChromeForTesting.launchTestPage()
         }
 
-        private func makeReader() -> EasyReader {
-            Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            let reader = EasyReader()
-            reader.delegate = recorder
-            reader.textSelector = NLTextSelector(unit: .sentence)
-            Teardown.add { reader.stop() }
-            return reader
-        }
+        private func makeReader() -> EasyReader { makeSilentReader(recorder: recorder) }
 
         private func readable() async throws -> WebAreaReadableElement { try await ChromeForTesting.readable(in: browser) }
-
-        private func selection(of string: String, in text: String) throws -> Selection {
-            let range = (text as NSString).range(of: string)
-            try #require(range.location != NSNotFound, "\(string) not in page text")
-            return Selection(range)
-        }
 
         private func string(_ selection: Selection, in text: String) -> String {
             (text as NSString).substring(with: NSRange(selection)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -141,13 +122,13 @@ extension IntegrationTests {
         @Test func textBlocksAreParagraphs() async throws {
             let readable = try await readable()
             let text = try #require(readable.fullText)
-            let heading = try selection(of: "EasyReader test page", in: text)
+            let heading = try Selection(of: "EasyReader test page", in: text)
             #expect(readable.textBlock(containing: heading.lowerBound + 3) == heading)
             let paragraph = "Emoji take two UTF-16 code units 😀, so offsets must not drift 🚀. This sentence comes after them."
-            let block = try #require(readable.textBlock(containing: try selection(of: "offsets must", in: text).lowerBound))
+            let block = try #require(readable.textBlock(containing: try Selection(of: "offsets must", in: text).lowerBound))
             #expect(string(block, in: text) == paragraph)
             // A paragraph with a link and bold text in it is still one block.
-            let mixed = try #require(readable.textBlock(containing: try selection(of: "italic", in: text).lowerBound))
+            let mixed = try #require(readable.textBlock(containing: try Selection(of: "italic", in: text).lowerBound))
             #expect(string(mixed, in: text).hasPrefix("This page tests reading web content."))
             #expect(string(mixed, in: text).hasSuffix("text read inline."))
         }
@@ -158,7 +139,7 @@ extension IntegrationTests {
             let readable = try await readable()
             let text = try #require(readable.fullText)
             func block(of string: String) throws -> String {
-                let block = try #require(readable.textBlock(containing: try selection(of: string, in: text).lowerBound + 1))
+                let block = try #require(readable.textBlock(containing: try Selection(of: string, in: text).lowerBound + 1))
                 return self.string(block, in: text).replacingOccurrences(of: "• ", with: "")
             }
             #expect(try block(of: item) == item)
@@ -171,7 +152,7 @@ extension IntegrationTests {
             let text = try #require(readable.fullText)
             let selector = NLTextSelector(unit: .sentence)
             let blocks: (Int) -> Selection? = { readable.textBlock(containing: $0) }
-            let start = try selection(of: "EasyReader test page", in: text).lowerBound
+            let start = try Selection(of: "EasyReader test page", in: text).lowerBound
             var current = Selection(start..<start)
             var read: [String] = []
             for _ in 0..<4 {
@@ -184,14 +165,14 @@ extension IntegrationTests {
                     "Select a sentence, then press the start shortcut.",
                     "Reading should continue sentence by sentence, with links, bold and italic text read inline.",
                 ])
-            let back = selector.select(.backward, from: try selection(of: "Emoji take", in: text), in: text, blocks: blocks)
+            let back = selector.select(.backward, from: try Selection(of: "Emoji take", in: text), in: text, blocks: blocks)
             #expect(string(back, in: text) == "Reading should continue sentence by sentence, with links, bold and italic text read inline.")
         }
 
         @Test func selectionIsHighlightedByOverlay() async throws {
             let readable = try await readable()
             let text = try #require(readable.fullText)
-            let sentence = try selection(of: "Emoji take two UTF-16 code units 😀, so offsets must not drift 🚀.", in: text)
+            let sentence = try Selection(of: "Emoji take two UTF-16 code units 😀, so offsets must not drift 🚀.", in: text)
             #expect(!readable.canSelectByTextOperation)
             readable.selection = sentence
             #expect(readable.selection == sentence)
@@ -210,8 +191,8 @@ extension IntegrationTests {
         @Test func highlightsLeafAfterCollapsedSpace() async throws {
             let readable = try await readable()
             let text = try #require(readable.fullText)
-            let start = try selection(of: "Narrow", in: text).lowerBound
-            let end = try selection(of: "here.", in: text).upperBound
+            let start = try Selection(of: "Narrow", in: text).lowerBound
+            let end = try Selection(of: "here.", in: text).upperBound
             let rects = try #require(readable.highlightRects(for: Selection(start..<end)))
             // One word per line: "Narrow", "link", "wraps", "here.".
             #expect(Set(rects.map(\.minY)).count == 4, "\(rects)")
@@ -220,54 +201,31 @@ extension IntegrationTests {
         @Test func scrollBringsSelectionIntoView() async throws {
             let readable = try await readable()
             let text = try #require(readable.fullText)
-            let last = try selection(of: "The end of the test page.", in: text)
+            let last = try Selection(of: "The end of the test page.", in: text)
             #expect(readable.highlightRects(for: last)?.isEmpty != false, "end of page visible before scrolling")
             readable.scroll(to: last, options: ScrollOptions(padding: 16, duration: 0))
-            var visible: [CGRect] = []
-            for _ in 0..<20 where visible.isEmpty {
-                await settle()
-                visible = readable.highlightRects(for: last) ?? []
-            }
-            #expect(!visible.isEmpty, "end of page not visible after scrolling")
+            try await waitUntil(timeout: 2, "end of page visible after scrolling") { readable.highlightRects(for: last)?.isEmpty == false }
         }
 
-        /// Without a page selection, reading starts at the first visible text, not the top of the page.
         @Test func startsAtVisibleTop() async throws {
-            let page = try await readable()
-            let text = try #require(page.fullText)
-            page.scroll(to: try selection(of: "Paragraph 30 ", in: text), options: ScrollOptions(padding: 16, duration: 0))
-            await settle(0.5)
-            let fresh = try #require(try page.handle.readableElement() as? WebAreaReadableElement)
-            let start = try #require(fresh.selection)
-            #expect(start.isEmpty)
-            #expect(start.lowerBound > (try selection(of: "Paragraph 10 ", in: text)).lowerBound)
-            #expect(start.lowerBound <= (try selection(of: "Paragraph 30 ", in: text)).lowerBound)
+            try await WebPageChecks.startsAtVisibleTop(try await readable())
         }
 
-        /// Without a page selection, reading starts at the main content, past the page's navigation, and ends before its footer.
         @Test func startsAtMainContent() async throws {
-            let page = try await readable()
-            let text = try #require(page.fullText)
-            let heading = try selection(of: "EasyReader test page", in: text).lowerBound
-            #expect(page.contentStart == heading)
-            let end = try #require(page.contentEnd)
-            #expect((try selection(of: "The end of the test page.", in: text)).upperBound <= end)
-            #expect(end <= (try selection(of: "Page footer.", in: text)).lowerBound)
-            #expect(page.selection == Selection(heading..<heading))
+            try WebPageChecks.startsAtMainContent(try await readable())
         }
 
         @Test func readerAdvancesWithHighlight() async throws {
             let page = try await readable()
             let text = try #require(page.fullText)
-            let first = try selection(of: "This page tests reading web content.", in: text)
+            let first = try Selection(of: "This page tests reading web content.", in: text)
             page.selection = first
             let reader = makeReader()
             let reading = recorder.expect(.reading)
             #expect(reader.start(reading: page))
             try await reading.wait(timeout: 10)
-            for _ in 0..<50 where (page.selection?.lowerBound ?? 0) <= first.lowerBound { await settle() }
+            try await waitUntil(timeout: 5, "reading to advance") { (page.selection?.lowerBound ?? 0) > first.lowerBound }
             let current = try #require(page.selection)
-            #expect(current.lowerBound > first.lowerBound, "reading did not advance")
             #expect(page.highlighted == current)
             let stopped = recorder.expect(.stopped)
             reader.stop()
@@ -277,16 +235,13 @@ extension IntegrationTests {
 
         /// A fresh Chromium vends no page content until the reader turns its AX mode on (and off again on stop).
         @Test func readerEnablesPageContentInFreshBrowser() async throws {
-            var window: AXElement?
-            for _ in 0..<100 where window == nil {
-                await settle()
-                window = ChromeForTesting.window(of: browser)
+            try await waitUntil(timeout: 10, "browser window") { ChromeForTesting.window(of: browser) != nil }
+            let browserWindow = try #require(ChromeForTesting.window(of: browser))
+            // Else the check below would pass with nothing loaded
+            try await waitUntil(timeout: 5, "page loaded") {
+                (try? browserWindow.attribute(.title) as String?)?.contains("EasyReader Test Page") == true
             }
-            let browserWindow = try #require(window)
-            for _ in 0..<30 where (try? browserWindow.attribute(.title) as String?)?.contains("EasyReader Test Page") != true {
-                await settle()
-            }
-            #expect(ChromeForTesting.find(role: "AXWebArea", in: browserWindow) == nil, "page content already vended")
+            #expect(findElement(role: .webArea, in: browserWindow) == nil, "page content already vended")
             let app = AXElement.application(pid: browser.processIdentifier)
             let reader = makeReader()
             let reading = recorder.expect(.reading)
@@ -304,7 +259,7 @@ extension IntegrationTests {
     /// Chromium with chrome://flags/#enable-accessibility-text-operation: a real selection via `AXTextOperation`.
     @MainActor
     @Suite(
-        .enabled(if: AXIsProcessTrusted(), "needs Accessibility permission for the test host (Debug EasyReader)"),
+        .axTrusted,
         .enabled(if: ChromeForTesting.isAvailable, "needs Chrome for Testing: npx playwright install chromium")
     )
     struct ChromiumTextOperationTests {
@@ -321,20 +276,7 @@ extension IntegrationTests {
             return readable
         }
 
-        private func selection(of string: String, in text: String) throws -> Selection {
-            let range = (text as NSString).range(of: string)
-            try #require(range.location != NSNotFound, "\(string) not in page text")
-            return Selection(range)
-        }
-
-        private func makeReader() -> EasyReader {
-            Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            let reader = EasyReader()
-            reader.delegate = recorder
-            reader.textSelector = NLTextSelector(unit: .sentence)
-            Teardown.add { reader.stop() }
-            return reader
-        }
+        private func makeReader() -> EasyReader { makeSilentReader(recorder: recorder) }
 
         private func browserSelectedText(_ readable: WebAreaReadableElement) -> String? {
             try? readable.handle.attribute(.selectedText)
@@ -351,10 +293,10 @@ extension IntegrationTests {
         func selectsInBrowser(sentence: String) async throws {
             let readable = try await readable()
             let text = try #require(readable.fullText)
-            let target = try selection(of: sentence, in: text)
+            let target = try Selection(of: sentence, in: text)
             readable.selection = target
             // Applied asynchronously
-            for _ in 0..<20 where browserSelectedText(readable) != sentence { await settle() }
+            try? await waitUntil(timeout: 2) { browserSelectedText(readable) == sentence }
             #expect(browserSelectedText(readable) == sentence)
             #expect(readable.highlighted == nil)
             #expect(readable.selection == target)
@@ -363,15 +305,14 @@ extension IntegrationTests {
         @Test func readerAdvancesWithBrowserSelection() async throws {
             let page = try await readable()
             let text = try #require(page.fullText)
-            let first = try selection(of: "This page tests reading web content.", in: text)
+            let first = try Selection(of: "This page tests reading web content.", in: text)
             page.selection = first
             let reader = makeReader()
             let reading = recorder.expect(.reading)
             #expect(reader.start(reading: page))
             try await reading.wait(timeout: 10)
-            for _ in 0..<50 where (page.selection?.lowerBound ?? 0) <= first.lowerBound { await settle() }
+            try await waitUntil(timeout: 5, "reading to advance") { (page.selection?.lowerBound ?? 0) > first.lowerBound }
             let current = try #require(page.selection)
-            #expect(current.lowerBound > first.lowerBound, "reading did not advance")
             #expect(browserSelectedText(page) == page.selectedText)
             #expect(page.highlighted == nil)
             let stopped = recorder.expect(.stopped)

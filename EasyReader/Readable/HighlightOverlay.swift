@@ -15,8 +15,7 @@ final class HighlightOverlay {
 
     var isVisible: Bool { window?.isVisible == true }
 
-    /// `rects`: screen coordinates, top-left origin as in AX; nil hides. `probe`: a cheap rect (e.g. of the first
-    /// character) that moves with the text, so a scroll is followed within a tick.
+    /// `rects`: screen coordinates, top-left origin (nil hides); `probe`: a cheap rect moving with the text, so a scroll is followed within a tick.
     func show(_ rects: @escaping () -> [CGRect]?, probe: (() -> CGRect?)? = nil) {
         self.rects = rects
         self.probe = probe
@@ -49,7 +48,7 @@ final class HighlightOverlay {
     }
 
     /// Chromium gives a zero-size rect at the web area's origin while it has no character layout.
-    // A zero-width character (a collapsed space) still has its line's height
+    // A zero-width character (a collapsed space) still has its line's height.
     static func hasSize(_ rect: CGRect) -> Bool { rect.width >= 1 || rect.height >= 1 }
 
     /// One rect per line of `range` in `leaf`: `AXBoundsForRange` gives the union of all lines.

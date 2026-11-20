@@ -12,7 +12,9 @@ struct Selection: Equatable, Hashable {
         upperBound = 0
     }
 
-    init(_ range: CFRange) {
+    /// `nil` for an AX "no selection" (`NSNotFound`/`kCFNotFound`), whose bounds would overflow.
+    init?(_ range: CFRange) {
+        guard range.location >= 0, range.location != NSNotFound, range.length >= 0 else { return nil }
         lowerBound = range.location
         upperBound = range.location + range.length
     }
@@ -40,7 +42,6 @@ struct Selection: Equatable, Hashable {
         Self.characterIndex(atUTF16Offset: upperBound, in: string)
     }
 
-    /// Between `startIndex(in:)` and `endIndex(in:)`.
     func substring<S: StringProtocol>(of string: S) -> String {
         String(string[startIndex(in: string)..<endIndex(in: string)])
     }

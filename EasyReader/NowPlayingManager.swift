@@ -42,7 +42,7 @@ final class NowPlayingManager {
     private var state: EasyReader.State = .stopped
     private var progress: EasyReader.Progress?
     private var hasFinished = false
-    // Title and artwork, per readable: the title is an AX call
+    // Title and artwork, per readable: the title is an AX call.
     private var metadata: (readable: Readable, info: [String: Any])?
 
     var isEnabled = false {
@@ -227,10 +227,10 @@ final class NowPlayingManager {
         MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }
 
-    // Measured with the default voice at 1×
+    // Measured with the default voice at 1×.
     static let charactersPerSecond = 17.0
 
-    // Times at 1×: the panel advances them by `rate`
+    // Times at 1×: the panel advances them by `rate`.
     private static func playbackInfo(progress: EasyReader.Progress?, rate: Float) -> [String: Any] {
         var info: [String: Any] = [
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,

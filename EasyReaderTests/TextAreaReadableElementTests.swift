@@ -9,10 +9,6 @@ import Testing
 extension IntegrationTests {
     @MainActor
     struct TextAreaReadableElementTests {
-        private struct TextAreaNotFound: Error, CustomStringConvertible {
-            var description: String { "no AXTextArea found" }
-        }
-
         private let window: NSWindow
         private let scrollView: NSScrollView
         private let textView: NSTextView
@@ -23,51 +19,15 @@ extension IntegrationTests {
             scrollView = NSTextView.scrollableTextView()
             textView = try #require(scrollView.documentView as? NSTextView)
             textView.string = text
-            window = NSWindow(
-                contentRect: NSRect(x: 200, y: 200, width: 400, height: 200),
-                styleMask: [.titled],
-                backing: .buffered,
-                defer: false
-            )
-            window.isReleasedWhenClosed = false
-            window.title = "AX Test \(UUID().uuidString)"
-            window.contentView = scrollView
-            window.makeKeyAndOrderFront(nil)
+            window = makeTestWindow(scrollView, title: "AX Test")
             window.makeFirstResponder(textView)
-            let window = window
-            Teardown.add { window.close() }
             await settle()
         }
 
-        private func makeReader() -> EasyReader {
-            Defaults[.speechRate] = AVSpeechUtteranceMaximumSpeechRate
-            let reader = EasyReader()
-            reader.delegate = recorder
-            reader.textSelector = NLTextSelector(unit: .sentence)
-            Teardown.add { reader.stop() }  // runs before the window closes (newest first)
-            return reader
-        }
+        // Stopped before the window closes (teardown runs newest first).
+        private func makeReader() -> EasyReader { makeSilentReader(recorder: recorder) }
 
-        private func axWindow(for window: NSWindow) throws -> AXElement {
-            let app = AXElement.application(pid: getpid())
-            let windows = try #require(try app.attribute(.windows))
-            return try #require(
-                windows.first(where: { (try? $0.attribute(.title) as String?) == window.title }),
-                "test window not found in AX tree"
-            )
-        }
-
-        private func readable() throws -> TextAreaReadableElement {
-            var queue = [try axWindow(for: window)]
-            while !queue.isEmpty {
-                let element = queue.removeFirst()
-                if let readable = try element.readableElement() {
-                    return try #require(readable as? TextAreaReadableElement)
-                }
-                queue += (try? element.attribute(.children)) ?? []
-            }
-            throw TextAreaNotFound()
-        }
+        private func readable() throws -> TextAreaReadableElement { try readableElement(in: window) }
 
         @Test func findsTextAreaWithFullText() throws {
             let readable = try readable()
@@ -129,22 +89,12 @@ extension IntegrationTests {
                 @State var text = (1...80).map { "Sentence number \($0)." }.joined(separator: " ")
                 var body: some View { TextEditor(text: $text).font(.system(size: 24)) }
             }
-            let editorWindow = NSWindow(
-                contentRect: NSRect(x: 200, y: 200, width: 400, height: 200),
-                styleMask: [.titled],
-                backing: .buffered,
-                defer: false
-            )
-            editorWindow.isReleasedWhenClosed = false
-            editorWindow.title = "AX SwiftUI Test \(UUID().uuidString)"
-            editorWindow.contentView = NSHostingView(rootView: Editor())
-            editorWindow.makeKeyAndOrderFront(nil)
+            let editorWindow = makeTestWindow(NSHostingView(rootView: Editor()), title: "AX SwiftUI Test")
             editorWindow.makeFirstResponder(nil)  // like Settings before any click
-            Teardown.add { editorWindow.close() }
             await settle(0.5)
 
             let reader = makeReader()
-            #expect(reader.start(reading: .element(try axWindow(for: editorWindow))))
+            #expect(reader.start(reading: .element(try axWindow(of: editorWindow))))
             reader.stop()
             let readable = try #require(reader.readable as? TextAreaReadableElement)
             let fullText = try #require(readable.fullText)
@@ -162,36 +112,20 @@ extension IntegrationTests {
             #expect(value > 0.5)
         }
 
-        @Test(
-            arguments: [
-                (50, 100, 0.5),
-                (-16, 100, 0),
-                (150, 100, 1),
-                (10, 0, 0),
-                (10, -20, 0),
-            ] as [(CGFloat, CGFloat, CGFloat)])
-        func scrollValueIsClamped(offset: CGFloat, scrollableLength: CGFloat, expected: CGFloat) {
-            #expect(ScrollBarScroller.scrollValue(offset: offset, scrollableLength: scrollableLength) == expected)
-        }
-
         /// `findReadableElement` descends via `.childrenInNavigationOrder`; AppKit supports it (other apps may not).
         @Test func findsTextAreaStartingFromWindow() throws {
             let reader = makeReader()
-            let start = try axWindow(for: window)
+            let start = try axWindow(of: window)
             #expect(reader.start(reading: .element(start)))
         }
 
         /// The search must not climb past the window and find (and focus) a text area in another window.
         @Test func doesNotLeaveStartingWindow() async throws {
-            let other = NSWindow(contentRect: NSRect(x: 650, y: 200, width: 200, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
-            other.isReleasedWhenClosed = false
-            other.title = "AX Other \(UUID().uuidString)"
-            other.contentView = NSButton(title: "No text here", target: nil, action: nil)
-            other.makeKeyAndOrderFront(nil)
-            defer { other.close() }
+            let other = makeTestWindow(
+                NSButton(title: "No text here", target: nil, action: nil), title: "AX Other", frame: NSRect(x: 650, y: 200, width: 200, height: 100))
             await settle()
             let reader = makeReader()
-            let start = try axWindow(for: other)
+            let start = try axWindow(of: other)
             #expect(!reader.start(reading: .element(start)))
         }
 
@@ -232,5 +166,19 @@ struct TextAreaContentFrameTests {
         ] as [(CGRect, Bool)])
     func visibleRectOnlyByHeight(elementFrame: CGRect, expected: Bool) {
         #expect(TextAreaReadableElement.showsOnlyVisibleRect(elementFrame: elementFrame, scrollAreaFrame: scrollArea) == expected)
+    }
+}
+
+struct ScrollBarScrollerTests {
+    @Test(
+        arguments: [
+            (50, 100, 0.5),
+            (-16, 100, 0),
+            (150, 100, 1),
+            (10, 0, 0),
+            (10, -20, 0),
+        ] as [(CGFloat, CGFloat, CGFloat)])
+    func scrollValueIsClamped(offset: CGFloat, scrollableLength: CGFloat, expected: CGFloat) {
+        #expect(ScrollBarScroller.scrollValue(offset: offset, scrollableLength: scrollableLength) == expected)
     }
 }

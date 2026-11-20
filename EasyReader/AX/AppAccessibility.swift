@@ -5,8 +5,7 @@ import Cocoa
 enum AppAccessibility {
     private static let flags: [AXAttribute<Bool>] = [.manualAccessibility, .enhancedUserInterface]
 
-    /// Turns on the flags (default: all) that are off; returns those it turned on.
-    /// `unreadable`: also sets flags the app can't report (Electron's `AXManualAccessibility`), counted as turned on.
+    /// Turns on the flags that are off and returns them; `unreadable` also sets (and returns) flags the app can't report (Electron's).
     static func enable(pid: pid_t, flags: [AXAttribute<Bool>] = flags, unreadable: Bool = true) -> [AXAttribute<Bool>] {
         let app = AXElement.application(pid: pid)
         var enabled: [AXAttribute<Bool>] = []
@@ -17,7 +16,7 @@ enum AppAccessibility {
                 try app.set(flag, to: true)
                 if (try? app.attribute(flag)) != false { enabled.append(flag) }
             } catch {
-                // Chromium reports failure for `AXEnhancedUserInterface` but applies it
+                // Chromium reports failure for `AXEnhancedUserInterface` but applies it.
                 if (try? app.attribute(flag)) == true { enabled.append(flag) }
             }
         }
@@ -26,7 +25,7 @@ enum AppAccessibility {
 
     static func restore(_ flags: [AXAttribute<Bool>], pid: pid_t) {
         let app = AXElement.application(pid: pid)
-        // VoiceOver may have turned it on meanwhile, and needs it
+        // VoiceOver may have turned it on meanwhile, and needs it.
         let voiceOver = NSWorkspace.shared.isVoiceOverEnabled
         for flag in flags where !(voiceOver && flag == .enhancedUserInterface) {
             try? app.set(flag, to: false)
@@ -34,7 +33,7 @@ enum AppAccessibility {
     }
 
     /// Chromium-based browsers and Electron apps.
-    // Not just any `Helpers` folder: WebKit's JavaScriptCore has one too (Orion)
+    // Not just any `Helpers` folder: WebKit's JavaScriptCore has one too (Orion).
     nonisolated static func isChromium(_ app: NSRunningApplication) -> Bool {
         app.bundleURL.map { isChromium(bundleURL: $0) } ?? false
     }

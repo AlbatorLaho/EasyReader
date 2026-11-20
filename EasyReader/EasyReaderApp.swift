@@ -53,11 +53,7 @@ final class SettingsOpener: NSObject {
     static var menuTitle: String { "\(name)…" }
 
     @objc static func open() {
-        // A Dock icon while open, so the window can be found with ⌘-Tab and the Dock
-        NSApp.setActivationPolicy(.regular)
-        observeClose()
-        // Closing the window hid an accessory app, and a hidden app's windows stay hidden.
-        NSApp.unhide(nil)
+        showAsRegular()
         if #available(macOS 14.0, *) {
             // Also activates the app, after the policy change, so it's first in ⌘-Tab.
             Modern.openSettings()
@@ -74,32 +70,37 @@ final class SettingsOpener: NSObject {
             } else {
                 NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
             }
-            // Activated before the policy change lands, the app isn't put first in ⌘-Tab.
-            Task {
-                try? await Task.sleep(seconds: 0.1)
-                NSApp.activate(ignoringOtherApps: true)
-                window?.makeKeyAndOrderFront(nil)
-            }
+            Task { await activateAfterPolicyChange { window } }
         }
         window?.makeKeyAndOrderFront(nil)
     }
 
     /// Shows one of the app's other windows the way `open` shows Settings; `then` runs once it's key (or after 1 s).
     static func present(_ window: NSWindow, then action: (@MainActor () -> Void)? = nil) {
-        NSApp.setActivationPolicy(.regular)
-        observeClose()
-        NSApp.unhide(nil)
+        showAsRegular()
         window.makeKeyAndOrderFront(nil)
-        // Activated before the policy change lands, the app isn't put first in ⌘-Tab.
         Task {
-            try? await Task.sleep(seconds: 0.1)
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
+            await activateAfterPolicyChange { window }
             for _ in 0..<18 where !window.isKeyWindow {
                 try? await Task.sleep(seconds: 0.05)
             }
             action?()
         }
+    }
+
+    // A Dock icon while open, so the window can be found with ⌘-Tab and the Dock
+    private static func showAsRegular() {
+        NSApp.setActivationPolicy(.regular)
+        observeClose()
+        // Closing the window hid an accessory app, and a hidden app's windows stay hidden.
+        NSApp.unhide(nil)
+    }
+
+    // Activated before the policy change lands, the app isn't put first in ⌘-Tab.
+    private static func activateAfterPolicyChange(_ window: () -> NSWindow?) async {
+        try? await Task.sleep(seconds: 0.1)
+        NSApp.activate(ignoringOtherApps: true)
+        window()?.makeKeyAndOrderFront(nil)
     }
 
     private static func observeClose() {
