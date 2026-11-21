@@ -35,25 +35,23 @@ struct InfoButton<Content: View>: View {
 }
 
 extension InfoButton where Content == InfoText {
-    init(_ summary: String, title: String, _ paragraphs: String...) {
-        self.init(summary) { InfoText(title: title, paragraphs: paragraphs) }
+    init(_ summary: String, _ paragraphs: String...) {
+        self.init(summary) { InfoText(paragraphs: paragraphs) }
     }
 }
 
 struct InfoText: View {
-    let title: String
     let paragraphs: [String]
 
     var body: some View {
-        Text(title).font(.headline)
         ForEach(paragraphs, id: \.self) { Text($0) }
     }
 }
 
 extension View {
     /// The view with an `InfoButton` after it.
-    func info(_ summary: String, title: String, _ paragraphs: String...) -> some View {
-        info(summary) { InfoText(title: title, paragraphs: paragraphs) }
+    func info(_ summary: String, _ paragraphs: String...) -> some View {
+        info(summary) { InfoText(paragraphs: paragraphs) }
     }
 
     func info<Content: View>(_ summary: String, @ViewBuilder content: @escaping () -> Content) -> some View {

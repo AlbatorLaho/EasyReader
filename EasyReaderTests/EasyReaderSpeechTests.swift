@@ -514,7 +514,6 @@ extension IntegrationTests {
             #expect(reader.currentUtterance?.preUtteranceDelay == 0)
         }
 
-        /// Pausing ends a held skip.
         @Test func pauseEndsRepeatingSkip() async throws {
             let readable = MockReadable(longText)
             let reading = recorder.expect(.reading)

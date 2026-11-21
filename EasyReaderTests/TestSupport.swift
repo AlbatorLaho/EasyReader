@@ -30,10 +30,10 @@ enum Teardown {
     fileprivate static func begin(_ test: String) {
         #expect(!isRunningTest, "integration test \(test) overlaps another one: serialization broken")
         isRunningTest = true
-        // Each test starts from the defaults (the in-memory store lasts the whole run), silent
+        // Each test starts from the defaults (the in-memory store lasts the whole run), silent.
         Defaults.removeAll(suite: .app)
         Defaults[.speechVolume] = 0
-        // Window tests expect a regular app (Dock icon, activation), and closing Settings must not hide the host
+        // Window tests expect a regular app (Dock icon, activation), and closing Settings must not hide the host.
         Defaults[.appPresence] = .both
         NSApp.setActivationPolicy(.regular)
     }
@@ -269,7 +269,7 @@ func makeSilentReader(recorder: StateRecorder? = nil, unit: Selection.Unit = .se
     reader.delegate = recorder
     reader.textSelector = NLTextSelector(unit: unit)
     Teardown.add {
-        // Also cancels an utterance that hasn't started yet (synchronous tests)
+        // Also cancels an utterance that hasn't started yet (synchronous tests).
         guard let recorder, reader.state != .stopped else {
             reader.stop()
             return

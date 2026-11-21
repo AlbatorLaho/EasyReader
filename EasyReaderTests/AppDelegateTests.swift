@@ -68,8 +68,7 @@ extension IntegrationTests {
             return pasteboard
         }
 
-        /// Read with EasyReader (or a drop on the menu bar icon) puts the text in the reader window and reads it there; the controls follow,
-        /// with Start and Resume told apart.
+        /// Read with EasyReader (or a menu bar icon drop) reads the text in the reader window; the controls tell Start and Resume apart.
         @Test func readServiceReadsTextInReaderWindow() async throws {
             let app = await launch()
             Teardown.add { closeReaderWindows() }
@@ -97,7 +96,6 @@ extension IntegrationTests {
             #expect(menuItem.title == "Start")
         }
 
-        /// Read with EasyReader on a file in Finder opens it in the reader window and reads it.
         @Test func readServiceReadsFile() async throws {
             _ = await launch()
             Teardown.add { closeReaderWindows() }
@@ -125,7 +123,7 @@ extension IntegrationTests {
             return source
         }
 
-        /// The Read Selection in Reader shortcut reads the front app's selection in a reader window titled after the app's window.
+        /// The Open Selection shortcut reads the front app's selection in a reader window titled after the app's window.
         @Test func readSelectionShortcutReadsSelectionInReaderWindow() async throws {
             _ = await launch()
             let source = try await selectionSource()
@@ -177,7 +175,6 @@ extension IntegrationTests {
             #expect(AppDelegate().applicationShouldTerminate(NSApp) == .terminateNow)
         }
 
-        /// Opening the app again with no window open opens Settings.
         @Test func reopenWithoutWindowsOpensSettings() async throws {
             Teardown.add { SettingsOpener.window?.close() }
             #expect(AppDelegate().applicationShouldHandleReopen(NSApp, hasVisibleWindows: true))
@@ -205,7 +202,6 @@ extension IntegrationTests {
             }
         }
 
-        /// The menu bar icon is a template image that shows the reader's state.
         /// Tests launch many delegates: one torn down stops following the settings.
         @Test func stoppedDelegateIgnoresSettings() async {
             let app = await launch()
@@ -218,6 +214,7 @@ extension IntegrationTests {
             #expect(app.statusItem == nil)
         }
 
+        /// The menu bar icon is a template image that shows the reader's state.
         @Test func statusItemIconFollowsState() async throws {
             let app = await launch()
             let button = try #require(app.statusItem?.button)

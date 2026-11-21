@@ -24,6 +24,9 @@ final class CatalystWebAreaReadableElement: ReadableElement {
 
         var isEmpty: Bool { areas.allSatisfy(\.leaves.isEmpty) }
         var leaves: [[Leaf]] { areas.map(\.leaves) }
+        var frames: [AXElement: CGRect] {
+            Dictionary(areas.compactMap { area in area.frame.map { (area.webArea, $0) } }, uniquingKeysWith: { first, _ in first })
+        }
     }
 
     private struct Paragraph {
@@ -71,8 +74,9 @@ final class CatalystWebAreaReadableElement: ReadableElement {
     private var isReading = false
     private var userMayHaveSelected = false
     // Removed only by `endReading`, which EasyReader always calls: a deinit can't (isolated deinits are off-limits).
-    private var mouseMonitor: Any?
-    private var usesArrows = false
+    private var selectionMonitors: [Any] = []
+    /// Where the chapter sat on Books' page grid before the last set that could scroll it, if it hadn't scrolled yet.
+    private var gridFrame: (webArea: AXElement, frame: CGRect)?
     private var isRightToLeft = false
     /// What `spread()` read this main-actor turn; dropped by a posted key.
     private var cachedSpread: Spread?
@@ -134,25 +138,35 @@ final class CatalystWebAreaReadableElement: ReadableElement {
 
     override func beginReading() {
         isReading = true
-        adoptUserSelection()
-        watchMouse()
+        // A resume: the monitors, still on while paused, flag a selection made meanwhile (copying waits 0.3 s with none).
+        if selectionMonitors.isEmpty { adoptUserSelection() }
+        watchSelecting()
     }
 
     override func endReading() {
         isReading = false
-        if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
-        mouseMonitor = nil
+        selectionMonitors.forEach(NSEvent.removeMonitor)
+        selectionMonitors = []
     }
 
     // Books posts no `AXSelectedTextChanged`; this way the clipboard isn't touched per unit.
-    private func watchMouse() {
-        guard mouseMonitor == nil, let pid = try? handle.pid() else { return }
-        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
+    private func watchSelecting() {
+        guard selectionMonitors.isEmpty, let pid = try? handle.pid() else { return }
+        let flag: (NSEvent) -> Void = { [weak self] event in
             MainActor.assumeIsolated {
-                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
+                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
+                    event.type == .leftMouseUp || Self.maySelect(event.modifierFlags, key: event.charactersIgnoringModifiers)
+                else { return }
                 self?.userMayHaveSelected = true
             }
         }
+        selectionMonitors = [.leftMouseUp, .keyDown].compactMap { NSEvent.addGlobalMonitorForEvents(matching: $0, handler: flag) }
+    }
+
+    /// Whether a key press can select text: with ⇧ (extending a selection), or ⌘A.
+    nonisolated static func maySelect(_ flags: NSEvent.ModifierFlags, key: String?) -> Bool {
+        let flags = flags.intersection(.deviceIndependentFlagsMask)
+        return flags.contains(.shift) || (flags.contains(.command) && key?.lowercased() == "a")
     }
 
     // MARK: Spread
@@ -350,6 +364,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
     /// Turns to `offset` and selects the part of `tracked` from there that's on the spread.
     @discardableResult
     private func selectPiece(from offset: Int) -> Selection? {
+        realignIfScrolledLate()
         guard let tracked, let page = page(showing: offset) else {
             pieceEnd = nil
             return nil
@@ -380,23 +395,62 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         return Selection(start..<end)
     }
 
-    /// Undoes WebKit scrolling `webArea` off Books' page grid: a turn key snaps it back to `frame`.
+    /// Undoes WebKit scrolling `webArea` off Books' page grid after a set, back to `frame`.
     private func realign(_ webArea: AXElement, to frame: CGRect) {
-        var shift: CGFloat?
+        // It lands within ~25 ms, else usually never (once 136 ms: `realignIfScrolledLate` catches that).
         for _ in 0..<6 {
-            shift = (try? webArea.attribute(.frame)).flatMap { Self.sidewaysShift(from: frame, to: $0) }
-            if shift != nil { break }
-            Thread.sleep(forTimeInterval: 0.03)
+            if let now = try? webArea.attribute(.frame), let shift = Self.sidewaysShift(from: frame, to: now) {
+                return turnBack(webArea, by: shift, to: frame)
+            }
+            Thread.sleep(forTimeInterval: 0.01)
         }
-        guard let shift, let pid = try? handle.pid() else { return }
-        // Content moved right: scrolled back.
+        gridFrame = (webArea, frame)
+    }
+
+    private func realignIfScrolledLate() {
+        guard let (webArea, frame) = gridFrame else { return }
+        gridFrame = nil
+        // A spread or more is a page turn (the user's), not WebKit's scroll.
+        guard webArea == chapter?.webArea, let now = try? webArea.attribute(.frame),
+            let shift = Self.sidewaysShift(from: frame, to: now), abs(shift) < frame.width
+        else { return }
+        Log.accessibility.debug("catalyst: scrolled late")
+        turnBack(webArea, by: shift, to: frame)
+    }
+
+    // Books turns from its own page, which the scroll didn't move: a key one way lands a spread off, so turn the way it scrolled, then back.
+    private func turnBack(_ webArea: AXElement, by shift: CGFloat, to frame: CGRect) {
+        guard let pid = try? handle.pid() else { return }
         Log.accessibility.debug("catalyst: selecting scrolled the page by \(shift), turning back")
+        // Content moved right: scrolled back.
+        postKey(key(forward: shift < 0), to: pid)
+        let scrolled = frame.offsetBy(dx: shift, dy: 0)
+        waitForFrame(of: webArea) { Self.sidewaysShift(from: scrolled, to: $0) != nil }
         postKey(key(forward: shift > 0), to: pid)
+        if !waitForFrame(of: webArea, until: { Self.sidewaysShift(from: frame, to: $0) == nil }) {
+            Log.accessibility.debug("catalyst: page didn't realign")
+        }
+    }
+
+    /// Waits up to 2 s for `webArea`'s frame to pass `done` and read the same twice (a turn animating).
+    @discardableResult
+    private func waitForFrame(of webArea: AXElement, until done: (CGRect) -> Bool) -> Bool {
+        var previous: CGRect?
         for _ in 0..<40 {
             Thread.sleep(forTimeInterval: 0.05)
-            if let now = try? webArea.attribute(.frame), Self.sidewaysShift(from: frame, to: now) == nil { return }
+            let now = try? webArea.attribute(.frame)
+            if let now, now == previous, done(now) { return true }
+            previous = now
         }
-        Log.accessibility.debug("catalyst: page didn't realign")
+        return false
+    }
+
+    /// Whether a web area on both spreads moved sideways by a spread (its width plus a gap: 906 wide moved 966).
+    nonisolated static func hasTurned(from frames: [AXElement: CGRect], to moved: [AXElement: CGRect]) -> Bool {
+        frames.contains { webArea, frame in
+            guard let now = moved[webArea], let shift = sidewaysShift(from: frame, to: now) else { return false }
+            return abs(shift) >= frame.width * 0.9
+        }
     }
 
     /// How far the columns moved sideways; nil within a point (a turn settling can still change y and size).
@@ -405,13 +459,14 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         return abs(shift) > 1 ? shift : nil
     }
 
-    private func key(forward: Bool) -> CGKeyCode {
-        let keys = usesArrows ? Self.arrowKeys : Self.pageKeys
+    private func key(forward: Bool, arrows: Bool = false) -> CGKeyCode {
+        let keys = arrows ? Self.arrowKeys : Self.pageKeys
         return forward != isRightToLeft ? keys.forward : keys.back
     }
 
     private func postKey(_ key: CGKeyCode, to pid: pid_t) {
         cachedSpread = nil
+        gridFrame = nil
         CGEvent.postKeystroke(key, to: pid)
     }
 
@@ -446,11 +501,11 @@ final class CatalystWebAreaReadableElement: ReadableElement {
     }
 
     /// Nil if the page didn't turn.
-    // Done once text changed and frames read equal twice: text updates before the animation ends. Empty for a while between chapters.
+    // Done once text changed or a chapter moved a spread (a long paragraph keeps its value), and frames read equal twice: text updates before the animation ends. Empty for a while between chapters.
     private func turnPage(forward: Bool, from spread: Spread) -> Spread? {
         guard let pid = try? handle.pid() else { return nil }
         postKey(key(forward: forward), to: pid)
-        Log.accessibility.debug("catalyst: turning page \(forward ? "forward" : "back")\(usesArrows ? " (arrow keys)" : "")")
+        Log.accessibility.debug("catalyst: turning page \(forward ? "forward" : "back")")
         var previous = spread
         var stable = 0
         var moved = false
@@ -458,14 +513,16 @@ final class CatalystWebAreaReadableElement: ReadableElement {
             Thread.sleep(forTimeInterval: 0.05)
             let read = readSpread()
             moved = moved || read != spread
-            if !moved, attempt == 11, !usesArrows {
-                Log.accessibility.debug("catalyst: page keys didn't turn the page, using arrow keys")
-                usesArrows = true
-                postKey(key(forward: forward), to: pid)
+            // This turn only: arrows scroll 40 px instead while the web view has key focus.
+            if !moved, attempt == 11 {
+                Log.accessibility.debug("catalyst: page keys didn't turn the page, trying arrow keys")
+                postKey(key(forward: forward, arrows: true), to: pid)
             }
             stable = read == previous ? stable + 1 : 0
             previous = read
-            if read.leaves != spread.leaves, stable >= (read.isEmpty ? 10 : 1) { return read }
+            // Frames alone wait longer: the leaves may still be updating.
+            let needed = read.leaves != spread.leaves ? (read.isEmpty ? 10 : 1) : Self.hasTurned(from: spread.frames, to: read.frames) ? 4 : nil
+            if let needed, stable >= needed { return read }
         }
         Log.accessibility.debug("catalyst: page didn't turn")
         return nil
@@ -538,6 +595,7 @@ final class CatalystWebAreaReadableElement: ReadableElement {
         var spread = spread()
         let index = spread.areas.firstIndex(where: { $0.webArea == current.webArea })
         var candidates = index.map { Array(spread.areas[($0 + 1)...]) } ?? []
+        var turns = 0
         for _ in 0..<20 {
             for area in candidates where !area.leaves.isEmpty && area.webArea != current.webArea {
                 guard let loaded = loadChapter(area) else { continue }
@@ -549,10 +607,16 @@ final class CatalystWebAreaReadableElement: ReadableElement {
                 return loaded
             }
             guard let turned = turnPage(forward: true, from: spread) else { break }
+            turns += 1
             spread = turned
             candidates = turned.areas
         }
         Log.accessibility.debug("catalyst: no next chapter")
+        // Back to where reading ended.
+        for _ in 0..<turns {
+            guard let turned = turnPage(forward: false, from: spread) else { break }
+            spread = turned
+        }
         lastChapterEnd = tracked.map { (current.webArea, $0) }
         return nil
     }

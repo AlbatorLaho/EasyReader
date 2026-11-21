@@ -57,12 +57,7 @@ private struct SetupGuideView: View {
 
             step(2, "Choose how EasyReader runs") {
                 LaunchAtLogin.Toggle("Launch at login")
-                Picker("Show EasyReader in:", selection: $appPresence) {
-                    Text("Menu bar").tag(AppDelegate.Presence.menuBar)
-                    Text("Dock").tag(AppDelegate.Presence.dock)
-                    Text("Both").tag(AppDelegate.Presence.both)
-                }
-                .fixedSize()
+                AppPresencePicker("Show EasyReader in:", selection: $appPresence)
                 Text(presenceNote).foregroundColor(.secondary)
             }
 

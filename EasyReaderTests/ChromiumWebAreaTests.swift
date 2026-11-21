@@ -49,7 +49,7 @@ enum ChromeForTesting {
         try WebTestPage.html.write(to: page, atomically: true, encoding: .utf8)
         let (browser, profile) = try launch(page, features: features)
         Teardown.add {
-            // SIGTERM only closes Chrome's windows
+            // SIGTERM only closes Chrome's windows.
             kill(browser.processIdentifier, SIGKILL)
             try? await waitUntil(timeout: 5) { !browser.isRunning }
             try? FileManager.default.removeItem(at: profile)
@@ -237,7 +237,7 @@ extension IntegrationTests {
         @Test func readerEnablesPageContentInFreshBrowser() async throws {
             try await waitUntil(timeout: 10, "browser window") { ChromeForTesting.window(of: browser) != nil }
             let browserWindow = try #require(ChromeForTesting.window(of: browser))
-            // Else the check below would pass with nothing loaded
+            // Else the check below would pass with nothing loaded.
             try await waitUntil(timeout: 5, "page loaded") {
                 (try? browserWindow.attribute(.title) as String?)?.contains("EasyReader Test Page") == true
             }
@@ -295,7 +295,7 @@ extension IntegrationTests {
             let text = try #require(readable.fullText)
             let target = try Selection(of: sentence, in: text)
             readable.selection = target
-            // Applied asynchronously
+            // Applied asynchronously.
             try? await waitUntil(timeout: 2) { browserSelectedText(readable) == sentence }
             #expect(browserSelectedText(readable) == sentence)
             #expect(readable.highlighted == nil)

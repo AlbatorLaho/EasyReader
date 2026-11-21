@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Testing
 
 @testable import EasyReader
@@ -16,6 +16,23 @@ struct CatalystWebAreaTests {
     func sidewaysShift(moved: CGRect, expected: CGFloat?) {
         let frame = CGRect(x: 0, y: 0, width: 1200, height: 820)
         #expect(CatalystWebAreaReadableElement.sidewaysShift(from: frame, to: moved) == expected)
+    }
+
+    /// A turn moves a chapter shown before and after by a spread (its width plus a gap), either way.
+    @Test(
+        arguments: [
+            (CGRect(x: -966, y: 0, width: 906, height: 800), true),  // measured in Books
+            (CGRect(x: 966, y: 4, width: 906, height: 790), true),
+            (CGRect(x: -850, y: 0, width: 906, height: 800), true),
+            (CGRect(x: -450, y: 0, width: 906, height: 800), false),  // mid-animation or WebKit's scroll
+            (CGRect(x: 0, y: 0, width: 906, height: 800), false),
+        ] as [(CGRect, Bool)])
+    func hasTurned(moved: CGRect, expected: Bool) {
+        let chapter = AXElement.application(pid: 1)
+        let frame = CGRect(x: 0, y: 0, width: 906, height: 800)
+        #expect(CatalystWebAreaReadableElement.hasTurned(from: [chapter: frame], to: [chapter: moved]) == expected)
+        // Another chapter's frame says nothing.
+        #expect(!CatalystWebAreaReadableElement.hasTurned(from: [chapter: frame], to: [AXElement.application(pid: 2): moved]))
     }
 
     @Test(
@@ -47,6 +64,23 @@ struct CatalystCopiedSelectionTests {
     @Test func excerptKeepsInnerQuotes() {
         let copied = "““Hi,” she said.”\n\nExcerpt From\nBook"
         #expect(CatalystWebAreaReadableElement.excerpt(fromCopied: copied) == "“Hi,” she said.")
+    }
+
+    /// Keys that can select text in Books flag a selection to copy on the next read.
+    @Test(
+        arguments: [
+            ([.shift], "→", true),  // extending a selection
+            ([.shift, .option], "←", true),
+            ([.shift, .capsLock], "A", true),
+            ([.command], "a", true),  // select all
+            ([.command, .capsLock], "A", true),
+            ([], "→", false),  // turning a page
+            ([.command], "c", false),
+            ([], "a", false),
+            ([.option], "a", false),
+        ] as [(NSEvent.ModifierFlags, String, Bool)])
+    func keyMaySelect(flags: NSEvent.ModifierFlags, key: String, expected: Bool) {
+        #expect(CatalystWebAreaReadableElement.maySelect(flags, key: key) == expected)
     }
 
     @Test func locateOnSpread() {

@@ -65,6 +65,16 @@ extension Defaults.Keys {
     static let readerDarkBackground = Key<Bool>("ReaderDarkBackground", default: true, suite: .app)
 
     static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [], suite: .app)
+
+    /// What each settings tab's reset button resets: a new setting goes in its tab's list.
+    static let generalTab: [Defaults.Keys] = [
+        .appPresence, .quitClosesWindows, .readerOpensNewWindows, .readerDarkBackground, .readSelectedTextFallback,
+        .nowPlayingCenterIntegration, .playWhenFinished,
+    ]
+    static let readingTab: [Defaults.Keys] = [
+        .speechVoice, .speechVolume, .speechRate, .speechPitch, .selectionUnit, .speechStopBoundary, .resumeUnit, .pauseBetweenUnits,
+        .repeatingSkipInterval, .scrollSelectionIntoView, .scrollPadding, .scrollDuration, .cleanUpPDFText,
+    ]
 }
 
 extension KeyboardShortcuts.Name {

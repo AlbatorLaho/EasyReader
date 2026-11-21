@@ -54,6 +54,7 @@ final class SettingsOpener: NSObject {
 
     @objc static func open() {
         showAsRegular()
+        // The `show…Window:` selectors below only log a warning on macOS 14+.
         if #available(macOS 14.0, *) {
             // Also activates the app, after the policy change, so it's first in ⌘-Tab.
             Modern.openSettings()
@@ -88,7 +89,7 @@ final class SettingsOpener: NSObject {
         }
     }
 
-    // A Dock icon while open, so the window can be found with ⌘-Tab and the Dock
+    // A Dock icon while open, so the window can be found with ⌘-Tab and the Dock.
     private static func showAsRegular() {
         NSApp.setActivationPolicy(.regular)
         observeClose()
@@ -111,7 +112,7 @@ final class SettingsOpener: NSObject {
             nonisolated(unsafe) let window = notification.object
             MainActor.assumeIsolated {
                 guard let window = window as? NSWindow, windowIDs.contains(window.identifier?.rawValue ?? "") else { return }
-                // Still visible while it closes
+                // Still visible while it closes.
                 guard !NSApp.windows.contains(where: { $0 !== window && $0.isVisible && windowIDs.contains($0.identifier?.rawValue ?? "") })
                 else { return }
                 didClose()
@@ -127,7 +128,7 @@ final class SettingsOpener: NSObject {
     private static func didClose() {
         guard NSApp.activationPolicy() != restingPolicy else { return }
         NSApp.setActivationPolicy(restingPolicy)
-        // Hands focus back to the app the user came from instead of leaving no app frontmost
+        // Hands focus back to the app the user came from instead of leaving no app frontmost.
         if restingPolicy == .accessory { NSApp.hide(nil) }
     }
 
@@ -140,7 +141,6 @@ final class SettingsOpener: NSObject {
         window?.makeKeyAndOrderFront(nil)
     }
 
-    // The selectors above only log a warning on macOS 14+.
     @available(macOS 14.0, *)
     @MainActor private enum Modern {
         @Environment(\.openSettings) static var openSettings
@@ -291,7 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
-    // Files dropped on the Dock icon or opened with EasyReader in Finder (document types in Info.plist)
+    // Files dropped on the Dock icon or opened with EasyReader in Finder (document types in Info.plist).
     func application(_ application: NSApplication, open urls: [URL]) {
         ReaderWindow.open(urls)
     }
@@ -362,7 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSSound.beep(unless: easyReader.skip(.backward))
     }
 
-    /// Same as the media key, so "When finished, Play key" applies too.
+    /// Same as the media key, so "When finished, play key" applies too.
     private func playPauseShortcut() {
         Log.app.debug("shortcut: play/pause (state \(easyReader.state))")
         let hadFinished = easyReader.hasFinished
@@ -407,7 +407,7 @@ extension AppDelegate: EasyReader.Delegate {
         ReaderWindow.updateToolbars()
     }
 
-    // Skips and rate changes don't change the state
+    // Skips and rate changes don't change the state.
     func easyReaderDidStartUtterance(_ reader: EasyReader) {
         updateNowPlaying()
         ReaderWindow.updateToolbars()
