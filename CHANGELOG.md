@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.0 - 2026-11-20
+
+- New Reader window: open text, RTF, Word, OpenDocument, HTML and PDF files or web pages (Open… ⌘O, Open URL… ⌘L), paste or drop text and files, drop on the menu bar icon, or use the Read with EasyReader service
+- New Open Selection shortcut reads the selected text of any app in a Reader window; optionally, apps EasyReader doesn't support open their selection there too
+- PDFs: running headers and footers are skipped only when they recur on nearby pages, footnotes only when the body has a matching mark; headings are read as their own units; selecting inside a footnote reads it; Try cleaning up PDF text can be turned off
+- Web pages start reading at their main content and finish at its end; list numbers are read with their item; long pages are much faster
+- Chromium browsers: the highlight follows scrolling, and sentences stay inside list items and table rows
+- Pause/stop can act immediately, after the word, or after the sentence or paragraph
+- Holding a skip shortcut or media key keeps skipping
+- Now Playing shows reading progress; the play key can reread the finished text or start on new text when reading has finished
+- System Voice reads with the Spoken Content voice
+- Show EasyReader in the menu bar, the Dock or both; the menu bar icon shows whether it's reading, paused or stopped
+- Launch at login
+- A setup guide on first launch and while Accessibility access is missing
+- Reorganized settings with a reset button on each tab (⌥ resets all)
+- Apps that turn on their accessibility support only on request (like Pages) can be read
+- Many fixes for pausing, stopping and skipping at the edges of the text
+
 ## 0.4.0 - 2026-11-14
 
 - Reads PDFs in Preview: skips page headers, footers and footnotes, leaves out footnote marks, and runs sentences on across lines, columns, pages and hyphenated words; tagged PDFs too
