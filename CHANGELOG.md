@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 - 2026-11-21
+
+- Ignore untracked files when preparing a release
+- Return to the Speed setting with the normal speed shortcut
+- Explain opening the app and skipping text with pronunciations
+
 ## 1.0.0 - 2026-11-20
 
 - New Reader window: open text, RTF, Word, OpenDocument, HTML and PDF files or web pages (Open… ⌘O, Open URL… ⌘L), paste or drop text and files, drop on the menu bar icon, or use the Read with EasyReader service
