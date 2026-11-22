@@ -174,12 +174,32 @@ private struct RuleOptions: View {
                 Toggle("Whole words only", isOn: rule.wholeWord)
                     .help("Don't match inside words, e.g. “GUI” in “GUIDE”")
                     .disabled(!isEnabled)
-                Toggle("Regular expression", isOn: rule.isRegex)
-                    .help("Text is an ICU regular expression; Speak As can use $1, $2… for captured groups")
+                Toggle("Regex", isOn: rule.isRegex)
                     .disabled(!isEnabled)
+                    .info("Use regex to match patterns of text.") {
+                        Text("Regex (Regular Expression)").font(.headline)
+                        Text("Text is an ICU regular expression, and Speak As can use $1, $2… for the groups it captures.")
+                        Text("Leave Speak As empty to skip what matches, e.g. links:")
+                        Text(verbatim: #"(https?://|www\.)\S*\w"#)
+                            .font(.system(.body, design: .monospaced))
+                    }
                 Toggle("Phonetic (IPA)", isOn: rule.isPhonetic)
                     .disabled(!isEnabled)
-                    .info("IPA spells out exactly how the matched text should sound.") { IPAInfo() }
+                    .info("IPA spells out exactly how the matched text should sound.") {
+                        Text("IPA (International Phonetic Alphabet)").font(.headline)
+                        Text(
+                            "IPA writes down exactly how a word sounds, one symbol per sound. With this option on, Speak As holds IPA instead of replacement text, and the voice pronounces the matched text from it. Useful for names and words a voice gets wrong."
+                        )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("tomato  →  təˈmɑːtəʊ  (British)")
+                            Text("tomato  →  təˈmeɪɾoʊ  (American)")
+                        }
+                        .font(.system(.body, design: .monospaced))
+                        Text(
+                            "Most dictionaries list a word's IPA between slashes, e.g. /təˈmɑːtəʊ/ on Wiktionary; copy it without the slashes. ˈ marks the stressed syllable. Use the preview's play button to check how it sounds with your voice."
+                        )
+                        .foregroundColor(.secondary)
+                    }
             }
             // One line in every state, so the box keeps its height.
             Group {
@@ -214,26 +234,6 @@ private struct RuleOptions: View {
         rule.isPhonetic
             ? "Speak As holds IPA; the matched text is kept (and highlighted) as is, just pronounced from it."
             : "Matches are replaced in one pass: the earliest, then longest match wins."
-    }
-}
-
-private struct IPAInfo: View {
-    var body: some View {
-        Group {
-            Text("IPA (International Phonetic Alphabet)").font(.headline)
-            Text(
-                "IPA writes down exactly how a word sounds, one symbol per sound. With this option on, Speak As holds IPA instead of replacement text, and the voice pronounces the matched text from it. Useful for names and words a voice gets wrong."
-            )
-            VStack(alignment: .leading, spacing: 2) {
-                Text("tomato  →  təˈmɑːtəʊ  (British)")
-                Text("tomato  →  təˈmeɪɾoʊ  (American)")
-            }
-            .font(.system(.body, design: .monospaced))
-            Text(
-                "Most dictionaries list a word's IPA between slashes, e.g. /təˈmɑːtəʊ/ on Wiktionary; copy it without the slashes. ˈ marks the stressed syllable. Use the preview's play button to check how it sounds with your voice."
-            )
-            .foregroundColor(.secondary)
-        }
     }
 }
 

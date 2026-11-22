@@ -28,10 +28,9 @@ EasyReader reads your selection, then selects the next sentence (or paragraph) i
 | Firefox browsers                                    | 🟢                                   | 🟡 jumps       | not fully tested                                                                       |
 | PDFs in Preview                                     | 🟢                                   | 🟢 smooth      | may be buggy; (purposefully) tries to skip page headers, footers and footnotes         |
 | Apple Books                                         | 🟢                                   | 🟢 turns pages | may be buggy                                                                           |
-| Electron apps                                       | ⚪                                   | ⚪             | untested, might work like Chromium                                                     |
 | Unsupported apps                                    | 🔴                                   | 🔴             | reads the selection in a Reader window, if turned on in General settings             |
 
-🟢 supported · 🟡 partly supported · 🔴 not supported · ⚪ unknown
+🟢 supported · 🟡 partly supported · 🔴 not supported
 
 ### Chromium browsers
 
@@ -55,7 +54,7 @@ If "Open selection for unsupported apps" is turned on (General settings), Start 
 
 ### Requirements
 
-- macOS 11+
+- macOS 11+ (Apple silicon or Intel)
 - Xcode 16+ (for building)
 
 ### Installing
@@ -64,7 +63,11 @@ If "Open selection for unsupported apps" is turned on (General settings), Start 
 2. Open `EasyReader-v*.dmg` file
 3. Move `EasyReader.app` to your Applications folder
 
-⚠️ I haven't set up notarization, since I don't have an Apple developer account. So the first time you open it, you'll have to right-click it and choose "Open" (or allow it in System Settings → Privacy & Security (System Preferences → Security & Privacy on macOS 11–12)).
+⚠️ I haven't set up notarization, since I don't have an Apple developer account, so macOS blocks EasyReader from opening. To allow it, run this in a terminal:
+
+```sh
+xattr -d com.apple.quarantine /Applications/EasyReader.app
+```
 
 ### Usage
 
