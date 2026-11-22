@@ -112,7 +112,7 @@ final class NowPlayingManager {
                 reader.endRepeatingSkip()
                 succeeded = true
             case .changePlaybackRate(let playbackRate):
-                Self.setSpeechRate(fromPlaybackRate: playbackRate)
+                reader.changeRate(to: SpeechRate.clamped(SpeechRate.rate(forMultiplier: playbackRate)))
                 succeeded = true
         }
         return succeeded ? .success : .commandFailed
@@ -134,10 +134,6 @@ final class NowPlayingManager {
         }
     }
 
-    static func setSpeechRate(fromPlaybackRate playbackRate: Float) {
-        Defaults[.speechRate] = SpeechRate.clamped(SpeechRate.rate(forMultiplier: playbackRate))
-    }
-
     // MARK: - Commands
 
     private var isHoldingAfterFinishing: Bool {
@@ -149,7 +145,7 @@ final class NowPlayingManager {
         switch state {
             case .reading:
                 infoCenter.playbackState = .playing
-                publishInfo(rate: SpeechRate.multiplier(forRate: Defaults[.speechRate]))
+                publishInfo(rate: SpeechRate.multiplier(forRate: reader.rate))
             case .paused:
                 infoCenter.playbackState = .paused
                 publishInfo(rate: 0)

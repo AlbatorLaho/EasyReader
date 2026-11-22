@@ -251,5 +251,33 @@ extension IntegrationTests {
             try await restarted.wait(timeout: 5)
         }
 
+        @Test func speedSettingChangeEndsTemporaryRate() async throws {
+            let app = await launch()
+            let reader: EasyReader = app.easyReader
+            _ = try await startReading(reader)
+            let restarted = recorder.expectUtteranceStart()
+            reader.changeRate(to: AVSpeechUtteranceDefaultSpeechRate)
+            try await restarted.wait(timeout: 5)
+            #expect(reader.currentUtterance?.rate == AVSpeechUtteranceDefaultSpeechRate)
+            #expect(Defaults[.speechRate] == AVSpeechUtteranceMaximumSpeechRate, "setting unchanged")
+
+            let restartedAgain = recorder.expectUtteranceStart()
+            Defaults[.speechRate] = 0.9
+            try await restartedAgain.wait(timeout: 5)
+            #expect(reader.temporaryRate == nil)
+            #expect(reader.currentUtterance?.rate == 0.9)
+        }
+
+        @Test func changingRateToSettingLeavesNoTemporaryRate() async {
+            let app = await launch()
+            let reader: EasyReader = app.easyReader
+            reader.changeRate(to: AVSpeechUtteranceDefaultSpeechRate)
+            #expect(reader.temporaryRate == AVSpeechUtteranceDefaultSpeechRate)
+            reader.changeRate(to: nil)
+            #expect(reader.temporaryRate == nil)
+            #expect(reader.rate == Defaults[.speechRate])
+            reader.changeRate(to: Defaults[.speechRate])
+            #expect(reader.temporaryRate == nil)
+        }
     }
 }

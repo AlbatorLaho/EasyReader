@@ -118,17 +118,18 @@ extension IntegrationTests {
             #expect(manager.perform(action) == .commandFailed)
         }
 
-        @Test func changePlaybackRateSetsClampedSpeechRate() {
+        @Test func changePlaybackRateSetsClampedTemporaryRate() {
+            let setting = Defaults[.speechRate]
             #expect(manager.perform(.changePlaybackRate(10)) == .success)
-            #expect(Defaults[.speechRate] == AVSpeechUtteranceMaximumSpeechRate)
+            #expect(reader.rate == AVSpeechUtteranceMaximumSpeechRate)
+            #expect(Defaults[.speechRate] == setting)
         }
 
         /// Now Playing publishes `SpeechRate.multiplier(forRate:)`; the rate command must map it back.
         @Test(arguments: [Float(0.4), 0.7])
         func rateRoundTrips(rate: Float) {
-            Defaults[.speechRate] = rate
             #expect(manager.perform(.changePlaybackRate(SpeechRate.multiplier(forRate: rate))) == .success)
-            #expect(isClose(Defaults[.speechRate], rate))
+            #expect(isClose(reader.rate, rate))
         }
 
         /// Holding ⏭ skips on begin and every interval until the end event; slowest rate so units don't finish meanwhile.

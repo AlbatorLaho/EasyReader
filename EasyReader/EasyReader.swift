@@ -30,6 +30,9 @@ final class EasyReader: NSObject {
     var textSelector: TextSelector? {
         didSet { forwardCache = nil }
     }
+    /// From the rate shortcuts and Now Playing; nil = the Speed setting.
+    var temporaryRate: Float?
+    var rate: Float { temporaryRate ?? Defaults[.speechRate] }
     var readable: Readable? {
         didSet {
             guard readable !== oldValue else { return }
@@ -107,6 +110,14 @@ final class EasyReader: NSObject {
             case .word: return readSelection(from: lastReadOffset)
             case .selection: return readSelection()
         }
+    }
+
+    /// The setting's own rate clears `temporaryRate`.
+    func changeRate(to newRate: Float?) {
+        let newRate = newRate == Defaults[.speechRate] ? nil : newRate
+        guard newRate != temporaryRate else { return }
+        temporaryRate = newRate
+        if state == .reading { play(from: .word) }
     }
 
     /// Reads the finished text again from the top, whatever was selected in it since.
@@ -256,7 +267,7 @@ final class EasyReader: NSObject {
     }
 
     private func read(_ spoken: SpokenText, pausingFirst: Bool) {
-        let utterance = AVSpeechUtterance(spoken)
+        let utterance = AVSpeechUtterance(spoken, rate: rate)
         // Pause after selecting the next unit, so a stop after the unit doesn't wait for it.
         if pausingFirst { utterance.preUtteranceDelay = Defaults[.pauseBetweenUnits] }
         Log.speech.debug(
@@ -631,11 +642,11 @@ extension EasyReader {
 }
 
 extension AVSpeechUtterance {
-    convenience init(_ spoken: SpokenText) {
+    convenience init(_ spoken: SpokenText, rate: Float = Defaults[.speechRate]) {
         if spoken.hasPhonetics { self.init(attributedString: spoken.attributedText) } else { self.init(string: spoken.text) }
         voice = Defaults[.speechVoice] ?? .system
         volume = Defaults[.speechVolume]
-        rate = Defaults[.speechRate]
+        self.rate = rate
         pitchMultiplier = Defaults[.speechPitch]
     }
 }

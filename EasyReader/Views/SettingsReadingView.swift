@@ -61,7 +61,8 @@ struct SettingsReadingView: View {
                     .info(
                         "How fast the voice talks; 1.0 is the voice's normal speed.",
                         "1.0 is the voice's normal speed, 2.0 about twice as fast. Some voices run a little faster or slower than others.",
-                        "Changing it while reading restarts from the current word. The faster/slower shortcuts (General) change it too."
+                        "Changing it while reading restarts from the current word.",
+                        "The faster/slower shortcuts (General) and Now Playing change the speed without changing this setting. The normal speed shortcut goes back to it."
                     )
 
                     SliderControls(value: $speechPitch, in: 0.5...2, step: 0.1, min: 0.5, max: 2, fractionDigits: 1...1) {

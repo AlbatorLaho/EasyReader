@@ -198,24 +198,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ]
         updateStatusItem()
 
-        KeyboardShortcuts.onKeyDown(for: .increaseRate) {
-            Defaults[.speechRate] = SpeechRate.stepped(Defaults[.speechRate], by: 1)
-            Log.app.debug("shortcut: increase rate → \(Defaults[.speechRate])")
+        KeyboardShortcuts.onKeyDown(for: .increaseRate) { [weak self] in
+            guard let reader = self?.easyReader else { return }
+            reader.changeRate(to: SpeechRate.stepped(reader.rate, by: 1))
+            Log.app.debug("shortcut: increase rate → \(reader.rate)")
         }
-        KeyboardShortcuts.onKeyDown(for: .decreaseRate) {
-            Defaults[.speechRate] = SpeechRate.stepped(Defaults[.speechRate], by: -1)
-            Log.app.debug("shortcut: decrease rate → \(Defaults[.speechRate])")
+        KeyboardShortcuts.onKeyDown(for: .decreaseRate) { [weak self] in
+            guard let reader = self?.easyReader else { return }
+            reader.changeRate(to: SpeechRate.stepped(reader.rate, by: -1))
+            Log.app.debug("shortcut: decrease rate → \(reader.rate)")
         }
-        KeyboardShortcuts.onKeyDown(for: .defaultRate) {
-            Defaults.reset(.speechRate)
-            Log.app.debug("shortcut: reset rate → \(Defaults[.speechRate])")
+        KeyboardShortcuts.onKeyDown(for: .defaultRate) { [weak self] in
+            guard let reader = self?.easyReader else { return }
+            reader.changeRate(to: nil)
+            Log.app.debug("shortcut: normal speed → \(reader.rate)")
         }
 
         settingsLoops = [
             Task { [weak self] in
+                var settingRate = Defaults[.speechRate]
                 for await _ in Defaults.updates([.speechVoice, .speechVolume, .speechRate, .speechPitch], initial: false) {
                     guard let self else { return }
                     Log.settings.debug("speech settings changed (state \(easyReader.state))")
+                    if Defaults[.speechRate] != settingRate {
+                        settingRate = Defaults[.speechRate]
+                        easyReader.temporaryRate = nil
+                    }
                     guard easyReader.state == .reading else { continue }
                     easyReader.play(from: .word)
                 }
