@@ -26,25 +26,11 @@ struct EasyReaderApp: App {
 /// Opens the SwiftUI `Settings` scene from AppKit.
 @MainActor
 final class SettingsOpener: NSObject {
-    private nonisolated static let windowID = "com_apple_SwiftUI_Settings_window"
+    nonisolated static let windowID = "com_apple_SwiftUI_Settings_window"
 
     static var window: NSWindow? {
         NSApp.windows.first { $0.identifier?.rawValue == windowID }
     }
-
-    /// The policy without the settings window.
-    static var restingPolicy: NSApplication.ActivationPolicy {
-        Defaults[.appPresence] == .menuBar ? .accessory : .regular
-    }
-
-    /// Windows that keep the Dock icon while open.
-    private nonisolated static let windowIDs: Set = [windowID, ReaderWindow.windowID, SetupGuide.windowID]
-
-    private static var hasOpenWindow: Bool {
-        NSApp.windows.contains { $0.isVisible && windowIDs.contains($0.identifier?.rawValue ?? "") }
-    }
-
-    private static var closeObserver: NSObjectProtocol?
 
     static var name: String {
         if #available(macOS 13.0, *) { "Settings" } else { "Preferences" }
@@ -53,7 +39,7 @@ final class SettingsOpener: NSObject {
     static var menuTitle: String { "\(name)…" }
 
     @objc static func open() {
-        showAsRegular()
+        WindowPresenter.showAsRegular()
         // The `show…Window:` selectors below only log a warning on macOS 14+.
         if #available(macOS 14.0, *) {
             // Also activates the app, after the policy change, so it's first in ⌘-Tab.
@@ -71,65 +57,9 @@ final class SettingsOpener: NSObject {
             } else {
                 NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
             }
-            Task { await activateAfterPolicyChange { window } }
+            Task { await WindowPresenter.activateAfterPolicyChange { window } }
         }
         window?.makeKeyAndOrderFront(nil)
-    }
-
-    /// Shows one of the app's other windows the way `open` shows Settings; `then` runs once it's key (or after 1 s).
-    static func present(_ window: NSWindow, then action: (@MainActor () -> Void)? = nil) {
-        showAsRegular()
-        window.makeKeyAndOrderFront(nil)
-        Task {
-            await activateAfterPolicyChange { window }
-            for _ in 0..<18 where !window.isKeyWindow {
-                try? await Task.sleep(seconds: 0.05)
-            }
-            action?()
-        }
-    }
-
-    // A Dock icon while open, so the window can be found with ⌘-Tab and the Dock.
-    private static func showAsRegular() {
-        NSApp.setActivationPolicy(.regular)
-        observeClose()
-        // Closing the window hid an accessory app, and a hidden app's windows stay hidden.
-        NSApp.unhide(nil)
-    }
-
-    // Activated before the policy change lands, the app isn't put first in ⌘-Tab.
-    private static func activateAfterPolicyChange(_ window: () -> NSWindow?) async {
-        try? await Task.sleep(seconds: 0.1)
-        NSApp.activate(ignoringOtherApps: true)
-        window()?.makeKeyAndOrderFront(nil)
-    }
-
-    private static func observeClose() {
-        guard closeObserver == nil else { return }
-        closeObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification, object: nil, queue: .main
-        ) { notification in
-            nonisolated(unsafe) let window = notification.object
-            MainActor.assumeIsolated {
-                guard let window = window as? NSWindow, windowIDs.contains(window.identifier?.rawValue ?? "") else { return }
-                // Still visible while it closes.
-                guard !NSApp.windows.contains(where: { $0 !== window && $0.isVisible && windowIDs.contains($0.identifier?.rawValue ?? "") })
-                else { return }
-                didClose()
-            }
-        }
-    }
-
-    static func applyRestingPolicy() {
-        guard !hasOpenWindow else { return }
-        NSApp.setActivationPolicy(restingPolicy)
-    }
-
-    private static func didClose() {
-        guard NSApp.activationPolicy() != restingPolicy else { return }
-        NSApp.setActivationPolicy(restingPolicy)
-        // Hands focus back to the app the user came from instead of leaving no app frontmost.
-        if restingPolicy == .accessory { NSApp.hide(nil) }
     }
 
     /// SwiftUI's Settings… item in the app menu (⌘,), present even while the menu bar isn't shown.
@@ -165,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApplication.shared.setActivationPolicy(SetupGuide.isNeeded ? .regular : SettingsOpener.restingPolicy)
+        NSApplication.shared.setActivationPolicy(SetupGuide.isNeeded ? .regular : WindowPresenter.restingPolicy)
         // A login item enabled on macOS 12 or earlier moves to SMAppService once the Mac runs 13+.
         if !UserDefaults.isUnderTest { LaunchAtLogin.migrateIfNeeded() }
 
@@ -247,7 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     guard let self else { return }
                     Log.settings.debug("app presence: \(value)")
                     updateStatusItem()
-                    SettingsOpener.applyRestingPolicy()
+                    WindowPresenter.applyRestingPolicy()
                 }
             },
             Task { [weak self] in

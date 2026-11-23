@@ -520,7 +520,7 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
     }
 
     private func present(then action: (@MainActor () -> Void)? = nil) {
-        SettingsOpener.present(window) { [weak self] in
+        WindowPresenter.present(window) { [weak self] in
             guard let self else { return }
             window.makeFirstResponder(documentView)
             action?()

@@ -31,7 +31,7 @@ enum SetupGuide {
             window.center()
             self.window = window
         }
-        if let window { SettingsOpener.present(window) }
+        if let window { WindowPresenter.present(window) }
     }
 
     private static func close() {
