@@ -117,37 +117,52 @@ struct SettingsGeneralView: View {
 
     private var shortcuts: some View {
         GroupBox {
-            Form {
-                KeyboardShortcuts.Recorder("Start/stop:", name: .toggleStartStop)
-                KeyboardShortcuts.Recorder("Faster:", name: .increaseRate)
-                KeyboardShortcuts.Recorder("Slower:", name: .decreaseRate)
-                KeyboardShortcuts.Recorder("Normal speed:", name: .defaultRate)
-                KeyboardShortcuts.Recorder("Open selection:", name: .readSelectionInReaderWindow)
-                    .info(
-                        "Read the selected text of any app in a Reader window.",
-                        "Like Services → \"Read with EasyReader\", but it works in any app and you pick the shortcut.",
-                        "It gets the app's selection through accessibility, or by copying it (⌘C) when the app doesn't share it, then puts your clipboard back. Clipboard history apps may still catch the copy.",
-                        "The text opens in a Reader window and is read from the start. Formatting isn't kept."
-                    )
-
-                GroupBox {
-                    Form {
-                        KeyboardShortcuts.Recorder("Play/pause:", name: .togglePlayPause)
-                        KeyboardShortcuts.Recorder("Skip forward:", name: .skipForward)
-                        KeyboardShortcuts.Recorder("Skip backward:", name: .skipBackward)
-                    }
-                } label: {
-                    Text("Optional with media keys")
-                        .info(
-                            "With media keys on, you may not need these.",
-                            "When \"Use media keys and Now Playing\" is on, the keyboard's media keys (▶︎❙❙, ◀︎◀︎, ▶︎▶︎) play/pause and skip, so these shortcuts are optional.",
-                            "They work the same as the media keys: holding a skip shortcut keeps skipping, and play/pause follows \"When finished, play key\"."
-                        )
+            if #available(macOS 13.0, *) {
+                Form {
+                    mainShortcuts
+                    mediaKeyShortcuts.padding(.top, 8)
                 }
-                .padding(.top, 8)
+            } else {
+                // macOS 11–12 don't handle nested forms properly.
+                VStack(alignment: .leading, spacing: 8) {
+                    Form { mainShortcuts }
+                    mediaKeyShortcuts
+                }
             }
         } label: {
             Label("Global Shortcuts", systemImage: "command")
+        }
+    }
+
+    @ViewBuilder private var mainShortcuts: some View {
+        KeyboardShortcuts.Recorder("Start/stop:", name: .toggleStartStop)
+        KeyboardShortcuts.Recorder("Faster:", name: .increaseRate)
+        KeyboardShortcuts.Recorder("Slower:", name: .decreaseRate)
+        KeyboardShortcuts.Recorder("Normal speed:", name: .defaultRate)
+        KeyboardShortcuts.Recorder(for: .readSelectionInReaderWindow)
+            .info(
+                "Read the selected text of any app in a Reader window.",
+                "Like Services → \"Read with EasyReader\", but it works in any app and you pick the shortcut.",
+                "It gets the app's selection through accessibility, or by copying it (⌘C) when the app doesn't share it, then puts your clipboard back. Clipboard history apps may still catch the copy.",
+                "The text opens in a Reader window and is read from the start. Formatting isn't kept."
+            )
+            .formLabel(Text("Open selection:"))
+    }
+
+    private var mediaKeyShortcuts: some View {
+        GroupBox {
+            Form {
+                KeyboardShortcuts.Recorder("Play/pause:", name: .togglePlayPause)
+                KeyboardShortcuts.Recorder("Skip forward:", name: .skipForward)
+                KeyboardShortcuts.Recorder("Skip backward:", name: .skipBackward)
+            }
+        } label: {
+            Text("Optional with media keys")
+                .info(
+                    "With media keys on, you may not need these.",
+                    "When \"Use media keys and Now Playing\" is on, the keyboard's media keys (▶︎❙❙, ◀︎◀︎, ▶︎▶︎) play/pause and skip, so these shortcuts are optional.",
+                    "They work the same as the media keys: holding a skip shortcut keeps skipping, and play/pause follows \"When finished, play key\"."
+                )
         }
     }
 }
