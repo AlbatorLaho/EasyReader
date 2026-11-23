@@ -9,11 +9,13 @@ enum WindowPresenter {
         Defaults[.appPresence] == .menuBar ? .accessory : .regular
     }
 
-    /// Windows that keep the Dock icon while open.
-    private nonisolated static let windowIDs: Set = [SettingsOpener.windowID, ReaderWindow.windowID, SetupGuide.windowID]
+    /// Windows that keep the Dock icon while open: Settings, Reader windows, the setup guide; not alerts, open panels or About.
+    private static func isPresented(_ window: NSWindow) -> Bool {
+        window.styleMask.contains(.titled) && !(window is NSPanel)
+    }
 
     private static var hasOpenWindow: Bool {
-        NSApp.windows.contains { $0.isVisible && windowIDs.contains($0.identifier?.rawValue ?? "") }
+        NSApp.windows.contains { $0.isVisible && isPresented($0) }
     }
 
     private static var closeObserver: NSObjectProtocol?
@@ -53,9 +55,9 @@ enum WindowPresenter {
         ) { notification in
             nonisolated(unsafe) let window = notification.object
             MainActor.assumeIsolated {
-                guard let window = window as? NSWindow, windowIDs.contains(window.identifier?.rawValue ?? "") else { return }
+                guard let window = window as? NSWindow, isPresented(window) else { return }
                 // Still visible while it closes.
-                guard !NSApp.windows.contains(where: { $0 !== window && $0.isVisible && windowIDs.contains($0.identifier?.rawValue ?? "") })
+                guard !NSApp.windows.contains(where: { $0 !== window && $0.isVisible && isPresented($0) })
                 else { return }
                 didClose()
             }

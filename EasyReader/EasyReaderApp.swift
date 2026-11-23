@@ -26,10 +26,13 @@ struct EasyReaderApp: App {
 /// Opens the SwiftUI `Settings` scene from AppKit.
 @MainActor
 final class SettingsOpener: NSObject {
-    nonisolated static let windowID = "com_apple_SwiftUI_Settings_window"
+    private static let windowID = "com_apple_SwiftUI_Settings_window"
+
+    /// Set by `SettingsView`: SwiftUI's window identifier differs on macOS 12.
+    static weak var reportedWindow: NSWindow?
 
     static var window: NSWindow? {
-        NSApp.windows.first { $0.identifier?.rawValue == windowID }
+        reportedWindow ?? NSApp.windows.first { $0.identifier?.rawValue == windowID }
     }
 
     static var name: String {

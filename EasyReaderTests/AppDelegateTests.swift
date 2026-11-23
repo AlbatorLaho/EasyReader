@@ -52,6 +52,7 @@ extension IntegrationTests {
             try await waitUntil(timeout: 5, "Settings window") { SettingsOpener.window?.isVisible == true }
             let settings = try #require(SettingsOpener.window)
             #expect(settings.isVisible)
+            #expect(SettingsOpener.reportedWindow === settings, "found without SwiftUI's identifier (macOS 12 has another)")
             let other = makeTestWindow(frame: NSRect(x: 100, y: 100, width: 300, height: 200))
             try? await waitUntil(timeout: 2) { !settings.isKeyWindow }
             #expect(!settings.isKeyWindow)
