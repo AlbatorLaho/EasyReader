@@ -55,7 +55,13 @@ enum RecorderKeyboardFocus {
     private static func didBecomeActive() {
         guard let window = NSApp.keyWindow, let recorder = recordingRecorder(in: window) else { return }
         activeRecorder = recorder
-        guard !isRefocusing, let event = NSApp.currentEvent, isTab(event) else { return }
+        guard !isRefocusing else { return }
+        guard let event = NSApp.currentEvent, isTab(event) || (event.type == .leftMouseDown && event.window === window) else {
+            // Focused by the window itself (the first recorder when Settings opens on macOS 12).
+            DispatchQueue.main.async { window.makeFirstResponder(nil) }
+            return
+        }
+        guard isTab(event) else { return }
         // Reached by Tab: pass the focus on, after this responder change finishes.
         let backward = event.modifierFlags.contains(.shift) || event.specialKey == .backTab
         DispatchQueue.main.async {

@@ -1,6 +1,7 @@
 import AVFoundation
 import AppKit
 import Defaults
+import KeyboardShortcuts
 import Testing
 
 @testable import EasyReader
@@ -181,6 +182,18 @@ extension IntegrationTests {
             #expect(AppDelegate().applicationShouldHandleReopen(NSApp, hasVisibleWindows: true))
             #expect(!AppDelegate().applicationShouldHandleReopen(NSApp, hasVisibleWindows: false))
             try await waitUntil(timeout: 5, "Settings window") { SettingsOpener.window?.isVisible == true }
+        }
+
+        /// A recorder focused by the window, not a click or Tab (Settings opening on macOS 12), doesn't keep the focus and record.
+        @Test func recorderFocusedWithoutClickOrTabIsUnfocused() async throws {
+            Teardown.add { SettingsOpener.window?.close() }
+            SettingsOpener.open()
+            try await waitUntil(timeout: 5, "Settings window") { SettingsOpener.window?.isVisible == true }
+            let settings = try #require(SettingsOpener.window)
+            try await waitUntil(timeout: 2, "key") { settings.isKeyWindow }
+            let recorder = try #require(firstSubview(KeyboardShortcuts.RecorderCocoa.self, in: settings.contentView))
+            #expect(settings.makeFirstResponder(recorder))
+            try await waitUntil(timeout: 2, "recorder unfocused") { (settings.firstResponder as? NSText)?.delegate !== recorder }
         }
 
         @Test func readServiceRefusesBlankText() async {
