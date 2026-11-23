@@ -42,7 +42,6 @@ final class SettingsOpener: NSObject {
         WindowPresenter.showAsRegular()
         // The `show…Window:` selectors below only log a warning on macOS 14+.
         if #available(macOS 14.0, *) {
-            // Also activates the app, after the policy change, so it's first in ⌘-Tab.
             Modern.openSettings()
             // Read outside a view, which SwiftUI doesn't promise to support → the app menu's item if no window shows.
             Task {
@@ -57,8 +56,8 @@ final class SettingsOpener: NSObject {
             } else {
                 NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
             }
-            Task { await WindowPresenter.activateAfterPolicyChange { window } }
         }
+        Task { await WindowPresenter.activateAfterPolicyChange { window } }
         window?.makeKeyAndOrderFront(nil)
     }
 
