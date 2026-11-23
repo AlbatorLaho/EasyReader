@@ -5,9 +5,54 @@ import KeyboardShortcuts
 import LaunchAtLogin
 
 @main
+enum EasyReaderMain {
+    static func main() {
+        if #available(macOS 13, *) { EasyReaderApp.main() } else { LegacyEasyReaderApp.main() }
+    }
+}
+
 struct EasyReaderApp: App {
     @NSApplicationDelegateAdaptor var appDelegate: AppDelegate
 
+    var body: some Scene {
+        SettingsScene()
+    }
+}
+
+/// macOS 11–12: SwiftUI builds the standard menus only for an app with a window group; its window closes as soon as it shows.
+struct LegacyEasyReaderApp: App {
+    @NSApplicationDelegateAdaptor var appDelegate: AppDelegate
+
+    // First, so that launch opens its window rather than Settings.
+    var body: some Scene {
+        WindowGroup {
+            WindowCloser()
+        }
+        .handlesExternalEvents(matching: [])
+        SettingsScene()
+    }
+
+    private struct WindowCloser: NSViewRepresentable {
+        func makeNSView(context: Context) -> NSView { CloserView() }
+        func updateNSView(_ nsView: NSView, context: Context) {}
+
+        final class CloserView: NSView {
+            // macOS 12 shows the window only after launch finishes, undoing an earlier close.
+            override func viewDidMoveToWindow() {
+                super.viewDidMoveToWindow()
+                guard let window else { return }
+                window.alphaValue = 0
+                Task { [weak window] in
+                    let deadline = Date().addingTimeInterval(3)
+                    while let window, !window.isVisible, Date() < deadline { try? await Task.sleep(seconds: 0.02) }
+                    window?.close()
+                }
+            }
+        }
+    }
+}
+
+struct SettingsScene: Scene {
     var body: some Scene {
         Settings {
             SettingsView()
