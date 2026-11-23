@@ -9,7 +9,7 @@ struct SettingsGeneralView: View {
     @Default(.appPresence) private var appPresence
     @Default(.quitClosesWindows) private var quitClosesWindows
     @Default(.readerOpensNewWindows) private var readerOpensNewWindows
-    @Default(.readerDarkBackground) private var readerDarkBackground
+    @Default(.readerAlwaysLight) private var readerAlwaysLight
     @Default(.readSelectedTextFallback) private var readSelectedTextFallback
 
     private static var loginItemsPath: String {
@@ -57,11 +57,11 @@ struct SettingsGeneralView: View {
                                 "Off: there's one Reader window, and opening something replaces its text."
                             )
 
-                        Toggle("Show documents in Dark Mode", isOn: $readerDarkBackground)
+                        Toggle("Always show documents in Light Mode", isOn: $readerAlwaysLight)
                             .info(
-                                "When your Mac is in Dark Mode, show documents light on dark.",
-                                "On: when your Mac is in Dark Mode, the Reader window is dark too, and the document's colors are adjusted to stay readable (black text turns light), like TextEdit's \"Use Dark Background for Windows\".",
-                                "Off: documents always show light, the way they'd print."
+                                "Show documents with dark text on a light background, even when your Mac is in Dark Mode.",
+                                "On: documents always show dark text on a light background, the way they'd print.",
+                                "Off: when your Mac is in Dark Mode, the Reader window is dark too, and the document's colors are adjusted to stay readable (black text turns light), like TextEdit's \"Use Dark Background for Windows\"."
                             )
 
                         Toggle("Open selection for unsupported apps", isOn: $readSelectedTextFallback)

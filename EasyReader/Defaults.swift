@@ -62,13 +62,13 @@ extension Defaults.Keys {
     static let cleanUpPDFText = Key<Bool>("CleanUpPDFText", default: true, suite: .app)
     static let readSelectedTextFallback = Key<Bool>("ReadSelectedTextFallback", default: false, suite: .app)
     static let readerOpensNewWindows = Key<Bool>("ReaderOpensNewWindows", default: true, suite: .app)
-    static let readerDarkBackground = Key<Bool>("ReaderDarkBackground", default: true, suite: .app)
+    static let readerAlwaysLight = Key<Bool>("ReaderAlwaysLight", default: false, suite: .app)
 
     static let pronunciations = Key<[Pronunciation]>("Pronunciations", default: [], suite: .app)
 
     /// What each settings tab's reset button resets: a new setting goes in its tab's list.
     static let generalTab: [Defaults.Keys] = [
-        .appPresence, .quitClosesWindows, .readerOpensNewWindows, .readerDarkBackground, .readSelectedTextFallback,
+        .appPresence, .quitClosesWindows, .readerOpensNewWindows, .readerAlwaysLight, .readSelectedTextFallback,
         .nowPlayingCenterIntegration, .playWhenFinished,
     ]
     static let readingTab: [Defaults.Keys] = [

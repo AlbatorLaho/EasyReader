@@ -185,12 +185,12 @@ extension IntegrationTests {
             #expect(reader.window.frame.height >= min(reader.window.frame.width * 1.3, screen.height) - 1, "stays portrait")
         }
 
-        @Test func darkBackgroundSettingSwitchesColorMapping() async throws {
-            Defaults[.readerDarkBackground] = false
+        @Test func alwaysLightSettingSwitchesColorMapping() async throws {
+            Defaults[.readerAlwaysLight] = true
             try? await waitUntil(timeout: 2) { !reader.textView.usesAdaptiveColorMappingForDarkAppearance }
             #expect(!reader.textView.usesAdaptiveColorMappingForDarkAppearance)
             #expect(reader.textView.enclosingScrollView?.appearance?.name == .aqua)
-            Defaults[.readerDarkBackground] = true
+            Defaults[.readerAlwaysLight] = false
             try? await waitUntil(timeout: 2) { reader.textView.usesAdaptiveColorMappingForDarkAppearance }
             #expect(reader.textView.usesAdaptiveColorMappingForDarkAppearance)
             #expect(reader.textView.enclosingScrollView?.appearance == nil)

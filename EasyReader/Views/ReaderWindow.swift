@@ -25,7 +25,7 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
     private var loadTask: Task<Void, Never>?
     /// Counts loads, so one replaced by a newer load leaves the window to it.
     private var loadCount = 0
-    private var darkBackgroundTask: Task<Void, Never>?
+    private var alwaysLightTask: Task<Void, Never>?
 
     private static let font = NSFont.systemFont(ofSize: 18)
 
@@ -87,10 +87,10 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         }
 
         // Right away: the first update comes a turn later (black text on dark until then).
-        applyDarkBackground(Defaults[.readerDarkBackground])
-        darkBackgroundTask = Task { [weak self] in
-            for await darkBackground in Defaults.updates(.readerDarkBackground) {
-                self?.applyDarkBackground(darkBackground)
+        applyAlwaysLight(Defaults[.readerAlwaysLight])
+        alwaysLightTask = Task { [weak self] in
+            for await alwaysLight in Defaults.updates(.readerAlwaysLight) {
+                self?.applyAlwaysLight(alwaysLight)
             }
         }
     }
@@ -142,10 +142,10 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
     var documentView: NSView { pdfView.document != nil ? pdfView : textView }
 
     // Dark mode maps the document's colors like TextEdit's "Use Dark Background for Windows"; off, the text area stays light.
-    private func applyDarkBackground(_ darkBackground: Bool) {
-        textView.usesAdaptiveColorMappingForDarkAppearance = darkBackground
-        textScrollView.appearance = darkBackground ? nil : NSAppearance(named: .aqua)
-        pdfView.appearance = darkBackground ? nil : NSAppearance(named: .aqua)
+    private func applyAlwaysLight(_ alwaysLight: Bool) {
+        textView.usesAdaptiveColorMappingForDarkAppearance = !alwaysLight
+        textScrollView.appearance = alwaysLight ? NSAppearance(named: .aqua) : nil
+        pdfView.appearance = alwaysLight ? NSAppearance(named: .aqua) : nil
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -156,7 +156,7 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         // One window is kept (with its text) for reuse.
         if Self.windows.count > 1 {
             Self.windows.removeAll { $0 === self }
-            darkBackgroundTask?.cancel()
+            alwaysLightTask?.cancel()
         }
     }
 
