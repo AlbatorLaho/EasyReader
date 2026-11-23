@@ -19,6 +19,10 @@ struct EasyReaderApp: App {
                 Button("Open URL…") { ReaderWindow.openWebPage() }
                     .keyboardShortcut("l")
             }
+            CommandGroup(replacing: .help) {
+                Button("EasyReader Help") { AppDelegate.showHelp() }
+                    .keyboardShortcut("?")
+            }
         }
     }
 }
@@ -336,6 +340,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func aboutAction() {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(nil)
+    }
+
+    /// The README, in place of a Help Book.
+    @objc static func showHelp() {
+        NSWorkspace.shared.open(URL(string: "https://github.com/AlbatorLaho/EasyReader#readme")!)
     }
 }
 
