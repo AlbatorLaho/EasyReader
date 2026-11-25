@@ -177,6 +177,16 @@ extension IntegrationTests {
             #expect(AppDelegate().applicationShouldTerminate(NSApp) == .terminateNow)
         }
 
+        /// Closing Settings right after it opened doesn't bring it back through the fallback for when `openSettings` shows none.
+        @Test func settingsClosedRightAfterOpeningStaysClosed() async throws {
+            Teardown.add { SettingsOpener.window?.close() }
+            SettingsOpener.open()
+            try await waitUntil(timeout: 5, "Settings window") { SettingsOpener.window?.isVisible == true }
+            SettingsOpener.window?.close()
+            await settle(0.8)
+            #expect(SettingsOpener.window?.isVisible != true)
+        }
+
         @Test func reopenWithoutWindowsOpensSettings() async throws {
             Teardown.add { SettingsOpener.window?.close() }
             #expect(AppDelegate().applicationShouldHandleReopen(NSApp, hasVisibleWindows: true))

@@ -90,15 +90,28 @@ final class SettingsOpener: NSObject {
 
     static var menuTitle: String { "\(name)…" }
 
+    private static var closedWhileOpening = false
+
     @objc static func open() {
         WindowPresenter.showAsRegular()
         // The `show…Window:` selectors below only log a warning on macOS 14+.
         if #available(macOS 14.0, *) {
             Modern.openSettings()
             // Read outside a view, which SwiftUI doesn't promise to support → the app menu's item if no window shows.
+            closedWhileOpening = false
+            nonisolated(unsafe) let observer = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification, object: nil, queue: .main
+            ) { notification in
+                nonisolated(unsafe) let closing = notification.object
+                MainActor.assumeIsolated {
+                    if let closing = closing as? NSWindow, closing === window { closedWhileOpening = true }
+                }
+            }
             Task {
                 try? await Task.sleep(seconds: 0.5)
-                guard window?.isVisible != true else { return }
+                NotificationCenter.default.removeObserver(observer)
+                // Closed meanwhile: it did show, and the user closed it.
+                guard window?.isVisible != true, !closedWhileOpening else { return }
                 Log.settings.error("openSettings opened no window, using the menu item")
                 openWithMenuItem()
             }

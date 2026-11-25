@@ -63,7 +63,8 @@ enum WindowPresenter {
     static func activateAfterPolicyChange(_ window: () -> NSWindow?) async {
         try? await Task.sleep(seconds: 0.1)
         NSApp.activate(ignoringOtherApps: true)
-        window()?.makeKeyAndOrderFront(nil)
+        // Not one closed meanwhile: ordering it front would open it again.
+        if let window = window(), window.isVisible { window.makeKeyAndOrderFront(nil) }
     }
 
     private static func observeClose() {
