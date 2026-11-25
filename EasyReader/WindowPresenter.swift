@@ -33,6 +33,24 @@ enum WindowPresenter {
         }
     }
 
+    /// Runs an app-modal dialog without a Dock icon; `run` returns whether it opened something.
+    static func runModal(_ window: NSWindow, _ run: () -> Bool) {
+        // Without a Dock icon, ⌘-Tab or Mission Control entry, staying above every window on every Space is the way back to it.
+        window.level = .modalPanel
+        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+        NSApp.activate(ignoringOtherApps: true)
+        // Cancelled with no window open: an active accessory app would keep the keyboard focus with nothing to type into.
+        if !run(), !hasOpenWindow, NSApp.activationPolicy() == .accessory { NSApp.hide(nil) }
+    }
+
+    /// Brings a dialog `runModal` is running to the front instead of opening another; false if none is open.
+    static func showRunningModal() -> Bool {
+        guard let window = NSApp.modalWindow else { return false }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        return true
+    }
+
     // A Dock icon while open, so the window can be found with ⌘-Tab and the Dock.
     static func showAsRegular() {
         NSApp.setActivationPolicy(.regular)

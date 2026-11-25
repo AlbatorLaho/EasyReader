@@ -162,16 +162,23 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
 
     // MARK: Actions
 
+    /// Keeps the status menu's Open… and Open URL… enabled while their dialog runs, so they bring it back.
+    @objc static var worksWhenModal: Bool { true }
+
     @objc static func openDocument() {
+        guard !WindowPresenter.showRunningModal() else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = contentTypes
         panel.allowsMultipleSelection = Defaults[.readerOpensNewWindows]
-        NSApp.activate(ignoringOtherApps: true)
-        guard panel.runModal() == .OK else { return }
-        open(panel.urls)
+        WindowPresenter.runModal(panel) {
+            guard panel.runModal() == .OK else { return false }
+            open(panel.urls)
+            return true
+        }
     }
 
     @objc static func openWebPage() {
+        guard !WindowPresenter.showRunningModal() else { return }
         let alert = NSAlert()
         alert.messageText = "Open URL"
         alert.informativeText = "Enter the address of a page to read its text."
@@ -184,13 +191,15 @@ final class ReaderWindow: NSObject, NSWindowDelegate {
         alert.addButton(withTitle: "Open")
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
-        NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        guard let url = webURL(field.stringValue) else {
-            NSSound.beep()
-            return
+        WindowPresenter.runModal(alert.window) {
+            guard alert.runModal() == .alertFirstButtonReturn else { return false }
+            guard let url = webURL(field.stringValue) else {
+                NSSound.beep()
+                return false
+            }
+            forNewContent().open(url)
+            return true
         }
-        forNewContent().open(url)
     }
 
     /// Opens each URL in its own window with `readerOpensNewWindows`, else only the first.
