@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.2 - 2026-11-25
+
+- Don't reopen Settings closed right after opening it
+- Keep the Open and Open URL dialogs findable without a Dock icon
+- Use a hidden window group for the standard menus on macOS 11–12
+- Open the README from Help instead of the missing Help Book
+- Don't let a recorder keep focus it got without a click or Tab
+- Recognize the Settings window on macOS 12
+- Activate the app when opening Settings on macOS 14+
+- Move window presentation out of SettingsOpener into WindowPresenter
+- Replace the Dark Mode document setting with Always show documents in Light Mode
+- Fix General settings layout on macOS 11–12
+
 ## 1.0.1 - 2026-11-21
 
 - Ignore untracked files when preparing a release
